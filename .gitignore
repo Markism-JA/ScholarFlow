@@ -2,3 +2,6 @@
 obj/
 bin/
 scholarflow.db
+
+*.db-shm
+*.db-wal
