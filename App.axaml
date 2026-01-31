@@ -1,15 +1,58 @@
 <Application xmlns="https://github.com/avaloniaui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-             x:Class="ScholarFlow.App"
-             xmlns:local="using:ScholarFlow"
-             RequestedThemeVariant="Default">
-             <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available options. -->
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    x:Class="ScholarFlow.App"
+    xmlns:local="using:ScholarFlow"
+    RequestedThemeVariant="Light">
+    <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available
+    options. -->
 
     <Application.DataTemplates>
-        <local:ViewLocator/>
+        <local:ViewLocator />
     </Application.DataTemplates>
-  
     <Application.Styles>
         <FluentTheme />
+        <Style Selector="Button">
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="Border.card">
+            <Setter Property="CornerRadius" Value="12" />
+        </Style>
+        <Style Selector=":is(Window)">
+            <Setter Property="FontFamily" Value="avares://ScholarFlow/Assets/Fonts#Inter" />
+        </Style>
     </Application.Styles>
+    <Application.Resources>
+        <ResourceDictionary>
+
+            <SolidColorBrush x:Key="AppBackgroundBrush" Color="#F2F2F7" />
+
+            <SolidColorBrush x:Key="SurfaceBrush" Color="#FFFFFF" />
+
+            <SolidColorBrush x:Key="PrimaryTextBrush" Color="#000000" />
+            <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8E8E93" />
+            <SolidColorBrush x:Key="TertiaryTextBrush" Color="#C7C7CC" />
+            <SolidColorBrush x:Key="SeparatorBrush" Color="#E5E5EA" />
+            <SolidColorBrush x:Key="SystemAccentBrush" Color="#007AFF" />
+
+
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Dark">
+
+                    <SolidColorBrush x:Key="AppBackgroundBrush" Color="#1C1C1E" />
+
+                    <SolidColorBrush x:Key="SurfaceBrush" Color="#2C2C2E" />
+
+                    <SolidColorBrush x:Key="PrimaryTextBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="SecondaryTextBrush" Color="#8E8E93" />
+                    <SolidColorBrush x:Key="TertiaryTextBrush" Color="#48484A" />
+
+                    <SolidColorBrush x:Key="SeparatorBrush" Color="#38383A" />
+
+                    <SolidColorBrush x:Key="SystemAccentBrush" Color="#0A84FF" />
+
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+
+        </ResourceDictionary>
+    </Application.Resources>
 </Application>

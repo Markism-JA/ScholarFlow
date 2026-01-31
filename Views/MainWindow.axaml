@@ -1,22 +1,305 @@
 <Window xmlns="https://github.com/avaloniaui"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="using:ScholarFlow.ViewModels"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-        x:Class="ScholarFlow.Views.MainWindow"
-        x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="ScholarFlow">
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="using:ScholarFlow.ViewModels"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="650"
+    Width="1010" Height="660"
+    MinWidth="800" MinHeight="600"
+    WindowStartupLocation="CenterScreen"
+    x:Class="ScholarFlow.Views.MainWindow"
+    x:DataType="vm:MainWindowViewModel"
+    Icon="/Assets/avalonia-logo.ico"
+    Title="ScholarFlow"
+    Background="{DynamicResource AppBackgroundBrush}">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
+    <Window.Styles>
+        <Style Selector="Border.actionCard">
+            <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SeparatorBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Height" Duration="0:0:0.3" Easing="CircularEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
 
-    <StackPanel Orientation="Vertical">
-        <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-    </StackPanel>
+        <Style Selector="Border.formTray">
+            <Setter Property="Background" Value="#F9F9F9" />
+            <Setter Property="BorderBrush" Value="#E5E5EA" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="8" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="0,10,0,0" />
+        </Style>
 
+        <Style Selector="Button.cta, ToggleButton.cta">
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Background" Value="{DynamicResource SystemAccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="16,6" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="MinWidth" Value="80" />
+        </Style>
+        <Style
+            Selector="Button.cta:pointerover /template/ ContentPresenter, ToggleButton.cta:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#0A84FF" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="ToggleButton.cta:checked /template/ ContentPresenter">
+            <Setter Property="Background" Value="#004C99" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+
+        <Style Selector="TextBox.cleanInput">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#E5E5EA" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="5" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="Foreground" Value="Black" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox.cleanInput:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <Style Selector="TextBlock.inputLabel">
+            <Setter Property="Foreground" Value="#666666" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Margin" Value="0,0,0,2" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+
+        <Style Selector="StackPanel.dropAnimation">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="IsVisible" Value="False" />
+            <Setter Property="RenderTransform" Value="translateY(-15px)" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
+                    <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25"
+                        Easing="CircularEaseOut" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="StackPanel.dropAnimation.open">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="IsVisible" Value="True" />
+            <Setter Property="RenderTransform" Value="translateY(0px)" />
+        </Style>
+
+        <Style Selector="Border.recentItem">
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Margin" Value="0,0,0,2" />
+        </Style>
+        <Style Selector="Border.recentItem:pointerover">
+            <Setter Property="Background" Value="{DynamicResource SeparatorBrush}" />
+        </Style>
+
+    </Window.Styles>
+
+    <Grid ColumnDefinitions="260, *">
+
+        <Border Grid.Column="0"
+            BorderThickness="0,0,1,0"
+            BorderBrush="{DynamicResource SeparatorBrush}"
+            Background="{DynamicResource AppBackgroundBrush}">
+
+            <Grid RowDefinitions="Auto, *">
+                <TextBlock Grid.Row="0"
+                    Text="Recent Basins"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Foreground="{DynamicResource SecondaryTextBrush}"
+                    Margin="20,24,20,10" />
+
+                <StackPanel Grid.Row="1" Margin="12">
+                    <Border Classes="recentItem">
+                        <StackPanel>
+                            <TextBlock Text="Thesis-MMORPG-Docs" FontWeight="Medium" FontSize="13"
+                                Foreground="{DynamicResource PrimaryTextBrush}" />
+                            <TextBlock Text="/home/marky/Coding/Projects" FontSize="11"
+                                Foreground="{DynamicResource SecondaryTextBrush}"
+                                TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+                    <Border Classes="recentItem">
+                        <StackPanel>
+                            <TextBlock Text="ScholarFlow-Planning" FontWeight="Medium" FontSize="13"
+                                Foreground="{DynamicResource PrimaryTextBrush}" />
+                            <TextBlock Text="/home/marky/Documents/Notes" FontSize="11"
+                                Foreground="{DynamicResource SecondaryTextBrush}"
+                                TextTrimming="CharacterEllipsis" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+
+        <Border Grid.Column="1" Padding="40, 20">
+            <ScrollViewer>
+                <StackPanel VerticalAlignment="Center" MaxWidth="480">
+
+                    <StackPanel HorizontalAlignment="Center" Spacing="6" Margin="0,0,0,20">
+                        <PathIcon
+                            Data="M12 3L1 9L12 15L21 10.09V17H23V9M5 13.18V17.18L12 21L19 17.18V13.18L12 17L5 13.18Z"
+                            Width="40" Height="40"
+                            Foreground="{DynamicResource SystemAccentBrush}" />
+                        <TextBlock Text="ScholarFlow"
+                            FontSize="22"
+                            FontWeight="Bold"
+                            Foreground="{DynamicResource PrimaryTextBrush}" />
+                    </StackPanel>
+
+
+                    <Border Classes="actionCard">
+                        <StackPanel>
+
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Create new basin" FontWeight="SemiBold"
+                                        FontSize="14"
+                                        Foreground="{DynamicResource PrimaryTextBrush}" />
+                                    <TextBlock
+                                        Text="Initialize a new ScholarFlow library in a folder."
+                                        FontSize="12"
+                                        Foreground="{DynamicResource SecondaryTextBrush}"
+                                        Margin="0,2,0,0" />
+                                </StackPanel>
+
+                                <ToggleButton Name="ShowFormToggle"
+                                    Grid.Column="1"
+                                    Classes="cta"
+                                    Content="Create" />
+                            </Grid>
+
+                            <StackPanel Classes="dropAnimation"
+                                Classes.open="{Binding #ShowFormToggle.IsChecked}">
+
+                                <Border Classes="formTray">
+                                    <StackPanel Spacing="8">
+                                        <Grid ColumnDefinitions="*, Auto">
+                                            <TextBlock Text="New Basin Details"
+                                                FontWeight="Bold"
+                                                FontSize="13"
+                                                VerticalAlignment="Center"
+                                                Foreground="{DynamicResource PrimaryTextBrush}" />
+                                            <Button Grid.Column="1"
+                                                Command="{Binding #ShowFormToggle.Toggle}"
+                                                Background="Transparent"
+                                                Content="✕"
+                                                FontSize="11"
+                                                Padding="4"
+                                                Foreground="#999" />
+                                        </Grid>
+
+                                        <StackPanel>
+                                            <TextBlock Classes="inputLabel" Text="Basin Name" />
+                                            <TextBox Classes="cleanInput"
+                                                Watermark="e.g. Thesis Fall 2026" />
+                                        </StackPanel>
+
+                                        <StackPanel>
+                                            <TextBlock Classes="inputLabel" Text="Location" />
+                                            <Grid ColumnDefinitions="*, 80">
+                                                <TextBox Grid.Column="0" Classes="cleanInput"
+                                                    Watermark="/home/user/..." />
+                                                <Button Grid.Column="1"
+                                                    Content="Browse"
+                                                    Margin="8,0,0,0"
+                                                    HorizontalAlignment="Stretch"
+                                                    HorizontalContentAlignment="Center"
+                                                    VerticalContentAlignment="Center"
+                                                    FontSize="11"
+                                                    Padding="0"
+                                                    Background="White"
+                                                    BorderBrush="#E5E5EA"
+                                                    BorderThickness="1"
+                                                    CornerRadius="5" />
+                                            </Grid>
+                                        </StackPanel>
+
+                                        <Border Background="#F2F2F7"
+                                            CornerRadius="6"
+                                            Padding="10"
+                                            BorderBrush="#E5E5EA"
+                                            BorderThickness="1">
+                                            <StackPanel Spacing="8">
+                                                <TextBlock Text="Account Credentials"
+                                                    Foreground="{DynamicResource SystemAccentBrush}"
+                                                    FontWeight="Bold"
+                                                    FontSize="11" />
+
+                                                <Grid ColumnDefinitions="90, *">
+                                                    <TextBlock Classes="inputLabel" Text="Username"
+                                                        VerticalAlignment="Center" />
+                                                    <TextBox Grid.Column="1" Classes="cleanInput"
+                                                        Watermark="ex. Marky" />
+                                                </Grid>
+
+                                                <Grid ColumnDefinitions="90, *">
+                                                    <TextBlock Classes="inputLabel"
+                                                        Text="Student Email"
+                                                        VerticalAlignment="Center" />
+                                                    <TextBox Grid.Column="1" Classes="cleanInput"
+                                                        Watermark="email@caloocan.sti.edu.ph" />
+                                                </Grid>
+
+                                                <Grid ColumnDefinitions="90, *">
+                                                    <TextBlock Classes="inputLabel" Text="Password"
+                                                        VerticalAlignment="Center" />
+                                                    <TextBox Grid.Column="1" Classes="cleanInput"
+                                                        PasswordChar="•" Watermark="••••••••" />
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
+                                            <Button Grid.Column="1"
+                                                Classes="cta"
+                                                Content="Proceed"
+                                                Width="100" />
+                                        </Grid>
+
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+                    </Border>
+
+
+                    <Border Classes="actionCard">
+                        <Grid ColumnDefinitions="*, Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Open folder as basin" FontWeight="SemiBold"
+                                    FontSize="14" Foreground="{DynamicResource PrimaryTextBrush}" />
+                                <TextBlock Text="Choose an existing folder of PDF materials."
+                                    FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}"
+                                    Margin="0,2,0,0" />
+                            </StackPanel>
+
+                            <Button Grid.Column="1" Classes="cta" Content="Open" />
+                        </Grid>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+    </Grid>
 </Window>
