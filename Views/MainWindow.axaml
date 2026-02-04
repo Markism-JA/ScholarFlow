@@ -89,10 +89,14 @@
                                         Margin="0,2,0,0" />
                                 </StackPanel>
 
-                                <ToggleButton Name="ShowFormToggle"
-                                    Grid.Column="1"
-                                    Classes="cta"
-                                    Content="Create" />
+                                <ToggleButton Name="ShowFormToggle" Grid.Column="1" Classes="cta">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <icon:MaterialIcon Kind="Add"
+                                            Width="18"
+                                            Height="18"
+                                            Foreground="White" />
+                                    </StackPanel>
+                                </ToggleButton>
                             </Grid>
 
                             <StackPanel Classes="dropAnimation"
@@ -133,11 +137,16 @@
                                                     HorizontalContentAlignment="Center"
                                                     VerticalContentAlignment="Center"
                                                     FontSize="11"
-                                                    Padding="0"
+                                                    Padding="2"
                                                     Background="White"
-                                                    BorderBrush="#E5E5EA"
+                                                    BorderBrush="{DynamicResource SeparatorBrush}"
                                                     BorderThickness="1"
-                                                    CornerRadius="5" />
+                                                    CornerRadius="5">
+                                                    <StackPanel Orientation="Horizontal"
+                                                        Spacing="8">
+                                                        <icon:MaterialIcon Kind="Folder"></icon:MaterialIcon>
+                                                    </StackPanel>
+                                                </Button>
                                             </Grid>
                                         </StackPanel>
 
