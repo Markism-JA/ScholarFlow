@@ -84,7 +84,7 @@
                                         FontSize="14"
                                         Foreground="{DynamicResource PrimaryTextBrush}" />
                                     <TextBlock
-                                        Text="Initialize a new ScholarFlow library in a folder."
+                                        Text="Initialize a new ScholarFlow basin in a folder."
                                         FontSize="12"
                                         Foreground="{DynamicResource SecondaryTextBrush}"
                                         Margin="0,2,0,0" />
