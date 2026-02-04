@@ -3,6 +3,8 @@
     xmlns:vm="using:ScholarFlow.ViewModels"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:icon="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+    xmlns:entities="clr-namespace:ScholarFlow.Models.Entities"
     mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="650"
     Width="1010" Height="660"
     MinWidth="800" MinHeight="600"

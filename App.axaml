@@ -2,9 +2,10 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     x:Class="ScholarFlow.App"
     xmlns:local="using:ScholarFlow"
+    xmlns:icon="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
     RequestedThemeVariant="Light">
-    <!-- "Default" ThemeVariant follows system theme variant. "Dark" or "Light" are other available
-    options. -->
+
+    <!-- NOTE: Light is the default. Light and Dark mode is set for later. -->
 
     <Application.DataTemplates>
         <local:ViewLocator />
@@ -20,6 +21,7 @@
         <Style Selector=":is(Window)">
             <Setter Property="FontFamily" Value="avares://ScholarFlow/Assets/Fonts#Inter" />
         </Style>
+        <icon:MaterialIconStyles />
     </Application.Styles>
     <Application.Resources>
         <ResourceDictionary>
