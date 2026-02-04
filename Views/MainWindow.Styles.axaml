@@ -107,7 +107,7 @@
     </Style>
 
     <Style Selector="ListBox.recentList ListBoxItem">
-        <Setter Property="Padding" Value="0" />
+        <Setter Property="Padding" Value="10, 0, 10, 1" />
         <Setter Property="Margin" Value="0" />
     </Style>
 
