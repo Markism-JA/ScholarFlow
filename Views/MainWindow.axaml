@@ -21,39 +21,40 @@
 
     <Grid ColumnDefinitions="260, *">
 
-        <Border Grid.Column="0"
-            BorderThickness="0,0,1,0"
+        <Border Grid.Column="0" BorderThickness="0, 0, 1, 0"
             BorderBrush="{DynamicResource SeparatorBrush}"
             Background="{DynamicResource AppBackgroundBrush}">
 
-            <Grid RowDefinitions="Auto, *">
+            <Grid Grid.Column="0" RowDefinitions="Auto, *">
                 <TextBlock Grid.Row="0"
                     Text="Recent Basins"
                     FontSize="13"
                     FontWeight="SemiBold"
                     Foreground="{DynamicResource SecondaryTextBrush}"
-                    Margin="20,24,20,10" />
+                    Margin="20, 24, 20, 10" />
 
-                <StackPanel Grid.Row="1" Margin="12">
-                    <Border Classes="recentItem">
-                        <StackPanel>
-                            <TextBlock Text="Thesis-MMORPG-Docs" FontWeight="Medium" FontSize="13"
-                                Foreground="{DynamicResource PrimaryTextBrush}" />
-                            <TextBlock Text="/home/marky/Coding/Projects" FontSize="11"
-                                Foreground="{DynamicResource SecondaryTextBrush}"
-                                TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Border>
-                    <Border Classes="recentItem">
-                        <StackPanel>
-                            <TextBlock Text="ScholarFlow-Planning" FontWeight="Medium" FontSize="13"
-                                Foreground="{DynamicResource PrimaryTextBrush}" />
-                            <TextBlock Text="/home/marky/Documents/Notes" FontSize="11"
-                                Foreground="{DynamicResource SecondaryTextBrush}"
-                                TextTrimming="CharacterEllipsis" />
-                        </StackPanel>
-                    </Border>
-                </StackPanel>
+                <ListBox Grid.Row="1"
+                    ItemsSource="{Binding RecentProjects}"
+                    Background="Transparent"
+                    Classes="recentList">
+
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="entities:Bucket">
+                            <Border Classes="recentItem">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Name}"
+                                        FontWeight="Medium"
+                                        FontSize="13"
+                                        Foreground="{DynamicResource PrimaryTextBrush}" />
+                                    <TextBlock Text="{Binding FilePath}"
+                                        FontSize="11"
+                                        Foreground="{DynamicResource SecondaryTextBrush}" />
+                                </StackPanel>
+
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </Grid>
         </Border>
 
@@ -131,7 +132,6 @@
                                                 <TextBox Grid.Column="0" Classes="cleanInput"
                                                     Watermark="/home/user/..." />
                                                 <Button Grid.Column="1"
-                                                    Content="Browse"
                                                     Margin="8,0,0,0"
                                                     HorizontalAlignment="Stretch"
                                                     HorizontalContentAlignment="Center"
@@ -188,7 +188,7 @@
                                         <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
                                             <Button Grid.Column="1"
                                                 Classes="cta"
-                                                Content="Proceed"
+                                                Content="Create"
                                                 Width="100" />
                                         </Grid>
 
