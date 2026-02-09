@@ -5,24 +5,25 @@ namespace ScholarFlow.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
+    public static MainWindowViewModel DesignInstance { get; } = new MainWindowViewModel();
     public ObservableCollection<Bucket> RecentProjects { get; set; }
 
     public MainWindowViewModel()
     {
-        RecentProjects = new ObservableCollection<Bucket>
+        var newApp = new AppConfig
         {
-            new Bucket
-            {
-                Name = "STI",
-                FilePath = "~/somePath",
-                LastModified = "2 Hours Ago",
-            },
-            new Bucket
-            {
-                Name = "Potrero",
-                FilePath = "~/somePath",
-                LastModified = "Some time ago",
-            },
+            KnownBasin =
+            [
+                new Bucket { Name = "Potrero", FilePath = "~/SomFilePath" },
+                new Bucket { Name = "STI", FilePath = "~/SomFilePath" },
+            ],
         };
+
+        RecentProjects = LoadBasins(newApp);
+    }
+
+    private static ObservableCollection<Bucket> LoadBasins(AppConfig config)
+    {
+        return new ObservableCollection<Bucket>(config.KnownBasin);
     }
 }
