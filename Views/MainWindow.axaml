@@ -150,38 +150,32 @@
                                             </Grid>
                                         </StackPanel>
 
-                                        <Border Background="#F2F2F7"
+                                        <Border Background="#F9F9F9"
                                             CornerRadius="6"
                                             Padding="10"
                                             BorderBrush="#E5E5EA"
                                             BorderThickness="1">
                                             <StackPanel Spacing="8">
-                                                <TextBlock Text="Account Credentials"
-                                                    Foreground="{DynamicResource SystemAccentBrush}"
+                                                <TextBlock
+                                                    Text="Account Credentials"
+                                                    Foreground="{DynamicResource PrimaryTextBrush}"
                                                     FontWeight="Bold"
                                                     FontSize="11" />
 
-                                                <Grid ColumnDefinitions="90, *">
-                                                    <TextBlock Classes="inputLabel" Text="Username"
-                                                        VerticalAlignment="Center" />
-                                                    <TextBox Grid.Column="1" Classes="cleanInput"
-                                                        Watermark="ex. Marky" />
-                                                </Grid>
 
-                                                <Grid ColumnDefinitions="90, *">
-                                                    <TextBlock Classes="inputLabel"
-                                                        Text="Student Email"
-                                                        VerticalAlignment="Center" />
-                                                    <TextBox Grid.Column="1" Classes="cleanInput"
-                                                        Watermark="email@caloocan.sti.edu.ph" />
-                                                </Grid>
-
-                                                <Grid ColumnDefinitions="90, *">
-                                                    <TextBlock Classes="inputLabel" Text="Password"
-                                                        VerticalAlignment="Center" />
-                                                    <TextBox Grid.Column="1" Classes="cleanInput"
-                                                        PasswordChar="•" Watermark="••••••••" />
-                                                </Grid>
+                                                <TextBlock Classes="inputLabel" Text="Username"
+                                                    VerticalAlignment="Center" />
+                                                <TextBox Grid.Column="1" Classes="cleanInput"
+                                                    Watermark="ex. Marky" />
+                                                <TextBlock Classes="inputLabel"
+                                                    Text="Student Email"
+                                                    VerticalAlignment="Center" />
+                                                <TextBox Grid.Column="1" Classes="cleanInput"
+                                                    Watermark="email@caloocan.sti.edu.ph" />
+                                                <TextBlock Classes="inputLabel" Text="Password"
+                                                    VerticalAlignment="Center" />
+                                                <TextBox Grid.Column="1" Classes="cleanInput"
+                                                    PasswordChar="•" Watermark="••••••••" />
                                             </StackPanel>
                                         </Border>
 
