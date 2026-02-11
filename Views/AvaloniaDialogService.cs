@@ -29,10 +29,8 @@ public class AvaloniaDialogService : IDialogService
 
         var options = new FolderPickerOpenOptions { Title = title, AllowMultiple = false };
 
-        // If a default path is provided, try to resolve it to an IStorageFolder
         if (!string.IsNullOrEmpty(defaultPath))
         {
-            // This converts your string path into an Avalonia-compatible folder object
             options.SuggestedStartLocation =
                 await toplevel.StorageProvider.TryGetFolderFromPathAsync(defaultPath);
         }

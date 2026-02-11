@@ -18,6 +18,7 @@ public partial class App : Application
 {
     public IServiceProvider Services { get; private set; }
 
+    [Obsolete("Obsolete")]
     public override void Initialize()
     {
         this.EnableHotReload();

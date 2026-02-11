@@ -1,8 +1,6 @@
 ﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
-using ScholarFlow.Models.Entities;
 using ScholarFlow.Services;
-using ScholarFlow.Views;
 
 namespace ScholarFlow.ViewModels;
 
