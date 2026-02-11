@@ -5,3 +5,4 @@ scholarflow.db
 
 *.db-shm
 *.db-wal
+*.DotSettings.user
