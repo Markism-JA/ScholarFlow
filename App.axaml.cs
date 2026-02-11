@@ -8,6 +8,7 @@ using HotAvalonia;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using ScholarFlow.Data;
+using ScholarFlow.Services;
 using ScholarFlow.ViewModels;
 using ScholarFlow.Views;
 
@@ -25,21 +26,27 @@ public partial class App : Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        var collection = new ServiceCollection();
+        var services = new ServiceCollection();
 
-        collection.AddDbContext<AppDbContext>(options =>
+        services.AddDbContext<AppDbContext>(options =>
             options.UseSqlite("Data Source=scholarflow.db")
         );
-        collection.AddTransient<MainWindowViewModel>();
-        Services = collection.BuildServiceProvider();
+        services.AddTransient<MainWindowViewModel>();
+
+        services.AddSingleton<IDialogService, AvaloniaDialogService>();
+        services.AddTransient<OnboardingViewModel>();
+
+        Services = services.BuildServiceProvider();
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            // Resolve the ViewModel from the container (this includes all injected services)
             var viewModel = Services.GetRequiredService<MainWindowViewModel>();
-            // Avoid duplicate validations from both Avalonia and the CommunityToolkit.
-            // More info: https://docs.avaloniaui.net/docs/guides/development-guides/data-validation#manage-validationplugins
+
             DisableAvaloniaDataAnnotationValidation();
-            desktop.MainWindow = new MainWindow { DataContext = new MainWindowViewModel() };
+
+            // USE the resolved viewModel instead of 'new MainWindowViewModel()'
+            desktop.MainWindow = new MainWindow { DataContext = viewModel };
         }
 
         base.OnFrameworkInitializationCompleted();

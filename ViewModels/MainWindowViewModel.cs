@@ -1,6 +1,7 @@
 ﻿using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using ScholarFlow.Models.Entities;
+using ScholarFlow.Services;
 using ScholarFlow.Views;
 
 namespace ScholarFlow.ViewModels;
@@ -13,9 +14,9 @@ public partial class MainWindowViewModel : ViewModelBase, ISizableViewModel
     [ObservableProperty]
     private ViewModelBase _currentPage;
 
-    public MainWindowViewModel()
+    public MainWindowViewModel(IDialogService dialogService)
     {
-        var startupPage = new OnboardingViewModel();
+        var startupPage = new OnboardingViewModel(dialogService);
         _currentPage = startupPage;
         ApplyDimension(startupPage);
     }

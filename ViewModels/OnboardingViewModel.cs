@@ -1,30 +1,68 @@
+using System;
 using System.Collections.ObjectModel;
-using ScholarFlow.Models.Entities;
+using System.IO;
+using System.Threading.Tasks;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using ScholarFlow.Models.DTOs;
+using ScholarFlow.Models.Settings;
+using ScholarFlow.Services;
 
 namespace ScholarFlow.ViewModels;
 
-public class OnboardingViewModel : ViewModelBase, ISizableViewModel
+public partial class OnboardingViewModel : ViewModelBase, ISizableViewModel
 {
-    public static OnboardingViewModel DesignInstance { get; } = new OnboardingViewModel();
-    public ObservableCollection<Bucket> RecentProjects { get; set; }
+    [ObservableProperty]
+    private string _basinPath;
+    private readonly IDialogService _dialogService;
+    public string BasinName { get; set; }
+    public string Username { get; set; }
+    public string SchoolEmail { get; set; }
+    public string Password { get; set; }
+    public ObservableCollection<KnowBasinEntry> RecentProjects { get; set; }
 
-    public OnboardingViewModel()
+    public OnboardingViewModel(IDialogService dialogService)
     {
+        _dialogService = dialogService;
         var newApp = new AppConfig
         {
             KnownBasin =
             [
-                new Bucket { Name = "Potrero", FilePath = "~/SomFilePath" },
-                new Bucket { Name = "STI", FilePath = "~/SomFilePath" },
+                new KnowBasinEntry() { Name = "Potrero", FilePath = "~/SomFilePath" },
+                new KnowBasinEntry() { Name = "STI", FilePath = "~/SomFilePath" },
             ],
         };
 
         RecentProjects = LoadBasins(newApp);
     }
 
-    private static ObservableCollection<Bucket> LoadBasins(AppConfig config)
+    [RelayCommand]
+    private async Task SelectFolder()
     {
-        return new ObservableCollection<Bucket>(config.KnownBasin);
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string fallbackPath = Path.Combine(home, "Documents");
+
+        string pathToShow = !string.IsNullOrWhiteSpace(BasinPath) ? BasinPath : fallbackPath;
+        var result = await _dialogService.OpenFolderAsync("Select Basin Folder", pathToShow);
+        if (result != null)
+            BasinPath = result;
+    }
+
+    [RelayCommand]
+    private async Task OpenBucket()
+    {
+        string home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        string fallbackPath = Path.Combine(home, "Documents");
+
+        string pathToShow = !string.IsNullOrWhiteSpace(BasinPath) ? BasinPath : fallbackPath;
+        var result = await _dialogService.OpenFolderAsync("Select Basin Folder", pathToShow);
+        if (result != null)
+            throw new NotImplementedException();
+    }
+
+    private static ObservableCollection<KnowBasinEntry> LoadBasins(AppConfig config)
+    {
+        return new ObservableCollection<KnowBasinEntry>(config.KnownBasin);
     }
 
     public double Width { get; } = 860;
