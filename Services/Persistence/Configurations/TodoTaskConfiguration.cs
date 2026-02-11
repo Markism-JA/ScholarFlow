@@ -2,7 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ScholarFlow.Models.Entities;
 
-namespace ScholarFlow.Data.Configurations
+namespace ScholarFlow.Services.Persistence.Configurations
 {
     public class TodoTaskConfiguration : IEntityTypeConfiguration<TodoTask>
     {
