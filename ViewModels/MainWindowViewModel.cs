@@ -1,29 +1,38 @@
 ﻿using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 using ScholarFlow.Models.Entities;
+using ScholarFlow.Views;
 
 namespace ScholarFlow.ViewModels;
 
-public partial class MainWindowViewModel : ViewModelBase
+public partial class MainWindowViewModel : ViewModelBase, ISizableViewModel
 {
-    public static MainWindowViewModel DesignInstance { get; } = new MainWindowViewModel();
-    public ObservableCollection<Bucket> RecentProjects { get; set; }
+    [ObservableProperty]
+    private string _windowTitle = "ScholarFlow";
+
+    [ObservableProperty]
+    private ViewModelBase _currentPage;
 
     public MainWindowViewModel()
     {
-        var newApp = new AppConfig
-        {
-            KnownBasin =
-            [
-                new Bucket { Name = "Potrero", FilePath = "~/SomFilePath" },
-                new Bucket { Name = "STI", FilePath = "~/SomFilePath" },
-            ],
-        };
-
-        RecentProjects = LoadBasins(newApp);
+        var startupPage = new OnboardingViewModel();
+        _currentPage = startupPage;
+        ApplyDimension(startupPage);
     }
 
-    private static ObservableCollection<Bucket> LoadBasins(AppConfig config)
+    private void ApplyDimension(ViewModelBase page)
     {
-        return new ObservableCollection<Bucket>(config.KnownBasin);
+        if (page is ISizableViewModel sizable)
+        {
+            Width = sizable.Width;
+            Height = sizable.Height;
+            MinWidth = sizable.MinWidth;
+            MinHeight = sizable.MinHeight;
+        }
     }
+
+    public double Width { get; set; }
+    public double Height { get; set; }
+    public double MinWidth { get; set; }
+    public double MinHeight { get; set; }
 }

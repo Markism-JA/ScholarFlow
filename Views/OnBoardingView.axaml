@@ -1,0 +1,208 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ScholarFlow.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:icon="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
+        xmlns:entities="clr-namespace:ScholarFlow.Models.Entities"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        d:DataContext="{x:Static vm:OnboardingViewModel.DesignInstance}"
+        x:Class="ScholarFlow.Views.OnBoardingView"
+        x:DataType="vm:OnboardingViewModel"
+        Background="{DynamicResource AppBackgroundBrush}">
+        
+        <UserControl.Styles>
+            <StyleInclude Source="OnboardingView.Styles.axaml" />
+        </UserControl.Styles>
+        
+        
+        <Grid ColumnDefinitions="260, *">
+
+            <Border Grid.Column="0" BorderThickness="0, 0, 1, 0"
+                BorderBrush="{DynamicResource SeparatorBrush}"
+                Background="{DynamicResource AppBackgroundBrush}">
+
+                <Grid Grid.Column="0" RowDefinitions="Auto, *">
+                    <TextBlock Grid.Row="0"
+                        Text="Recent Basins"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Foreground="{DynamicResource SecondaryTextBrush}"
+                        Margin="20, 24, 20, 10" />
+
+                    <ListBox Grid.Row="1"
+                        ItemsSource="{Binding RecentProjects}"
+                        Background="Transparent"
+                        Classes="recentList">
+
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="entities:Bucket">
+                                <Border Classes="recentItem">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Name}"
+                                            FontWeight="Medium"
+                                            FontSize="13"
+                                            Foreground="{DynamicResource PrimaryTextBrush}" />
+                                        <TextBlock Text="{Binding FilePath}"
+                                            FontSize="11"
+                                            Foreground="{DynamicResource SecondaryTextBrush}" />
+                                    </StackPanel>
+
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Border>
+
+
+            <Border Grid.Column="1" Padding="40, 20">
+                <ScrollViewer>
+                    <StackPanel VerticalAlignment="Center" MaxWidth="480">
+
+                        <StackPanel HorizontalAlignment="Center" Spacing="6" Margin="0,0,0,20">
+                            <PathIcon
+                                Data="M12 3L1 9L12 15L21 10.09V17H23V9M5 13.18V17.18L12 21L19 17.18V13.18L12 17L5 13.18Z"
+                                Width="40" Height="40"
+                                Foreground="{DynamicResource SystemAccentBrush}" />
+                            <TextBlock Text="ScholarFlow"
+                                FontSize="22"
+                                FontWeight="Bold"
+                                Foreground="{DynamicResource PrimaryTextBrush}" />
+                        </StackPanel>
+
+
+                        <Border Classes="actionCard">
+                            <StackPanel>
+
+                                <Grid ColumnDefinitions="*, Auto">
+                                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                        <TextBlock Text="Create new basin" FontWeight="SemiBold"
+                                            FontSize="14"
+                                            Foreground="{DynamicResource PrimaryTextBrush}" />
+                                        <TextBlock
+                                            Text="Initialize a new ScholarFlow basin in a folder."
+                                            FontSize="12"
+                                            Foreground="{DynamicResource SecondaryTextBrush}"
+                                            Margin="0,2,0,0" />
+                                    </StackPanel>
+
+                                    <ToggleButton Name="ShowFormToggle"
+                                        Grid.Column="1"
+                                        Classes="expandTrigger"
+                                        Background="{DynamicResource SystemAccentBrush}"
+                                        Foreground="{DynamicResource TextOnAccentBrush}">
+
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <icon:MaterialIcon Kind="Add" Width="18" Height="18" />
+                                        </StackPanel>
+                                    </ToggleButton>
+                                </Grid>
+
+                                <StackPanel Classes="dropAnimation"
+                                    Classes.open="{Binding #ShowFormToggle.IsChecked}">
+
+                                    <Border Classes="formTray">
+                                        <StackPanel Spacing="8">
+                                            <Grid ColumnDefinitions="*, Auto">
+                                                <TextBlock Text="New Basin Details"
+                                                    FontWeight="Bold"
+                                                    FontSize="13"
+                                                    VerticalAlignment="Center"
+                                                    Foreground="{DynamicResource PrimaryTextBrush}" />
+                                            </Grid>
+
+                                            <StackPanel>
+                                                <TextBlock Classes="inputLabel" Text="Basin Name" />
+                                                <TextBox Classes="cleanInput"
+                                                    Watermark="e.g. Thesis Fall 2026" />
+                                            </StackPanel>
+
+                                            <StackPanel>
+                                                <TextBlock Classes="inputLabel" Text="Location" />
+                                                <Grid ColumnDefinitions="*, 80">
+                                                    <TextBox Grid.Column="0" Classes="cleanInput"
+                                                        Watermark="/home/user/..." />
+                                                    <Button Grid.Column="1"
+                                                        Margin="8,0,0,0"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Center"
+                                                        VerticalContentAlignment="Center"
+                                                        FontSize="11"
+                                                        Padding="2"
+                                                        Background="{DynamicResource SurfaceBrush}"
+                                                        BorderBrush="{DynamicResource OutlineBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="5">
+                                                        <StackPanel Orientation="Horizontal"
+                                                            Spacing="8">
+                                                            <icon:MaterialIcon Kind="Folder"></icon:MaterialIcon>
+                                                        </StackPanel>
+                                                    </Button>
+                                                </Grid>
+                                            </StackPanel>
+
+                                            <Border
+                                                Background="{DynamicResource AppBackgroundBrush}"
+                                                CornerRadius="6"
+                                                Padding="10"
+                                                BorderBrush="{DynamicResource OutlineBrush}"
+                                                BorderThickness="1">
+                                                <StackPanel Spacing="8">
+                                                    <TextBlock
+                                                        Text="Account Credentials"
+                                                        Foreground="{DynamicResource PrimaryTextBrush}"
+                                                        FontWeight="Bold"
+                                                        FontSize="11" />
+
+
+                                                    <TextBlock Classes="inputLabel" Text="Username"
+                                                        VerticalAlignment="Center" />
+                                                    <TextBox Grid.Column="1" Classes="cleanInput"
+                                                        Watermark="ex. Marky" />
+                                                    <TextBlock Classes="inputLabel"
+                                                        Text="Student Email"
+                                                        VerticalAlignment="Center" />
+                                                    <TextBox Grid.Column="1" Classes="cleanInput"
+                                                        Watermark="email@caloocan.sti.edu.ph" />
+                                                    <TextBlock Classes="inputLabel" Text="Password"
+                                                        VerticalAlignment="Center" />
+                                                    <TextBox Grid.Column="1" Classes="cleanInput"
+                                                        PasswordChar="•" Watermark="••••••••" />
+                                                </StackPanel>
+                                            </Border>
+
+                                            <Grid ColumnDefinitions="*, Auto" Margin="0,4,0,0">
+                                                <Button Grid.Column="1"
+                                                    Classes="cta"
+                                                    Content="Create"
+                                                    Width="100" />
+                                            </Grid>
+
+                                        </StackPanel>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+
+                        <Border Classes="actionCard">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                    <TextBlock Text="Open folder as basin" FontWeight="SemiBold"
+                                        FontSize="14" Foreground="{DynamicResource PrimaryTextBrush}" />
+                                    <TextBlock Text="Choose an existing folder of PDF materials."
+                                        FontSize="12" Foreground="{DynamicResource SecondaryTextBrush}"
+                                        Margin="0,2,0,0" />
+                                </StackPanel>
+
+                                <Button Grid.Column="1" Classes="cta" Content="Open" />
+                            </Grid>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+        </Grid>
+</UserControl>

@@ -3,6 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using Avalonia.Controls;
 using Avalonia.Controls.Templates;
 using ScholarFlow.ViewModels;
+using ScholarFlow.Views;
 
 namespace ScholarFlow;
 
@@ -20,15 +21,12 @@ public class ViewLocator : IDataTemplate
         if (param is null)
             return null;
 
-        var name = param.GetType().FullName!.Replace("ViewModel", "View", StringComparison.Ordinal);
-        var type = Type.GetType(name);
-
-        if (type != null)
+        return param switch
         {
-            return (Control)Activator.CreateInstance(type)!;
-        }
-
-        return new TextBlock { Text = "Not Found: " + name };
+            OnboardingViewModel => new OnBoardingView(),
+            WorkspaceViewModel => new WorkspaceView(),
+            _ => new TextBlock { Text = "Not Found: " + param.GetType().Name },
+        };
     }
 
     public bool Match(object? data)

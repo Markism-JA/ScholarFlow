@@ -1,0 +1,184 @@
+<Styles xmlns="https://github.com/avaloniaui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:icon="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia">
+    <Design.PreviewWith>
+        <Border Padding="20" Background="{DynamicResource AppBackgroundBrush}">
+            <StackPanel Spacing="10">
+                <Border Classes="actionCard" Height="50" Width="200">
+                    <TextBlock Text="Action Card" VerticalAlignment="Center" />
+                </Border>
+                <Button Classes="cta" Content="Submit Action" />
+                <TextBox Classes="cleanInput" Text="Input text..." />
+                <TextBlock Classes="inputLabel" Text="Input Label" />
+            </StackPanel>
+        </Border>
+    </Design.PreviewWith>
+
+    <Style Selector="Border.actionCard">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusLarge}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SeparatorBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="{StaticResource SpacingMedium}" />
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Height" Duration="0:0:0.3" Easing="CircularEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="Border.formTray">
+        <Setter Property="Background" Value="{DynamicResource SecondaryContainerBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource SeparatorBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusMedium}" />
+        <Setter Property="Padding" Value="{StaticResource SpacingMedium}" />
+        <Setter Property="Margin" Value="0,10,0,0" />
+    </Style>
+
+    <Style Selector="Button.cta, ToggleButton.cta">
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Background" Value="{DynamicResource SystemAccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+        <Setter Property="FontWeight" Value="{StaticResource WeightSemiBold}" />
+        <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+        <Setter Property="Padding" Value="16,6" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSmall}" />
+        <Setter Property="MinWidth" Value="80" />
+    </Style>
+
+    <Style
+        Selector="Button.cta:pointerover /template/ ContentPresenter, ToggleButton.cta:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SystemAccentHoverBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+    </Style>
+
+    <Style Selector="ToggleButton.cta:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource PrimaryContainerBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource OnPrimaryContainerBrush}" />
+    </Style>
+
+    <Style Selector="TextBox.cleanInput">
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource OutlineBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSmall}" />
+        <Setter Property="Padding" Value="8,5" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+        <Setter Property="FontSize" Value="{StaticResource FontSizeBody}" />
+        <Setter Property="MinHeight" Value="28" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+    <Style Selector="TextBox.cleanInput:focus /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    </Style>
+
+
+    <Style Selector="TextBox.cleanInput:pointerover /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+    </Style>
+
+    <Style Selector="TextBlock.inputLabel">
+        <Setter Property="Foreground" Value="{DynamicResource SecondaryTextBrush}" />
+        <Setter Property="FontSize" Value="{StaticResource FontSizeSmall}" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+        <Setter Property="FontWeight" Value="{StaticResource WeightMedium}" />
+    </Style>
+
+    <Style Selector="StackPanel.dropAnimation">
+        <Setter Property="Opacity" Value="0" />
+        <Setter Property="IsVisible" Value="False" />
+        <Setter Property="RenderTransform" Value="translateY(-15px)" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25"
+                    Easing="CircularEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+    <Style Selector="StackPanel.dropAnimation.open">
+        <Setter Property="Opacity" Value="1" />
+        <Setter Property="IsVisible" Value="True" />
+        <Setter Property="RenderTransform" Value="translateY(0px)" />
+    </Style>
+
+    <Style Selector="Border.recentItem">
+        <Setter Property="Padding" Value="{StaticResource SpacingSmall}" />
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusSmall}" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+
+    <Style Selector="Border.recentItem:pointerover">
+        <Setter Property="Background" Value="{DynamicResource SecondaryContainerBrush}" />
+    </Style>
+
+    <Style Selector="ListBox.recentList">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style Selector="ListBox.recentList ListBoxItem">
+        <Setter Property="Padding" Value="10,0,10,1" />
+        <Setter Property="Margin" Value="0" />
+    </Style>
+
+    <Style Selector="ListBox.recentList ListBoxItem:selected /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+
+    <Style Selector="ListBox.recentList ListBoxItem:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="ToggleButton.expandTrigger">
+        <Setter Property="CornerRadius" Value="{StaticResource RadiusMedium}" />
+        <Setter Property="Background" Value="{DynamicResource SystemAccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+
+        <Setter Property="Transitions">
+            <Transitions>
+                <BrushTransition Property="Background" Duration="0:0:0.25" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="ToggleButton.expandTrigger icon|MaterialIcon">
+        <Setter Property="RenderTransform" Value="rotate(0deg)" />
+        <Setter Property="Transitions">
+            <Transitions>
+                <TransformOperationsTransition Property="RenderTransform"
+                    Duration="0:0:0.40"
+                    Easing="CircularEaseOut" />
+            </Transitions>
+        </Setter>
+    </Style>
+
+    <Style Selector="ToggleButton.expandTrigger:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource OutlineBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource PrimaryTextBrush}" />
+    </Style>
+
+    <Style Selector="ToggleButton.expandTrigger:checked /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SystemAccentBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+    </Style>
+
+    <Style
+        Selector="ToggleButton.expandTrigger:pointerover /template/ ContentPresenter, ToggleButton.cta:pointerover /template/ ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource SystemAccentHoverBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextOnAccentBrush}" />
+    </Style>
+
+    <Style Selector="ToggleButton.expandTrigger:checked icon|MaterialIcon">
+        <Setter Property="RenderTransform" Value="rotate(135deg)" />
+    </Style>
+</Styles>
