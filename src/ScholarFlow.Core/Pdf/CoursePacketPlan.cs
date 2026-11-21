@@ -1,5 +1,7 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using ScholarFlow.Core.Knowledge;
 
 namespace ScholarFlow.Core.Pdf;
 
@@ -109,17 +111,40 @@ public sealed class CoursePacketPlan
         }
     }
 
+    private static readonly HashSet<string> InternalPacketIgnoreFiles = new(
+        StringComparer.OrdinalIgnoreCase
+    )
+    {
+        "packet.json",
+        "term.json",
+        "course.json",
+        "syllabus.json",
+        "tasks.md",
+        "inbox.md",
+    };
+
+    private static readonly HashSet<string> PackableImageExtensions = new(
+        StringComparer.OrdinalIgnoreCase
+    )
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".bmp",
+    };
+
     /// <summary>
-    /// Loads a saved <c>packet.json</c> (merging any newly discovered PDF files on disk) or builds
+    /// Loads a saved <c>packet.json</c> (merging any newly discovered study files on disk) or builds
     /// a default plan from <c>term.json</c>, configured basin terms, and optional STI syllabus fallback.
     /// </summary>
     public static CoursePacketPlan LoadOrBuildPlan(
         string courseDir,
         IReadOnlyList<string>? configuredTerms = null,
-        bool useStiSyllabusFallback = true
+        bool useStiSyllabusFallback = true,
+        bool includeNonPdfByDefault = false
     )
     {
-        var discoveredFiles = DiscoverCoursePdfItems(courseDir);
+        var discoveredFiles = DiscoverCoursePacketItems(courseDir, includeNonPdfByDefault);
         var saved = TryLoadSavedPlan(courseDir);
         if (saved is not null)
         {
@@ -130,7 +155,15 @@ public sealed class CoursePacketPlan
         return BuildDefaultPlan(courseDir, discoveredFiles, configuredTerms, useStiSyllabusFallback);
     }
 
-    public static List<PacketItemPlan> DiscoverCoursePdfItems(string courseDir)
+    public static List<PacketItemPlan> DiscoverCoursePdfItems(string courseDir) =>
+        DiscoverCoursePacketItems(courseDir, includeNonPdfByDefault: false)
+            .Where(i => i.IsPdf)
+            .ToList();
+
+    public static List<PacketItemPlan> DiscoverCoursePacketItems(
+        string courseDir,
+        bool includeNonPdfByDefault = false
+    )
     {
         var items = new List<PacketItemPlan>();
         if (!Directory.Exists(courseDir))
@@ -138,37 +171,70 @@ public sealed class CoursePacketPlan
 
         var courseFolderName = Path.GetFileName(Path.GetFullPath(courseDir));
 
-        // 1. Direct PDFs in root of courseDir (excluding compiled *_Master.pdf)
+        static bool IsSupportedNonPdfPacketFile(string filePath)
+        {
+            var fileName = Path.GetFileName(filePath);
+            if (fileName.StartsWith('.') || InternalPacketIgnoreFiles.Contains(fileName))
+                return false;
+
+            var (kind, _) = StudySourceClassifier.Classify(filePath);
+            if (kind == StudySourceKind.Image)
+                return PackableImageExtensions.Contains(Path.GetExtension(filePath));
+
+            return kind is StudySourceKind.Markdown or StudySourceKind.PlainText or StudySourceKind.Code;
+        }
+
+        // 1. Direct PDFs & non-PDF study files in root of courseDir (excluding compiled *_Master.pdf)
         foreach (
-            var pdf in Directory
-                .GetFiles(courseDir, "*.pdf", SearchOption.TopDirectoryOnly)
+            var file in Directory
+                .GetFiles(courseDir, "*", SearchOption.TopDirectoryOnly)
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
         )
         {
-            var fileName = Path.GetFileName(pdf);
-            if (
-                fileName.EndsWith("_Master.pdf", StringComparison.OrdinalIgnoreCase)
-                || fileName.Equals($"{courseFolderName}.pdf", StringComparison.OrdinalIgnoreCase)
-            )
-            {
+            var fileName = Path.GetFileName(file);
+            if (fileName.StartsWith('.'))
                 continue;
-            }
 
-            items.Add(
-                new PacketItemPlan
+            if (fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                if (
+                    fileName.EndsWith("_Master.pdf", StringComparison.OrdinalIgnoreCase)
+                    || fileName.EndsWith("_.pdf", StringComparison.OrdinalIgnoreCase)
+                    || fileName.Equals($"{courseFolderName}.pdf", StringComparison.OrdinalIgnoreCase)
+                )
                 {
-                    RelativePath = fileName,
-                    DisplayTitle = Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ').Trim(),
-                    IsActivity = IsActivityName(fileName),
-                    ForceRotateLandscape = fileName.Contains(
-                        "syllabus",
-                        StringComparison.OrdinalIgnoreCase
-                    ),
+                    continue;
                 }
-            );
+
+                items.Add(
+                    new PacketItemPlan
+                    {
+                        RelativePath = fileName,
+                        DisplayTitle = Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ').Trim(),
+                        IsActivity = IsActivityName(fileName),
+                        IsExcluded = false,
+                        ForceRotateLandscape = fileName.Contains(
+                            "syllabus",
+                            StringComparison.OrdinalIgnoreCase
+                        ),
+                    }
+                );
+            }
+            else if (IsSupportedNonPdfPacketFile(file))
+            {
+                items.Add(
+                    new PacketItemPlan
+                    {
+                        RelativePath = fileName,
+                        DisplayTitle = Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ').Trim(),
+                        IsActivity = IsActivityName(fileName),
+                        IsExcluded = !includeNonPdfByDefault,
+                    }
+                );
+            }
         }
 
-        // 2. Module subdirectory PDFs
+        // 2. Module subdirectory PDFs & non-PDF study files
         foreach (
             var dir in Directory
                 .GetDirectories(courseDir)
@@ -181,6 +247,9 @@ public sealed class CoursePacketPlan
                 || dirName.StartsWith('.')
                 || dirName.Equals("ongoing", StringComparison.OrdinalIgnoreCase)
                 || dirName.Equals("completed", StringComparison.OrdinalIgnoreCase)
+                || dirName.Equals("bin", StringComparison.OrdinalIgnoreCase)
+                || dirName.Equals("obj", StringComparison.OrdinalIgnoreCase)
+                || dirName.Equals("node_modules", StringComparison.OrdinalIgnoreCase)
             )
             {
                 continue;
@@ -200,10 +269,32 @@ public sealed class CoursePacketPlan
                         RelativePath = rel,
                         DisplayTitle = label,
                         IsActivity = IsActivityName(dirName) || IsActivityName(pdf),
+                        IsExcluded = false,
                         ForceRotateLandscape = dirName.Contains(
                             "syllabus",
                             StringComparison.OrdinalIgnoreCase
                         ),
+                    }
+                );
+            }
+
+            foreach (
+                var nonPdf in Directory
+                    .GetFiles(dir, "*", SearchOption.TopDirectoryOnly)
+                    .Where(f => !f.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) && IsSupportedNonPdfPacketFile(f))
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+            )
+            {
+                var rel = $"{dirName}/{Path.GetFileName(nonPdf)}";
+                var label =
+                    $"{dirName.Replace('_', ' ').Trim()} — {Path.GetFileNameWithoutExtension(nonPdf).Replace('_', ' ').Trim()}";
+                items.Add(
+                    new PacketItemPlan
+                    {
+                        RelativePath = rel,
+                        DisplayTitle = label,
+                        IsActivity = IsActivityName(dirName) || IsActivityName(nonPdf),
+                        IsExcluded = !includeNonPdfByDefault,
                     }
                 );
             }
@@ -417,4 +508,13 @@ public sealed class PacketItemPlan
     public bool IsActivity { get; set; }
     public bool IsExcluded { get; set; }
     public bool ForceRotateLandscape { get; set; }
+
+    [JsonIgnore]
+    public StudySourceKind ResolvedKind => StudySourceClassifier.Classify(RelativePath).Kind;
+
+    [JsonIgnore]
+    public string ResolvedLanguage => StudySourceClassifier.Classify(RelativePath).Language;
+
+    [JsonIgnore]
+    public bool IsPdf => ResolvedKind == StudySourceKind.Pdf;
 }

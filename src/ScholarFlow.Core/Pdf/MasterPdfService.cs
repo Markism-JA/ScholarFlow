@@ -199,7 +199,8 @@ public sealed partial class MasterPdfService
             var plan = CoursePacketPlan.LoadOrBuildPlan(
                 subjectPath,
                 configuredTerms,
-                useStiSyllabusFallback
+                useStiSyllabusFallback,
+                includeNonPdfByDefault: !useStiSyllabusFallback
             );
             return CompileCourseFromPacketPlanSync(subjectPath, subjectName, outPath, plan, ct);
         }
@@ -486,12 +487,28 @@ public sealed partial class MasterPdfService
                     ? Path.GetFileNameWithoutExtension(item.RelativePath).Replace('_', ' ').Trim()
                     : item.DisplayTitle.Trim();
 
-                AppendScaledOrSplit(
-                    destDoc,
-                    fullPath,
-                    forceRotate: item.ForceRotateLandscape,
-                    pageRangesExpr: item.PageRanges
-                );
+                var (itemKind, itemLang) = Knowledge.StudySourceClassifier.Classify(fullPath);
+                switch (itemKind)
+                {
+                    case Knowledge.StudySourceKind.Pdf:
+                        AppendScaledOrSplit(
+                            destDoc,
+                            fullPath,
+                            forceRotate: item.ForceRotateLandscape,
+                            pageRangesExpr: item.PageRanges
+                        );
+                        break;
+
+                    case Knowledge.StudySourceKind.Image:
+                        AppendImagePage(destDoc, fullPath, label);
+                        break;
+
+                    case Knowledge.StudySourceKind.Code:
+                    case Knowledge.StudySourceKind.Markdown:
+                    case Knowledge.StudySourceKind.PlainText:
+                        AppendTextOrCodePages(destDoc, fullPath, label, itemKind, itemLang);
+                        break;
+                }
 
                 if (destDoc.PageCount > startP)
                 {
@@ -533,6 +550,206 @@ public sealed partial class MasterPdfService
         File.Move(tempOut, outPath, overwrite: true);
 
         return destDoc.PageCount;
+    }
+
+    private static void AppendImagePage(PdfSharpDocument destDoc, string imgPath, string title)
+    {
+        try
+        {
+            using var ximg = XImage.FromFile(imgPath);
+            var page = destDoc.AddPage();
+            page.Width = XUnit.FromPoint(TargetWidth);
+            page.Height = XUnit.FromPoint(TargetHeight);
+
+            using var gfx = XGraphics.FromPdfPage(page);
+            var headerFont = new XFont("Sans", 11, XFontStyle.Bold);
+            var metaFont = new XFont("Sans", 8.5, XFontStyle.Regular);
+            gfx.DrawString(
+                title,
+                headerFont,
+                XBrushes.Black,
+                new XRect(36, 26, TargetWidth - 72, 18),
+                XStringFormats.TopLeft
+            );
+            gfx.DrawString(
+                $"Image · {Path.GetFileName(imgPath)} ({ximg.PixelWidth}×{ximg.PixelHeight})",
+                metaFont,
+                XBrushes.Gray,
+                new XRect(36, 44, TargetWidth - 72, 14),
+                XStringFormats.TopLeft
+            );
+            gfx.DrawLine(new XPen(XColors.LightGray, 0.7), 36, 60, TargetWidth - 36, 60);
+
+            double availW = TargetWidth - 72;
+            double availH = TargetHeight - 120;
+            double scale = Math.Min(
+                availW / Math.Max(1, ximg.PixelWidth),
+                availH / Math.Max(1, ximg.PixelHeight)
+            );
+            double drawW = ximg.PixelWidth * scale;
+            double drawH = ximg.PixelHeight * scale;
+            double drawX = 36 + (availW - drawW) / 2.0;
+            double drawY = 70 + (availH - drawH) / 2.0;
+
+            gfx.DrawImage(ximg, drawX, drawY, drawW, drawH);
+        }
+        catch
+        {
+            // Skip unreadable or unsupported image format
+        }
+    }
+
+    private static void AppendTextOrCodePages(
+        PdfSharpDocument destDoc,
+        string filePath,
+        string title,
+        Knowledge.StudySourceKind kind,
+        string language
+    )
+    {
+        string[] rawLines;
+        try
+        {
+            rawLines = File.ReadAllLines(filePath);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (rawLines.Length == 0)
+            return;
+
+        bool isCode = kind == Knowledge.StudySourceKind.Code;
+        bool isMarkdown = kind == Knowledge.StudySourceKind.Markdown;
+
+        var titleFont = new XFont("Sans", 11, XFontStyle.Bold);
+        var metaFont = new XFont("Sans", 8.5, XFontStyle.Regular);
+        var headingFont = new XFont("Sans", 11, XFontStyle.Bold);
+        var bodyFont = new XFont("Sans", isCode ? 8.5 : 9.5, XFontStyle.Regular);
+        var lineNumFont = new XFont("Sans", 7.5, XFontStyle.Regular);
+
+        const double marginLeft = 36;
+        const double marginRight = 36;
+        const double contentTop = 68;
+        const double contentBottom = TargetHeight - 52;
+        double lineHeight = isCode ? 12.2 : 13.8;
+        int maxCols = isCode ? 88 : 92;
+
+        // Pre-wrap lines into printable visual lines
+        var visualLines = new List<(int SourceLine, string Text, bool IsHeading)>();
+        for (int i = 0; i < rawLines.Length; i++)
+        {
+            var expanded = rawLines[i].Replace("\t", "    ");
+            bool isHeading =
+                isMarkdown
+                && expanded.TrimStart().StartsWith('#')
+                && expanded.TrimStart().TrimStart('#').StartsWith(' ');
+            var displayLine = isHeading
+                ? expanded.TrimStart().TrimStart('#', ' ').Trim()
+                : expanded;
+
+            if (displayLine.Length <= maxCols)
+            {
+                visualLines.Add((i + 1, displayLine, isHeading));
+            }
+            else
+            {
+                int pos = 0;
+                bool first = true;
+                while (pos < displayLine.Length)
+                {
+                    int len = Math.Min(maxCols, displayLine.Length - pos);
+                    visualLines.Add((first ? i + 1 : 0, displayLine.Substring(pos, len), isHeading));
+                    pos += len;
+                    first = false;
+                }
+            }
+        }
+
+        int lineIdx = 0;
+        int pagePart = 1;
+        var kindTag = isCode
+            ? $"Code ({language.ToUpperInvariant()})"
+            : (isMarkdown ? "Markdown Notes" : "Plain Text");
+
+        while (lineIdx < visualLines.Count)
+        {
+            var page = destDoc.AddPage();
+            page.Width = XUnit.FromPoint(TargetWidth);
+            page.Height = XUnit.FromPoint(TargetHeight);
+
+            using var gfx = XGraphics.FromPdfPage(page);
+            var partSuffix = pagePart > 1 ? $" (cont. {pagePart})" : string.Empty;
+            gfx.DrawString(
+                title + partSuffix,
+                titleFont,
+                XBrushes.Black,
+                new XRect(marginLeft, 24, TargetWidth - marginLeft - marginRight, 18),
+                XStringFormats.TopLeft
+            );
+            gfx.DrawString(
+                $"{kindTag} · {Path.GetFileName(filePath)}",
+                metaFont,
+                XBrushes.Gray,
+                new XRect(marginLeft, 42, TargetWidth - marginLeft - marginRight, 14),
+                XStringFormats.TopLeft
+            );
+            gfx.DrawLine(
+                new XPen(XColors.LightGray, 0.7),
+                marginLeft,
+                58,
+                TargetWidth - marginRight,
+                58
+            );
+
+            double y = contentTop;
+            while (lineIdx < visualLines.Count && y + lineHeight <= contentBottom)
+            {
+                var (srcLine, text, isHeading) = visualLines[lineIdx++];
+                if (isHeading)
+                {
+                    y += 4;
+                    if (y + lineHeight > contentBottom)
+                    {
+                        lineIdx--;
+                        break;
+                    }
+                    gfx.DrawString(
+                        text,
+                        headingFont,
+                        XBrushes.Black,
+                        new XRect(marginLeft, y, TargetWidth - marginLeft - marginRight, lineHeight + 2),
+                        XStringFormats.TopLeft
+                    );
+                    y += lineHeight + 3;
+                }
+                else
+                {
+                    double textX = isCode ? marginLeft + 28 : marginLeft;
+                    if (isCode && srcLine > 0)
+                    {
+                        gfx.DrawString(
+                            srcLine.ToString(),
+                            lineNumFont,
+                            XBrushes.Gray,
+                            new XRect(marginLeft, y + 1, 22, lineHeight),
+                            XStringFormats.TopRight
+                        );
+                    }
+                    gfx.DrawString(
+                        text,
+                        bodyFont,
+                        XBrushes.Black,
+                        new XRect(textX, y, TargetWidth - textX - marginRight, lineHeight),
+                        XStringFormats.TopLeft
+                    );
+                    y += lineHeight;
+                }
+            }
+
+            pagePart++;
+        }
     }
 
     private readonly record struct ContentBox(

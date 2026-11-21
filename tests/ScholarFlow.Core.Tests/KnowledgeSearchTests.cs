@@ -323,4 +323,58 @@ public sealed class KnowledgeSearchTests : IDisposable
         Assert.NotEmpty(weakOnly.Results);
         Assert.All(weakOnly.Results, r => Assert.True(r.IsWeakSpot));
     }
+
+    [Fact]
+    public async Task CoursePacketPlan_OriginAwareDefaults_AndMultiFormatMasterPdfCompilation()
+    {
+        var courseDir = Path.Combine(_tempBasin, "Local_Algorithms");
+        Directory.CreateDirectory(courseDir);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(courseDir, "01_graph_notes.md"),
+            "# Graph Traversal\nBFS explores level by level using a queue.\n\n## Complexity\nO(V + E) time."
+        );
+        await File.WriteAllTextAsync(
+            Path.Combine(courseDir, "bfs.py"),
+            "from collections import deque\n\ndef bfs(graph, start):\n    visited = {start}\n    q = deque([start])\n    return visited\n"
+        );
+
+        // eLMS default (includeNonPdfByDefault = false) marks non-PDFs excluded by default
+        var elmsPlan = Core.Pdf.CoursePacketPlan.LoadOrBuildPlan(
+            courseDir,
+            configuredTerms: [],
+            useStiSyllabusFallback: true,
+            includeNonPdfByDefault: false
+        );
+        var elmsItems = elmsPlan.Sections.SelectMany(s => s.Items).ToList();
+        Assert.Equal(2, elmsItems.Count);
+        Assert.All(elmsItems, i => Assert.True(i.IsExcluded));
+
+        // Local Hub default (includeNonPdfByDefault = true) includes Markdown & Code by default
+        var localPlan = Core.Pdf.CoursePacketPlan.LoadOrBuildPlan(
+            courseDir,
+            configuredTerms: [],
+            useStiSyllabusFallback: false,
+            includeNonPdfByDefault: true
+        );
+        var localItems = localPlan.Sections.SelectMany(s => s.Items).ToList();
+        Assert.Equal(2, localItems.Count);
+        Assert.All(localItems, i => Assert.False(i.IsExcluded));
+
+        Core.Pdf.CoursePacketPlan.SavePlan(courseDir, localPlan);
+        var pdfService = new Core.Pdf.MasterPdfService();
+        var compiled = await pdfService.CompileIfStaleAsync(
+            _tempBasin,
+            "Local_Algorithms",
+            "Local Algorithms",
+            force: true,
+            configuredTerms: [],
+            useStiSyllabusFallback: false
+        );
+
+        Assert.True(compiled.WasRegenerated);
+        Assert.True(File.Exists(compiled.OutputPdfPath));
+        // Cover + TOC + at least 2 content pages (md + py)
+        Assert.True(compiled.PageCount >= 4);
+    }
 }

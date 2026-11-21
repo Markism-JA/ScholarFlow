@@ -311,6 +311,48 @@ public sealed partial class MainWindowViewModel
         NotifyStateChanged(UiChangeKind.FullLayout);
     }
 
+    public string PacketOrganizerFilter { get; private set; } = "All";
+
+    public void SetPacketOrganizerFilter(string filter)
+    {
+        PacketOrganizerFilter = filter;
+        NotifyStateChanged(UiChangeKind.OverlayOnly);
+    }
+
+    public void SetAllNonPdfPacketItemsExcluded(bool excluded)
+    {
+        if (ActivePacketPlan is null)
+            return;
+
+        foreach (var item in ActivePacketPlan.Sections.SelectMany(s => s.Items))
+        {
+            if (!item.IsPdf)
+                item.IsExcluded = excluded;
+        }
+        ActivePacketPlan.IsCustomized = true;
+        NotifyStateChanged(UiChangeKind.OverlayOnly);
+    }
+
+    public void TogglePacketIncludeCoverPage()
+    {
+        if (ActivePacketPlan is null)
+            return;
+
+        ActivePacketPlan.IncludeCoverPage = !ActivePacketPlan.IncludeCoverPage;
+        ActivePacketPlan.IsCustomized = true;
+        NotifyStateChanged(UiChangeKind.OverlayOnly);
+    }
+
+    public void TogglePacketIncludeToc()
+    {
+        if (ActivePacketPlan is null)
+            return;
+
+        ActivePacketPlan.IncludeTableOfContents = !ActivePacketPlan.IncludeTableOfContents;
+        ActivePacketPlan.IsCustomized = true;
+        NotifyStateChanged(UiChangeKind.OverlayOnly);
+    }
+
     public void OpenPacketOrganizerModal(BasinCourseEntry course)
     {
         if (string.IsNullOrWhiteSpace(BasinRoot))
@@ -322,12 +364,21 @@ public sealed partial class MainWindowViewModel
             SyncProviderIds.StiElms,
             StringComparison.OrdinalIgnoreCase
         );
+        bool includeNonPdfByDefault = !course.IsSyncableCourse;
+
         PacketOrganizerCourse = course;
         ActivePacketPlan = CoursePacketPlan.LoadOrBuildPlan(
             courseDir,
             BasinConfig.Terms,
-            useStiSyllabusFallback: isSti
+            useStiSyllabusFallback: isSti,
+            includeNonPdfByDefault: includeNonPdfByDefault
         );
+
+        bool hasIncludedNonPdf = ActivePacketPlan.Sections.SelectMany(s => s.Items)
+            .Any(i => !i.IsPdf && !i.IsExcluded);
+        PacketOrganizerFilter =
+            course.IsSyncableCourse && !hasIncludedNonPdf ? "PDFs" : "All";
+
         IsPacketOrganizerModalOpen = true;
         IsSettingsModalOpen = false;
         IsAddCourseModalOpen = false;
@@ -491,8 +542,10 @@ public sealed partial class MainWindowViewModel
         ActivePacketPlan = CoursePacketPlan.LoadOrBuildPlan(
             courseDir,
             BasinConfig.Terms,
-            useStiSyllabusFallback: isSti
+            useStiSyllabusFallback: isSti,
+            includeNonPdfByDefault: !course.IsSyncableCourse
         );
+        PacketOrganizerFilter = course.IsSyncableCourse ? "PDFs" : "All";
         NotifyStateChanged(UiChangeKind.OverlayOnly);
 
         await CompileCourseMasterPdfAsync(course, force: true);

@@ -1057,38 +1057,70 @@ public static class OnboardingAndSettingsModalBuilder
         headerIcon.VerticalAlignment = VerticalAlignment.Center;
         header.Children.Add(headerIcon);
 
+        var allItems = plan.Sections.SelectMany(s => s.Items).ToList();
+        int pdfCount = allItems.Count(i => i.IsPdf);
+        int imgCount = allItems.Count(i => i.ResolvedKind == ScholarFlow.Core.Knowledge.StudySourceKind.Image);
+        int noteCodeCount = allItems.Count(i =>
+            i.ResolvedKind
+                is ScholarFlow.Core.Knowledge.StudySourceKind.Markdown
+                    or ScholarFlow.Core.Knowledge.StudySourceKind.PlainText
+                    or ScholarFlow.Core.Knowledge.StudySourceKind.Code
+        );
+        int nonPdfCount = allItems.Count - pdfCount;
+        int includedNonPdf = allItems.Count(i => !i.IsPdf && !i.IsExcluded);
+
         var titleStack = new StackPanel
         {
-            Spacing = 2,
+            Spacing = 3,
             VerticalAlignment = VerticalAlignment.Center,
             Children =
             {
-                new StackPanel
+                new WrapPanel
                 {
                     Orientation = Orientation.Horizontal,
-                    Spacing = 8,
+                    VerticalAlignment = VerticalAlignment.Center,
                     Children =
                     {
                         new TextBlock
                         {
-                            Text = "Organize Master PDF Packet",
+                            Text = "Organize Study Packet",
                             FontSize = 14.5,
                             FontWeight = FontWeight.Bold,
                             Foreground = ThemeService.Brush(ThemeService.TextPrimary),
                             VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(0, 0, 8, 2),
                         },
-                        UiBuilder.Pill(
-                            course.Title,
-                            ThemeService.Brush(ThemeService.AccentPrimary),
-                            ThemeService.Brush(ThemeService.AccentSoftBg),
-                            fontSize: 10.5
-                        ),
+                        new Border
+                        {
+                            Margin = new Thickness(0, 0, 6, 2),
+                            Child = UiBuilder.Pill(
+                                course.Title,
+                                ThemeService.Brush(ThemeService.AccentPrimary),
+                                ThemeService.Brush(ThemeService.AccentSoftBg),
+                                fontSize: 10.5
+                            ),
+                        },
+                        new Border
+                        {
+                            Margin = new Thickness(0, 0, 0, 2),
+                            Child = UiBuilder.Pill(
+                                course.IsSyncableCourse
+                                    ? "eLMS Auto-Syllabus · Non-PDFs Opt-in"
+                                    : "Local Hub · Multi-Format Packet",
+                                ThemeService.Brush(ThemeService.TextSecondary),
+                                ThemeService.Brush(ThemeService.BgElevated),
+                                course.IsSyncableCourse
+                                    ? MaterialIconKind.CloudSyncOutline
+                                    : MaterialIconKind.LayersOutline,
+                                fontSize: 10
+                            ),
+                        },
                     },
                 },
                 new TextBlock
                 {
                     Text =
-                        $"{includedItems} of {totalItems} PDF{(totalItems == 1 ? "" : "s")} included · {plan.Sections.Count} section{(plan.Sections.Count == 1 ? "" : "s")} · reorder, exclude, or set optional page ranges",
+                        $"{includedItems} of {totalItems} item{(totalItems == 1 ? "" : "s")} included ({pdfCount} PDF, {imgCount} img, {noteCodeCount} note/code) · {plan.Sections.Count} section{(plan.Sections.Count == 1 ? "" : "s")}",
                     FontSize = 11.5,
                     Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                     TextTrimming = TextTrimming.CharacterEllipsis,
@@ -1117,7 +1149,61 @@ public static class OnboardingAndSettingsModalBuilder
         Grid.SetRow(topDivider, 1);
         root.Children.Add(topDivider);
 
-        // 2. Add Section Strip
+        // 2. Controls Bar: Format Filters + Packet Options + Add Section Strip
+        var controlsStack = new StackPanel { Spacing = 8 };
+
+        var filterAndOptionsWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+        void AddFilterChip(string key, string label, MaterialIconKind? icon = null)
+        {
+            var btn = UiBuilder.GhostButton(
+                label,
+                icon,
+                () => vm.SetPacketOrganizerFilter(key),
+                isActive: string.Equals(vm.PacketOrganizerFilter, key, StringComparison.OrdinalIgnoreCase)
+            );
+            btn.Margin = new Thickness(0, 0, 5, 4);
+            filterAndOptionsWrap.Children.Add(btn);
+        }
+
+        AddFilterChip("All", $"All ({totalItems})", MaterialIconKind.LayersOutline);
+        AddFilterChip("PDFs", $"PDFs ({pdfCount})", MaterialIconKind.FilePdfBox);
+        if (imgCount > 0)
+            AddFilterChip("Images", $"Images ({imgCount})", MaterialIconKind.FileImageOutline);
+        if (noteCodeCount > 0)
+            AddFilterChip("Notes & Code", $"Notes & Code ({noteCodeCount})", MaterialIconKind.CodeBraces);
+
+        if (nonPdfCount > 0)
+        {
+            bool anyNonPdfIncluded = includedNonPdf > 0;
+            var bulkNonPdfBtn = UiBuilder.GhostButton(
+                anyNonPdfIncluded ? "Exclude All Non-PDFs" : "Include All Non-PDFs",
+                anyNonPdfIncluded ? MaterialIconKind.EyeOffOutline : MaterialIconKind.CheckAll,
+                () => vm.SetAllNonPdfPacketItemsExcluded(anyNonPdfIncluded)
+            );
+            bulkNonPdfBtn.Margin = new Thickness(4, 0, 5, 4);
+            filterAndOptionsWrap.Children.Add(bulkNonPdfBtn);
+        }
+
+        var coverToggle = UiBuilder.GhostButton(
+            "Cover",
+            plan.IncludeCoverPage ? MaterialIconKind.Check : null,
+            vm.TogglePacketIncludeCoverPage,
+            isActive: plan.IncludeCoverPage
+        );
+        coverToggle.Margin = new Thickness(4, 0, 4, 4);
+        filterAndOptionsWrap.Children.Add(coverToggle);
+
+        var tocToggle = UiBuilder.GhostButton(
+            "TOC",
+            plan.IncludeTableOfContents ? MaterialIconKind.Check : null,
+            vm.TogglePacketIncludeToc,
+            isActive: plan.IncludeTableOfContents
+        );
+        tocToggle.Margin = new Thickness(0, 0, 0, 4);
+        filterAndOptionsWrap.Children.Add(tocToggle);
+
+        controlsStack.Children.Add(filterAndOptionsWrap);
+
         var addSectionGrid = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
@@ -1125,7 +1211,7 @@ public static class OnboardingAndSettingsModalBuilder
         };
         var newSecBox = new TextBox
         {
-            Watermark = "Add section or term (e.g. Prelims, Chapters 1-3, Lab Worksheets)...",
+            Watermark = "Add section or term (e.g. Prelims, Chapters 1-3, Diagrams, Code Labs)...",
             FontSize = 12,
         };
         void SubmitNewSection()
@@ -1150,14 +1236,29 @@ public static class OnboardingAndSettingsModalBuilder
         );
         Grid.SetColumn(addSecBtn, 1);
         addSectionGrid.Children.Add(addSecBtn);
-        Grid.SetRow(addSectionGrid, 2);
-        root.Children.Add(addSectionGrid);
+        controlsStack.Children.Add(addSectionGrid);
 
-        // 3. Scrollable Sections & Items List (scroll-persistent, zero tooltips)
+        Grid.SetRow(controlsStack, 2);
+        root.Children.Add(controlsStack);
+
+        bool MatchesFilter(PacketItemPlan item) =>
+            vm.PacketOrganizerFilter switch
+            {
+                "PDFs" => item.IsPdf,
+                "Images" => item.ResolvedKind == ScholarFlow.Core.Knowledge.StudySourceKind.Image,
+                "Notes & Code" => item.ResolvedKind
+                    is ScholarFlow.Core.Knowledge.StudySourceKind.Markdown
+                        or ScholarFlow.Core.Knowledge.StudySourceKind.PlainText
+                        or ScholarFlow.Core.Knowledge.StudySourceKind.Code,
+                _ => true,
+            };
+
+        // 3. Scrollable Sections & Items List (scroll-persistent, responsive)
         var sectionsStack = new StackPanel { Spacing = 10 };
         for (int sIdx = 0; sIdx < plan.Sections.Count; sIdx++)
         {
             var capturedSec = plan.Sections[sIdx];
+            var visibleSecItems = capturedSec.Items.Where(MatchesFilter).ToList();
             var secStack = new StackPanel { Spacing = 6 };
 
             // Section Header Row
@@ -1227,12 +1328,14 @@ public static class OnboardingAndSettingsModalBuilder
 
             secStack.Children.Add(secHeader);
 
-            if (capturedSec.Items.Count == 0)
+            if (visibleSecItems.Count == 0)
             {
                 secStack.Children.Add(
                     new TextBlock
                     {
-                        Text = "No PDF items in this section.",
+                        Text = capturedSec.Items.Count == 0
+                            ? "No study files in this section."
+                            : $"No items match the '{vm.PacketOrganizerFilter}' filter in this section ({capturedSec.Items.Count} hidden).",
                         FontSize = 11.5,
                         Foreground = ThemeService.Brush(ThemeService.TextMuted),
                         Margin = new Thickness(4, 2),
@@ -1241,41 +1344,44 @@ public static class OnboardingAndSettingsModalBuilder
             }
             else
             {
-                // Subtle column labels so controls are self-explanatory without hover tooltips
-                var colLabels = new Grid
+                for (int iIdx = 0; iIdx < visibleSecItems.Count; iIdx++)
                 {
-                    ColumnDefinitions = ColumnDefinitions.Parse("28,*,128,Auto"),
-                    ColumnSpacing = 6,
-                    Margin = new Thickness(0, 2, 0, 0),
-                };
-                colLabels.Children.Add(
-                    new TextBlock
+                    var capturedItem = visibleSecItems[iIdx];
+                    int realIdx = capturedSec.Items.IndexOf(capturedItem);
+                    var (kindBadge, kindFg, kindBg) = capturedItem.ResolvedKind switch
                     {
-                        Text = "Document Title & Source",
-                        FontSize = 10.5,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                        [Grid.ColumnProperty] = 1,
-                    }
-                );
-                colLabels.Children.Add(
-                    new TextBlock
-                    {
-                        Text = "Page Range",
-                        FontSize = 10.5,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                        [Grid.ColumnProperty] = 2,
-                    }
-                );
-                secStack.Children.Add(colLabels);
+                        ScholarFlow.Core.Knowledge.StudySourceKind.Pdf => (
+                            "PDF",
+                            ThemeService.Brush(ThemeService.PriorityP1Fg),
+                            ThemeService.Brush(ThemeService.PriorityP1Bg)
+                        ),
+                        ScholarFlow.Core.Knowledge.StudySourceKind.Image => (
+                            "IMG",
+                            ThemeService.Brush(ThemeService.PriorityP2Fg),
+                            ThemeService.Brush(ThemeService.PriorityP2Bg)
+                        ),
+                        ScholarFlow.Core.Knowledge.StudySourceKind.Code => (
+                            string.IsNullOrWhiteSpace(capturedItem.ResolvedLanguage)
+                                ? "CODE"
+                                : capturedItem.ResolvedLanguage.ToUpperInvariant(),
+                            ThemeService.Brush(ThemeService.AccentPrimary),
+                            ThemeService.Brush(ThemeService.AccentSoftBg)
+                        ),
+                        ScholarFlow.Core.Knowledge.StudySourceKind.Markdown => (
+                            "MD",
+                            ThemeService.Brush(ThemeService.PriorityP3Fg),
+                            ThemeService.Brush(ThemeService.PriorityP3Bg)
+                        ),
+                        _ => (
+                            "TXT",
+                            ThemeService.Brush(ThemeService.TextSecondary),
+                            ThemeService.Brush(ThemeService.BgSurface)
+                        ),
+                    };
 
-                for (int iIdx = 0; iIdx < capturedSec.Items.Count; iIdx++)
-                {
-                    var capturedItem = capturedSec.Items[iIdx];
-                    var itemGrid = new Grid
+                    var itemOuter = new Grid
                     {
-                        ColumnDefinitions = ColumnDefinitions.Parse("28,*,128,Auto,Auto,Auto"),
+                        ColumnDefinitions = ColumnDefinitions.Parse("28,*,Auto"),
                         ColumnSpacing = 6,
                         VerticalAlignment = VerticalAlignment.Center,
                     };
@@ -1292,7 +1398,7 @@ public static class OnboardingAndSettingsModalBuilder
                     );
                     includeBtn.VerticalAlignment = VerticalAlignment.Top;
                     includeBtn.Margin = new Thickness(0, 4, 0, 0);
-                    itemGrid.Children.Add(includeBtn);
+                    itemOuter.Children.Add(includeBtn);
 
                     var titleBox = new TextBox
                     {
@@ -1304,62 +1410,77 @@ public static class OnboardingAndSettingsModalBuilder
                     titleBox.LostFocus += (_, _) =>
                         vm.SetPacketItemDisplayTitle(capturedItem, titleBox.Text);
 
+                    var subMetaRow = new WrapPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    };
+                    var badgeControl = UiBuilder.Pill(kindBadge, kindFg, kindBg, fontSize: 9.5);
+                    badgeControl.Margin = new Thickness(0, 2, 6, 0);
+                    subMetaRow.Children.Add(badgeControl);
+
+                    subMetaRow.Children.Add(
+                        new TextBlock
+                        {
+                            Text = capturedItem.IsExcluded
+                                ? $"Excluded · {capturedItem.RelativePath}"
+                                : capturedItem.RelativePath,
+                            FontSize = 10.5,
+                            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                            MaxLines = 1,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(0, 2, 8, 0),
+                        }
+                    );
+
                     var titleCol = new StackPanel
                     {
                         Spacing = 2,
-                        Children =
-                        {
-                            titleBox,
-                            new TextBlock
-                            {
-                                Text = capturedItem.IsExcluded
-                                    ? $"Excluded · {capturedItem.RelativePath}"
-                                    : capturedItem.RelativePath,
-                                FontSize = 10,
-                                Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                                TextTrimming = TextTrimming.CharacterEllipsis,
-                                MaxLines = 1,
-                                Margin = new Thickness(2, 0, 0, 0),
-                            },
-                        },
+                        Children = { titleBox, subMetaRow },
                     };
                     Grid.SetColumn(titleCol, 1);
-                    itemGrid.Children.Add(titleCol);
+                    itemOuter.Children.Add(titleCol);
 
-                    var pagesBox = new TextBox
+                    var rightItemControls = new StackPanel
                     {
-                        Text = capturedItem.PageRanges ?? string.Empty,
-                        Watermark = "All (e.g. 1-12)",
-                        FontSize = 11.5,
-                        Opacity = capturedItem.IsExcluded ? 0.55 : 1.0,
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 3,
                         VerticalAlignment = VerticalAlignment.Top,
+                        Margin = new Thickness(0, 1, 0, 0),
                     };
-                    pagesBox.LostFocus += (_, _) =>
-                        vm.SetPacketItemPageRanges(capturedItem, pagesBox.Text);
-                    Grid.SetColumn(pagesBox, 2);
-                    itemGrid.Children.Add(pagesBox);
+
+                    if (capturedItem.IsPdf)
+                    {
+                        var pagesBox = new TextBox
+                        {
+                            Text = capturedItem.PageRanges ?? string.Empty,
+                            Watermark = "Pages (e.g. 1-12)",
+                            Width = 114,
+                            FontSize = 11,
+                            Opacity = capturedItem.IsExcluded ? 0.55 : 1.0,
+                            VerticalAlignment = VerticalAlignment.Center,
+                        };
+                        pagesBox.LostFocus += (_, _) =>
+                            vm.SetPacketItemPageRanges(capturedItem, pagesBox.Text);
+                        rightItemControls.Children.Add(pagesBox);
+                    }
 
                     var upItemBtn = UiBuilder.IconButton(
                         MaterialIconKind.ChevronUp,
                         () => vm.MovePacketItem(capturedSec, capturedItem, -1),
                         14
                     );
-                    upItemBtn.IsEnabled = iIdx > 0;
-                    upItemBtn.VerticalAlignment = VerticalAlignment.Top;
-                    upItemBtn.Margin = new Thickness(0, 3, 0, 0);
-                    Grid.SetColumn(upItemBtn, 3);
-                    itemGrid.Children.Add(upItemBtn);
+                    upItemBtn.IsEnabled = realIdx > 0;
+                    rightItemControls.Children.Add(upItemBtn);
 
                     var downItemBtn = UiBuilder.IconButton(
                         MaterialIconKind.ChevronDown,
                         () => vm.MovePacketItem(capturedSec, capturedItem, +1),
                         14
                     );
-                    downItemBtn.IsEnabled = iIdx < capturedSec.Items.Count - 1;
-                    downItemBtn.VerticalAlignment = VerticalAlignment.Top;
-                    downItemBtn.Margin = new Thickness(0, 3, 0, 0);
-                    Grid.SetColumn(downItemBtn, 4);
-                    itemGrid.Children.Add(downItemBtn);
+                    downItemBtn.IsEnabled = realIdx >= 0 && realIdx < capturedSec.Items.Count - 1;
+                    rightItemControls.Children.Add(downItemBtn);
 
                     if (plan.Sections.Count > 1)
                     {
@@ -1395,13 +1516,12 @@ public static class OnboardingAndSettingsModalBuilder
                             },
                             14
                         );
-                        moveBtn.VerticalAlignment = VerticalAlignment.Top;
-                        moveBtn.Margin = new Thickness(0, 3, 0, 0);
-                        Grid.SetColumn(moveBtn, 5);
-                        itemGrid.Children.Add(moveBtn);
+                        rightItemControls.Children.Add(moveBtn);
                     }
 
-                    secStack.Children.Add(itemGrid);
+                    Grid.SetColumn(rightItemControls, 2);
+                    itemOuter.Children.Add(rightItemControls);
+                    secStack.Children.Add(itemOuter);
                 }
             }
 
@@ -1422,7 +1542,7 @@ public static class OnboardingAndSettingsModalBuilder
             $"packet-organizer:{course.FolderName}",
             sectionsStack
         );
-        scroll.MaxHeight = 480;
+        scroll.MaxHeight = 460;
         Grid.SetRow(scroll, 3);
         root.Children.Add(scroll);
 
@@ -1460,15 +1580,14 @@ public static class OnboardingAndSettingsModalBuilder
 
         return new Border
         {
-            MinWidth = 480,
-            MaxWidth = 780,
+            MaxWidth = 820,
             Background = ThemeService.Brush(ThemeService.BgSurface),
             BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             BoxShadow = BoxShadows.Parse("0 16 40 0 #66000000"),
             Padding = new Thickness(18, 16),
-            Margin = new Thickness(24, 32),
+            Margin = new Thickness(18, 22),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
             Child = root,
