@@ -48,7 +48,16 @@ public static class ExternalFileLauncher
 
     public static void OpenLocalFile(string fullPath)
     {
-        if (string.IsNullOrWhiteSpace(fullPath) || !File.Exists(fullPath))
+        if (string.IsNullOrWhiteSpace(fullPath))
+            return;
+
+        if (Directory.Exists(fullPath))
+        {
+            OpenWithOsDefault(fullPath);
+            return;
+        }
+
+        if (!File.Exists(fullPath))
             return;
 
         var ext = Path.GetExtension(fullPath);

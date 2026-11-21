@@ -78,11 +78,15 @@ public sealed partial class QuizStudioViewModel
                         CodeLanguage = orig.CodeLanguage,
                         MathLatex = orig.MathLatex,
                         Diagram = orig.Diagram,
+                        ImagePath = orig.ImagePath,
                         SourcePdfPath = orig.SourcePdfPath,
                         SourcePage = orig.SourcePage,
+                        SourceStartLine = orig.SourceStartLine,
+                        SourceEndLine = orig.SourceEndLine,
                         SectionTitle = orig.SectionTitle,
                         VerbatimQuote = orig.VerbatimQuote,
                         HighlightRects = [.. orig.HighlightRects],
+                        EvidenceAnchors = [.. orig.EvidenceAnchors],
                         SrsDueDate = orig.SrsDueDate ?? DateOnly.FromDateTime(DateTime.Today),
                     }
                 );
@@ -192,6 +196,17 @@ public sealed partial class QuizStudioViewModel
 
     public async Task RegroundQuizAsync(QuizSessionRecord quiz)
     {
+        if (
+            !string.IsNullOrWhiteSpace(quiz.SourcePdfPath)
+            && !quiz.SourcePdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            StatusMessage = "Re-grounding applies to PDF sources only; code/text evidence uses exact line ranges.";
+            IsStatusError = false;
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
         if (string.IsNullOrWhiteSpace(quiz.SourcePdfPath) || !File.Exists(quiz.SourcePdfPath))
         {
             var fallbackMaster =
@@ -225,7 +240,17 @@ public sealed partial class QuizStudioViewModel
 
         try
         {
-            int matched = await Task.Run(() => PdfQuizGrounder.RegroundSessionToPdf(quiz));
+            var pdfOnlyQuestions = quiz.Questions.Where(q => q.IsPdfSource).ToList();
+            int matched = await Task.Run(() =>
+            {
+                if (pdfOnlyQuestions.Count == quiz.Questions.Count)
+                    return PdfQuizGrounder.RegroundSessionToPdf(quiz);
+
+                PdfQuizGrounder.GroundQuestionsToPdf(quiz.SourcePdfPath, pdfOnlyQuestions, forceUpdateSection: true);
+                if (File.Exists(quiz.SourcePdfPath))
+                    quiz.SourcePdfMtimeTicks = File.GetLastWriteTimeUtc(quiz.SourcePdfPath).Ticks;
+                return pdfOnlyQuestions.Count(q => q.HighlightRects.Count > 0);
+            });
             await ScholarFlowDatabase.SaveQuizSessionAsync(_mainVm.BasinRoot, quiz);
             SavedQuizzes = await ScholarFlowDatabase.LoadQuizSessionsAsync(_mainVm.BasinRoot);
             if (OrganizerQuiz?.Id == quiz.Id)

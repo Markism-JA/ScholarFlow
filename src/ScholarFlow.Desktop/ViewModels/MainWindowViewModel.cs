@@ -189,7 +189,9 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         string filePath,
         int? highlightStartLine = null,
         int? highlightEndLine = null,
-        string? sectionTitle = null
+        string? sectionTitle = null,
+        string? evidenceHint = null,
+        IReadOnlyList<ScholarFlow.Core.Quiz.NormalizedHighlightRect>? imageHighlightRects = null
     )
     {
         if (string.IsNullOrWhiteSpace(filePath))
@@ -200,7 +202,14 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
 
         ActiveMode = WorkspaceTabMode.SourceViewer;
         IsSearchModalOpen = false;
-        _ = SourceViewer.LoadFileAsync(filePath, highlightStartLine, highlightEndLine, sectionTitle);
+        _ = SourceViewer.LoadFileAsync(
+            filePath,
+            highlightStartLine,
+            highlightEndLine,
+            sectionTitle,
+            evidenceHint,
+            imageHighlightRects
+        );
         NotifyStateChanged();
     }
 

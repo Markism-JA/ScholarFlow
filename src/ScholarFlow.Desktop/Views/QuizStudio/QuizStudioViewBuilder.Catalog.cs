@@ -441,11 +441,18 @@ public static partial class QuizStudioViewBuilder
         );
         actions.Children.Add(organizeBtn);
 
+        bool isPdfQuiz = quiz.SourcePdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
         if (!compact && File.Exists(quiz.SourcePdfPath))
         {
             var pdfBtn = UiBuilder.IconButton(
-                MaterialIconKind.FilePdfBox,
-                () => vm.OpenPdfInReader(quiz.SourcePdfPath),
+                isPdfQuiz ? MaterialIconKind.FilePdfBox : MaterialIconKind.CodeTags,
+                () =>
+                {
+                    if (isPdfQuiz)
+                        vm.OpenPdfInReader(quiz.SourcePdfPath);
+                    else
+                        vm.OpenFileInSourceViewer(quiz.SourcePdfPath);
+                },
                 14.5,
                 ThemeService.Brush(ThemeService.TextSecondary)
             );

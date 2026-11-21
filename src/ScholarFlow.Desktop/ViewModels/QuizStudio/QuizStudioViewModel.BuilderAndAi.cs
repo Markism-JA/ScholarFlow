@@ -52,6 +52,7 @@ public sealed partial class QuizStudioViewModel
         int clamped = Math.Clamp(value, 0, 150);
         KindAllocations[kind] = clamped;
         SelectedPreset = QuizPresetMode.Custom;
+        IsCodeAwareMixActive = false;
 
         if (AllocationMode == QuestionAllocationMode.ExactCounts)
         {
@@ -129,7 +130,7 @@ public sealed partial class QuizStudioViewModel
             return;
 
         var req = BuildCurrentRequest();
-        if (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
         {
             GeneratedPromptPreview = string.Empty;
             return;
@@ -153,6 +154,24 @@ public sealed partial class QuizStudioViewModel
                 () =>
                 {
                     token.ThrowIfCancellationRequested();
+                    if (req.HasFileSources)
+                    {
+                        var fileText = _llmService.BuildFileSourcePromptForManualCopy(
+                            req,
+                            budget,
+                            out var bundle,
+                            out int totalPdf,
+                            out int incPdf
+                        );
+                        int included = bundle.IncludedTextFiles.Count + bundle.ImageFiles.Count + incPdf;
+                        int total =
+                            bundle.IncludedTextFiles.Count
+                            + bundle.ImageFiles.Count
+                            + bundle.TruncatedFiles.Count(t => !t.Contains("(first"))
+                            + totalPdf;
+                        return (fileText, total, included);
+                    }
+
                     var text = _llmService.BuildPromptForManualCopy(
                         req,
                         budget,
@@ -231,6 +250,7 @@ public sealed partial class QuizStudioViewModel
     public void SetPreset(QuizPresetMode preset)
     {
         SelectedPreset = preset;
+        IsCodeAwareMixActive = false;
         if (preset != QuizPresetMode.Custom)
         {
             KindAllocations = QuizGenerationRequest.GetDefaultAllocationsForPreset(
@@ -424,10 +444,17 @@ public sealed partial class QuizStudioViewModel
     }
 
     public async Task ExportScopedPdfForUploadAsync(
-        Avalonia.Input.Platform.IClipboard? clipboard = null)
+        Avalonia.Input.Platform.IClipboard? clipboard = null,
+        string? outputPdfPath = null)
     {
         var req = BuildCurrentRequest();
-        if (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        if (req.HasFileSources)
+        {
+            await ExportPackedImagesForUploadAsync(req, clipboard, outputPdfPath);
+            return;
+        }
+
+        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
         {
             StatusMessage = "Select a valid PDF file first.";
             IsStatusError = true;
@@ -437,9 +464,13 @@ public sealed partial class QuizStudioViewModel
 
         try
         {
-            var outDir = Path.Combine(Path.GetTempPath(), "ScholarFlow-Scoped");
-            var safeName = Path.GetFileNameWithoutExtension(req.SourcePdfPath);
-            var outPath = Path.Combine(outDir, $"{safeName}_Scoped_{DateTime.Now:yyyyMMdd_HHmmss}.pdf");
+            var outPath = !string.IsNullOrWhiteSpace(outputPdfPath)
+                ? outputPdfPath
+                : Path.Combine(
+                    Path.GetTempPath(),
+                    "ScholarFlow-Scoped",
+                    $"{Path.GetFileNameWithoutExtension(req.SourcePdfPath)}_Scoped_{DateTime.Now:yyyyMMdd_HHmmss}.pdf"
+                );
 
             var instructionPrompt = await Task.Run(() =>
             {
@@ -461,8 +492,7 @@ public sealed partial class QuizStudioViewModel
             if (clipboard is not null)
                 await clipboard.SetTextAsync(instructionPrompt);
 
-            Services.ExternalFileLauncher.OpenLocalFile(outDir);
-            StatusMessage = $"Exported scoped PDF to {Path.GetFileName(outPath)} & copied upload prompt to clipboard.";
+            StatusMessage = $"Saved {outPath} & copied upload prompt to clipboard.";
             IsStatusError = false;
         }
         catch (Exception ex)
@@ -476,7 +506,7 @@ public sealed partial class QuizStudioViewModel
     public void OpenManualJsonBridge()
     {
         var req = BuildCurrentRequest();
-        if (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
         {
             StatusMessage = "Please select a valid PDF file first.";
             IsStatusError = true;
@@ -572,7 +602,7 @@ public sealed partial class QuizStudioViewModel
             }
         }
 
-        if (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
         {
             StatusMessage = "No valid PDF selected for quiz generation.";
             IsStatusError = true;
@@ -583,7 +613,7 @@ public sealed partial class QuizStudioViewModel
         IsGenerating = true;
         IsStatusError = false;
         StatusMessage = req.UseOfflineHeuristicFallback
-            ? $"Analyzing {Path.GetFileName(req.SourcePdfPath)} and grounding statements..."
+            ? $"Analyzing {(req.HasFileSources ? $"{req.SourceFilePaths.Count} file(s)" : Path.GetFileName(req.SourcePdfPath))} and grounding statements..."
             : $"Requesting {req.QuestionCount} grounded questions from {req.ModelName}...";
         _mainVm.RequestUiRefresh();
         await Task.Yield();
@@ -675,6 +705,8 @@ public sealed partial class QuizStudioViewModel
             CourseTitle = course?.Title ?? "Course",
             Term = SelectedTerm,
             SourcePdfPath = SelectedPdfPath ?? string.Empty,
+            SourceFilePaths = [.. GetSelectedFileSourcesInOrder()],
+            IncludePdfWithFileSources = IsMixedSourceMode,
             StartPage = StartPage,
             EndPage = EndPage,
             SelectedRanges = GetSelectedPageRanges(),

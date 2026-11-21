@@ -249,12 +249,63 @@ public static partial class QuizStudioViewBuilder
         leftActions.Children.Add(copyBtn);
 
         var exportPdfBtn = UiBuilder.GhostButton(
-            "Export Scoped PDF + Copy Prompt",
+            studio.IsMixedSourceMode ? "Export Combined PDF + Copy Prompt"
+                : studio.IsFileSourceMode ? "Pack Images as PDF + Copy Prompt"
+                : "Export Scoped PDF + Copy Prompt",
             MaterialIconKind.FileExportOutline,
             async () =>
             {
                 var top = TopLevel.GetTopLevel(promptBox);
-                await studio.ExportScopedPdfForUploadAsync(top?.Clipboard);
+                if (
+                    studio.IsFileSourceMode
+                    && !studio.IsMixedSourceMode
+                    && !studio.SelectedFileSourcePaths.Any(ScholarFlow.Core.Knowledge.ImagePacketPacker.IsImage)
+                )
+                {
+                    await studio.ExportScopedPdfForUploadAsync(top?.Clipboard);
+                    return;
+                }
+
+                string? chosenPath = null;
+                if (top?.StorageProvider is not null)
+                {
+                    var courseTag = ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(
+                        studio.SelectedCourse?.Alias ?? "ScholarFlow",
+                        ""
+                    );
+                    var suggested = studio.IsMixedSourceMode
+                        ? $"{courseTag}_Combined_Packet_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
+                        : studio.IsFileSourceMode
+                            ? $"{courseTag}_Images_Packet_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
+                            : $"{courseTag}_Scoped_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+
+                    var saved = await top.StorageProvider.SaveFilePickerAsync(
+                        new Avalonia.Platform.Storage.FilePickerSaveOptions
+                        {
+                            Title = studio.IsMixedSourceMode
+                                ? "Save Combined PDF + Images Packet"
+                                : studio.IsFileSourceMode
+                                    ? "Save Packed Images PDF"
+                                    : "Save Scoped PDF for Upload",
+                            SuggestedFileName = suggested,
+                            DefaultExtension = "pdf",
+                            FileTypeChoices =
+                            [
+                                new Avalonia.Platform.Storage.FilePickerFileType("PDF Document")
+                                {
+                                    Patterns = ["*.pdf"],
+                                },
+                            ],
+                        }
+                    );
+                    chosenPath = saved is null
+                        ? null
+                        : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(saved);
+                    if (string.IsNullOrWhiteSpace(chosenPath))
+                        return;
+                }
+
+                await studio.ExportScopedPdfForUploadAsync(top?.Clipboard, chosenPath);
             }
         );
         leftActions.Children.Add(exportPdfBtn);
@@ -277,7 +328,10 @@ public static partial class QuizStudioViewBuilder
         split.Children.Add(jsonInputBox);
 
         var importBtn = UiBuilder.PrimaryButton(
-            studio.IsGenerating ? "Importing & Grounding..." : "Import JSON & Ground to PDF",
+            studio.IsGenerating ? "Importing & Grounding..."
+                : studio.IsMixedSourceMode ? "Import JSON & Ground PDF + Files"
+                : studio.IsFileSourceMode ? "Import JSON & Ground to Files"
+                : "Import JSON & Ground to PDF",
             MaterialIconKind.CheckDecagramOutline,
             async () => await studio.ImportPastedJsonQuizAsync(jsonInputBox.Text ?? string.Empty)
         );

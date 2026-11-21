@@ -89,6 +89,7 @@ public static partial class QuizStudioViewBuilder
         }
         sourceCard.Children.Add(pdfPills);
         leftStack.Children.Add(UiBuilder.Card(sourceCard, padding: new Thickness(12, 10)));
+        leftStack.Children.Add(BuildFileSourcesCard(studio));
 
         // 2. Academic Term, Custom Page Range & Outline Tree Picker
         var scopeCard = new StackPanel { Spacing = 8 };
@@ -368,7 +369,19 @@ public static partial class QuizStudioViewBuilder
             );
         }
 
-        leftStack.Children.Add(UiBuilder.Card(scopeCard, padding: new Thickness(12, 10)));
+        if (studio.IsMixedSourceMode)
+        {
+            leftStack.Children.Add(UiBuilder.Card(scopeCard, padding: new Thickness(12, 10)));
+            leftStack.Children.Add(BuildFileModeScopeNote(studio));
+        }
+        else
+        {
+            leftStack.Children.Add(
+                studio.IsFileSourceMode
+                    ? BuildFileModeScopeNote(studio)
+                    : UiBuilder.Card(scopeCard, padding: new Thickness(12, 10))
+            );
+        }
 
         // 3. Assessment Mode, Custom Question-Type Distribution & Output Engine
         var configCard = new StackPanel { Spacing = 10 };
@@ -1035,8 +1048,12 @@ public static partial class QuizStudioViewBuilder
 
         splitGrid.Children.Add(UiBuilder.PersistentScrollViewer("quiz-builder-left", leftStack));
 
-        // RIGHT COLUMN: LIVE VISUAL PDF SCOPE PREVIEWER
-        var previewPane = BuildLivePdfPreviewPane(vm, studio);
+        // RIGHT COLUMN: LIVE VISUAL PDF SCOPE PREVIEWER / FILE SOURCES PREVIEWER
+        var previewPane = studio.IsMixedSourceMode
+            ? BuildMixedPreviewPane(vm, studio)
+            : studio.IsFileSourceMode
+                ? BuildFileSourcesPreviewPane(vm, studio)
+                : BuildLivePdfPreviewPane(vm, studio);
         Grid.SetColumn(previewPane, 2);
         splitGrid.Children.Add(previewPane);
 

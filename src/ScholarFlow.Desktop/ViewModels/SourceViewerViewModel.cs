@@ -1,5 +1,6 @@
 using Avalonia.Media.Imaging;
 using ScholarFlow.Core.Knowledge;
+using ScholarFlow.Core.Quiz;
 
 namespace ScholarFlow.Desktop.ViewModels;
 
@@ -34,6 +35,7 @@ public sealed class SourceViewerViewModel : IDisposable
     public int? HighlightStartLine { get; private set; }
     public int? HighlightEndLine { get; private set; }
     public string? HighlightSectionTitle { get; private set; }
+    public string? EvidenceHint { get; private set; }
 
     // Image state
     public Bitmap? CurrentImage { get; private set; }
@@ -41,6 +43,8 @@ public sealed class SourceViewerViewModel : IDisposable
     public int ImagePixelHeight => CurrentImage?.PixelSize.Height ?? 0;
     public int ZoomPercent { get; private set; } = 100;
     public bool IsFitToWindow { get; private set; } = true;
+    public IReadOnlyList<NormalizedHighlightRect> ImageHighlightRects { get; private set; } = [];
+    public bool ShowImageHighlights { get; private set; } = true;
 
     private int _loadGeneration;
 
@@ -53,7 +57,9 @@ public sealed class SourceViewerViewModel : IDisposable
         string filePath,
         int? highlightStartLine = null,
         int? highlightEndLine = null,
-        string? sectionTitle = null
+        string? sectionTitle = null,
+        string? evidenceHint = null,
+        IReadOnlyList<NormalizedHighlightRect>? imageHighlightRects = null
     )
     {
         int gen = Interlocked.Increment(ref _loadGeneration);
@@ -66,6 +72,9 @@ public sealed class SourceViewerViewModel : IDisposable
         HighlightStartLine = highlightStartLine;
         HighlightEndLine = highlightEndLine ?? highlightStartLine;
         HighlightSectionTitle = sectionTitle;
+        EvidenceHint = evidenceHint;
+        ImageHighlightRects = imageHighlightRects ?? [];
+        ShowImageHighlights = true;
         ErrorMessage = null;
         Lines = [];
         RawText = string.Empty;
@@ -169,6 +178,14 @@ public sealed class SourceViewerViewModel : IDisposable
         _onChanged();
     }
 
+    public void ToggleImageHighlights()
+    {
+        if (Kind != StudySourceKind.Image || ImageHighlightRects.Count == 0)
+            return;
+        ShowImageHighlights = !ShowImageHighlights;
+        _onChanged();
+    }
+
     public void Reset()
     {
         Interlocked.Increment(ref _loadGeneration);
@@ -183,6 +200,9 @@ public sealed class SourceViewerViewModel : IDisposable
         HighlightStartLine = null;
         HighlightEndLine = null;
         HighlightSectionTitle = null;
+        EvidenceHint = null;
+        ImageHighlightRects = [];
+        ShowImageHighlights = true;
         ZoomPercent = 100;
         IsFitToWindow = true;
     }

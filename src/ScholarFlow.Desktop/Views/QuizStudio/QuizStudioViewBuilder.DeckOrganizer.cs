@@ -373,7 +373,10 @@ public static partial class QuizStudioViewBuilder
             )
                 is not null;
 
-        if (File.Exists(deck.SourcePdfPath) || hasFallbackMaster)
+        bool isFileDeck =
+            !string.IsNullOrWhiteSpace(deck.SourcePdfPath)
+            && !deck.SourcePdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        if (!isFileDeck && (File.Exists(deck.SourcePdfPath) || hasFallbackMaster))
         {
             var regroundItem = new MenuItem
             {
@@ -704,7 +707,7 @@ public static partial class QuizStudioViewBuilder
                                         },
                                         new TextBlock
                                         {
-                                            Text = $"{q.Kind} · p.{q.SourcePage}",
+                                            Text = $"{q.Kind} · {q.EvidenceChipLabel}",
                                             FontSize = 10,
                                             Foreground = ThemeService.Brush(ThemeService.TextMuted),
                                         },
@@ -1142,7 +1145,7 @@ public static partial class QuizStudioViewBuilder
         );
         AddMetaBadge(
             UiBuilder.PillBadge(
-                $"p.{q.SourcePage}",
+                q.EvidenceChipLabel,
                 q.HighlightRects.Count > 0
                     ? ThemeService.Brush(ThemeService.SuccessFg)
                     : ThemeService.Brush(ThemeService.PriorityP3Fg),
@@ -1201,7 +1204,7 @@ public static partial class QuizStudioViewBuilder
         {
             rowActions.Children.Add(
                 UiBuilder.GhostButton(
-                    $"p.{q.SourcePage}",
+                    q.EvidenceChipLabel,
                     MaterialIconKind.Marker,
                     () => studio.OpenQuestionEvidenceInPdfReader(q)
                 )

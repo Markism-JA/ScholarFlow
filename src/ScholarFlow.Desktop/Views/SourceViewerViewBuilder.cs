@@ -27,7 +27,7 @@ public static class SourceViewerViewBuilder
 
         var root = new Grid
         {
-            RowDefinitions = RowDefinitions.Parse("Auto,*"),
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
             RowSpacing = 8,
             Margin = new Thickness(16, 12, 16, 12),
         };
@@ -137,6 +137,17 @@ public static class SourceViewerViewBuilder
 
         if (sv.Kind == StudySourceKind.Image && sv.CurrentImage is not null)
         {
+            if (sv.ImageHighlightRects.Count > 0)
+            {
+                rightActions.Children.Add(
+                    UiBuilder.GhostButton(
+                        sv.ShowImageHighlights ? "Region Highlight" : "Show Highlight",
+                        MaterialIconKind.Target,
+                        sv.ToggleImageHighlights,
+                        isActive: sv.ShowImageHighlights
+                    )
+                );
+            }
             rightActions.Children.Add(
                 UiBuilder.IconButton(MaterialIconKind.Minus, sv.ZoomOut, 15)
             );
@@ -192,6 +203,59 @@ public static class SourceViewerViewBuilder
             }
         );
 
+        // 1b. Optional Evidence / Visual Region Hint Banner (for quiz evidence jumps on code or images)
+        if (!string.IsNullOrWhiteSpace(sv.HighlightSectionTitle) || !string.IsNullOrWhiteSpace(sv.EvidenceHint))
+        {
+            var bannerStack = new StackPanel { Spacing = 2 };
+            var labelPrefix = sv.Kind == StudySourceKind.Image ? "Visual Region Hint" : "Grounded Evidence";
+            var rangeSuffix = sv.HighlightStartLine.HasValue
+                ? sv.HighlightEndLine.HasValue && sv.HighlightEndLine != sv.HighlightStartLine
+                    ? $" · L{sv.HighlightStartLine}–L{sv.HighlightEndLine}"
+                    : $" · L{sv.HighlightStartLine}"
+                : string.Empty;
+            var headingText = !string.IsNullOrWhiteSpace(sv.HighlightSectionTitle)
+                ? $"{labelPrefix} · {sv.HighlightSectionTitle}{rangeSuffix}"
+                : $"{labelPrefix}{rangeSuffix}";
+
+            bannerStack.Children.Add(
+                new TextBlock
+                {
+                    Text = headingText,
+                    FontSize = 11.5,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                }
+            );
+
+            if (!string.IsNullOrWhiteSpace(sv.EvidenceHint))
+            {
+                bannerStack.Children.Add(
+                    new TextBlock
+                    {
+                        Text = sv.Kind == StudySourceKind.Image ? sv.EvidenceHint : $"\"{sv.EvidenceHint}\"",
+                        FontSize = 12,
+                        TextWrapping = TextWrapping.Wrap,
+                        MaxLines = 3,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    }
+                );
+            }
+
+            var banner = new Border
+            {
+                Background = ThemeService.Brush(ThemeService.AccentSoftBg),
+                BorderBrush = ThemeService.Brush(ThemeService.AccentPrimary),
+                BorderThickness = new Thickness(3, 1, 1, 1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 6),
+                Child = bannerStack,
+            };
+            Grid.SetRow(banner, 1);
+            root.Children.Add(banner);
+        }
+
         // 2. Body
         Control body;
         if (sv.IsLoading)
@@ -233,18 +297,76 @@ public static class SourceViewerViewBuilder
         }
         else if (sv.Kind == StudySourceKind.Image && sv.CurrentImage is not null)
         {
+            double nativeW = Math.Max(1, sv.ImagePixelWidth);
+            double nativeH = Math.Max(1, sv.ImagePixelHeight);
+            double scale = sv.IsFitToWindow ? 1.0 : (sv.ZoomPercent / 100.0);
+            double canvasW = nativeW * scale;
+            double canvasH = nativeH * scale;
+
             var img = new Image
             {
                 Source = sv.CurrentImage,
-                Stretch = Stretch.Uniform,
+                Width = canvasW,
+                Height = canvasH,
+                Stretch = Stretch.Fill,
+            };
+
+            var imgLayer = new Grid
+            {
+                Width = canvasW,
+                Height = canvasH,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
+                Children = { img },
             };
-            if (!sv.IsFitToWindow)
+
+            if (sv.ShowImageHighlights && sv.ImageHighlightRects.Count > 0)
             {
-                img.Width = sv.ImagePixelWidth * (sv.ZoomPercent / 100.0);
-                img.Height = sv.ImagePixelHeight * (sv.ZoomPercent / 100.0);
+                var overlay = new Canvas
+                {
+                    Width = canvasW,
+                    Height = canvasH,
+                    IsHitTestVisible = false,
+                };
+
+                double strokeThickness = Math.Max(2.5, Math.Min(canvasW, canvasH) * 0.005);
+                var fillBrush = new SolidColorBrush(Color.FromArgb(48, 245, 158, 11));
+                var borderBrush = new SolidColorBrush(Color.FromArgb(230, 245, 158, 11));
+
+                foreach (var rect in sv.ImageHighlightRects)
+                {
+                    var box = new Border
+                    {
+                        Width = Math.Max(12, rect.Width * canvasW),
+                        Height = Math.Max(12, rect.Height * canvasH),
+                        Background = fillBrush,
+                        BorderBrush = borderBrush,
+                        BorderThickness = new Thickness(strokeThickness),
+                        CornerRadius = new CornerRadius(Math.Max(4, strokeThickness * 1.5)),
+                    };
+                    Canvas.SetLeft(box, rect.X * canvasW);
+                    Canvas.SetTop(box, rect.Y * canvasH);
+                    overlay.Children.Add(box);
+                }
+
+                imgLayer.Children.Add(overlay);
             }
+
+            Control imageHost = sv.IsFitToWindow
+                ? new Viewbox
+                {
+                    Stretch = Stretch.Uniform,
+                    StretchDirection = StretchDirection.Both,
+                    Child = imgLayer,
+                }
+                : new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility =
+                        Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                    VerticalScrollBarVisibility =
+                        Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                    Content = imgLayer,
+                };
 
             body = new Border
             {
@@ -253,16 +375,7 @@ public static class SourceViewerViewBuilder
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(12),
-                Child = sv.IsFitToWindow
-                    ? img
-                    : new ScrollViewer
-                    {
-                        HorizontalScrollBarVisibility =
-                            Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                        VerticalScrollBarVisibility =
-                            Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                        Content = img,
-                    },
+                Child = imageHost,
             };
         }
         else
@@ -270,7 +383,7 @@ public static class SourceViewerViewBuilder
             body = BuildVirtualizedCodeViewer(sv);
         }
 
-        Grid.SetRow(body, 1);
+        Grid.SetRow(body, 2);
         root.Children.Add(body);
         return root;
     }
@@ -385,11 +498,17 @@ public static class SourceViewerViewBuilder
         if (sv.HighlightStartLine.HasValue && sv.Lines.Count > 0)
         {
             int targetIdx = Math.Clamp(sv.HighlightStartLine.Value - 1, 0, sv.Lines.Count - 1);
+            int contextIdx = Math.Clamp(targetIdx + 6, 0, sv.Lines.Count - 1);
             var targetItem = sv.Lines[targetIdx];
+            var contextItem = sv.Lines[contextIdx];
             lb.Loaded += (_, _) =>
                 Avalonia.Threading.Dispatcher.UIThread.Post(
-                    () => lb.ScrollIntoView(targetItem),
-                    Avalonia.Threading.DispatcherPriority.Loaded
+                    () =>
+                    {
+                        lb.ScrollIntoView(contextItem);
+                        lb.ScrollIntoView(targetItem);
+                    },
+                    Avalonia.Threading.DispatcherPriority.Background
                 );
         }
 

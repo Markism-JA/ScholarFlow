@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using ScholarFlow.Core.Database;
+using ScholarFlow.Core.Knowledge;
 using ScholarFlow.Core.Models;
 
 namespace ScholarFlow.Core.Quiz;
@@ -103,6 +104,9 @@ public sealed partial class QuizLlmService
         QuizGenerationRequest request,
         CancellationToken ct = default)
     {
+        if (request.HasFileSources)
+            return await GenerateFromFileSourcesAsync(request, ct);
+
         var pages = await Task.Run(() => PdfQuizGrounder.ExtractGroundedPages(
             request.SourcePdfPath,
             request.Term,
@@ -226,14 +230,22 @@ public sealed partial class QuizLlmService
             ? dto.QuizTitle.Trim()
             : $"{request.CourseTitle} — {inferredTerm ?? "Comprehensive"} ({request.Preset})";
 
+        var sessionSourcePath = request.HasPdfSource
+            ? request.SourcePdfPath
+            : request.HasFileSources
+                ? request.SourceFilePaths.FirstOrDefault(p =>
+                      StudySourceClassifier.Classify(p).Kind != StudySourceKind.Image) ?? request.SourceFilePaths[0]
+                : request.SourcePdfPath;
+        var groundItems = new List<(QuizQuestionRecord, EvidenceAnchorDto?)>();
+
         var session = new QuizSessionRecord
         {
             CourseFolder = request.CourseFolder,
             CourseTitle = request.CourseTitle,
             Term = inferredTerm,
             Title = defaultTitle,
-            SourcePdfPath = request.SourcePdfPath,
-            SourcePdfMtimeTicks = !string.IsNullOrWhiteSpace(request.SourcePdfPath) && File.Exists(request.SourcePdfPath)
+            SourcePdfPath = sessionSourcePath,
+            SourcePdfMtimeTicks = request.HasPdfSource
                 ? File.GetLastWriteTimeUtc(request.SourcePdfPath).Ticks
                 : null,
             ModelUsed = modelLabel,
@@ -294,11 +306,11 @@ public sealed partial class QuizLlmService
                 CodeLanguage = codeLanguage,
                 MathLatex = mathLatex,
                 Diagram = diagram,
-                SourcePdfPath = request.SourcePdfPath,
+                SourcePdfPath = sessionSourcePath,
                 SourcePage = qDto.Evidence?.PageNumber > 0 ? qDto.Evidence.PageNumber : (pages.FirstOrDefault()?.PageNumber ?? 1),
                 SectionTitle = qDto.Evidence?.SectionTitle ?? string.Empty,
                 VerbatimQuote = qDto.Evidence?.VerbatimQuote ?? string.Empty,
-                EvidenceAnchors = qDto.Evidence?.SecondaryQuotes?
+                EvidenceAnchors = (request.HasFileSources && !request.IncludePdfWithFileSources) ? [] : qDto.Evidence?.SecondaryQuotes?
                     .Where(sq => !string.IsNullOrWhiteSpace(sq))
                     .Select(sq => new GroundedEvidenceAnchor(
                         qDto.Evidence.PageNumber > 0 ? qDto.Evidence.PageNumber : 1,
@@ -310,13 +322,48 @@ public sealed partial class QuizLlmService
             };
 
             session.Questions.Add(qRecord);
+            groundItems.Add((qRecord, qDto.Evidence));
         }
 
         if (session.Questions.Count == 0)
             throw new InvalidOperationException("No valid questions were produced from the response.");
 
-        // Deterministically ground every question's verbatim quote into normalized [0..1] PDF highlight boxes off the UI thread
-        await Task.Run(() => PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, session.Questions), ct);
+        // Deterministically ground each question against its matching source (PDF highlight rects or file line range / image)
+        if (request.IsMixedSources)
+        {
+            var fileItems = new List<(QuizQuestionRecord Question, EvidenceAnchorDto? Evidence)>();
+            var pdfQuestions = new List<QuizQuestionRecord>();
+            foreach (var item in groundItems)
+            {
+                bool matchesFile =
+                    FileSourceQuizSupport.TryMatchSourceFile(request.SourceFilePaths, item.Item2?.File) is not null;
+                if (matchesFile)
+                {
+                    item.Item1.EvidenceAnchors.Clear();
+                    fileItems.Add(item);
+                }
+                else
+                {
+                    pdfQuestions.Add(item.Item1);
+                }
+            }
+
+            await Task.Run(() =>
+            {
+                if (fileItems.Count > 0)
+                    FileSourceQuizSupport.GroundQuestionsToFiles(request.SourceFilePaths, fileItems);
+                if (pdfQuestions.Count > 0)
+                    PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, pdfQuestions);
+            }, ct);
+        }
+        else if (request.HasFileSources)
+        {
+            await Task.Run(() => FileSourceQuizSupport.GroundQuestionsToFiles(request.SourceFilePaths, groundItems), ct);
+        }
+        else
+        {
+            await Task.Run(() => PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, session.Questions), ct);
+        }
 
         if (!string.IsNullOrWhiteSpace(request.BasinRoot))
         {

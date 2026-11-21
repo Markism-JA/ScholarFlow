@@ -80,6 +80,90 @@ public sealed class EvidenceAnchorDto
 
     [JsonPropertyName("secondaryQuotes")]
     public List<string>? SecondaryQuotes { get; set; }
+
+    /// <summary>File name or relative path for non-PDF (code / markdown / text / image) sources.</summary>
+    [JsonPropertyName("file")]
+    public string? File { get; set; }
+
+    [JsonPropertyName("startLine")]
+    public int? StartLine { get; set; }
+
+    [JsonPropertyName("endLine")]
+    public int? EndLine { get; set; }
+
+    /// <summary>
+    /// Optional normalized [0..1] visual region for image-grounded questions.
+    /// Accepts either {"x":0.1,"y":0.2,"w":0.4,"h":0.3} (or width/height) or [x, y, w, h].
+    /// </summary>
+    [JsonPropertyName("region")]
+    public System.Text.Json.JsonElement? Region { get; set; }
+
+    public NormalizedHighlightRect? TryParseRegion()
+    {
+        if (Region is not { } el)
+            return null;
+
+        double x, y, w, h;
+        if (el.ValueKind == System.Text.Json.JsonValueKind.Array && el.GetArrayLength() >= 4)
+        {
+            if (
+                !el[0].TryGetDouble(out x)
+                || !el[1].TryGetDouble(out y)
+                || !el[2].TryGetDouble(out w)
+                || !el[3].TryGetDouble(out h)
+            )
+                return null;
+        }
+        else if (el.ValueKind == System.Text.Json.JsonValueKind.Object)
+        {
+            if (!TryGetProp(el, "x", out x) || !TryGetProp(el, "y", out y))
+                return null;
+            if (!TryGetProp(el, "w", out w) && !TryGetProp(el, "width", out w))
+                return null;
+            if (!TryGetProp(el, "h", out h) && !TryGetProp(el, "height", out h))
+                return null;
+        }
+        else
+        {
+            return null;
+        }
+
+        if (double.IsNaN(x) || double.IsNaN(y) || double.IsNaN(w) || double.IsNaN(h))
+            return null;
+
+        // Normalize percentage-style 0..100 coordinates if a model returns them
+        if (x > 1.0 || y > 1.0 || w > 1.0 || h > 1.0)
+        {
+            if (x <= 100 && y <= 100 && w <= 100 && h <= 100)
+            {
+                x /= 100.0;
+                y /= 100.0;
+                w /= 100.0;
+                h /= 100.0;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        x = Math.Clamp(x, 0.0, 0.98);
+        y = Math.Clamp(y, 0.0, 0.98);
+        w = Math.Clamp(w, 0.02, 1.0 - x);
+        h = Math.Clamp(h, 0.02, 1.0 - y);
+        return new NormalizedHighlightRect(x, y, w, h);
+
+        static bool TryGetProp(System.Text.Json.JsonElement obj, string name, out double val)
+        {
+            foreach (var p in obj.EnumerateObject())
+            {
+                if (p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && p.Value.TryGetDouble(out val))
+                    return true;
+            }
+            val = 0;
+            return false;
+        }
+    }
 }
 
 /// <summary>
@@ -174,6 +258,9 @@ public sealed class QuizQuestionRecord
     // Grounding to Master / Handout PDF
     public string SourcePdfPath { get; set; } = string.Empty;
     public int SourcePage { get; set; } = 1;
+    /// <summary>1-based inclusive line range when the evidence lives in a code / markdown / text file.</summary>
+    public int? SourceStartLine { get; set; }
+    public int? SourceEndLine { get; set; }
     public string SectionTitle { get; set; } = string.Empty;
     public string VerbatimQuote { get; set; } = string.Empty;
     public List<NormalizedHighlightRect> HighlightRects { get; set; } = [];
@@ -186,6 +273,31 @@ public sealed class QuizQuestionRecord
     public int SrsReps { get; set; }
     public int SrsLapses { get; set; }
     public bool? LastAnsweredCorrect { get; set; }
+
+    /// <summary>True when the grounding source is a PDF (page + highlight rects); false for code / text / image files.</summary>
+    public bool IsPdfSource =>
+        string.IsNullOrWhiteSpace(SourcePdfPath)
+        || ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(SourcePdfPath).Kind
+            is ScholarFlow.Core.Knowledge.StudySourceKind.Pdf
+            or ScholarFlow.Core.Knowledge.StudySourceKind.Unknown;
+
+    /// <summary>Short evidence chip text: "p.12" for PDFs, "L10–24" for text/code, file name for images.</summary>
+    public string EvidenceChipLabel
+    {
+        get
+        {
+            if (IsPdfSource)
+                return $"p.{SourcePage}";
+            var (kind, _) = ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(SourcePdfPath);
+            if (kind == ScholarFlow.Core.Knowledge.StudySourceKind.Image)
+                return System.IO.Path.GetFileName(SourcePdfPath);
+            if (SourceStartLine is > 0)
+                return SourceEndLine is > 0 && SourceEndLine != SourceStartLine
+                    ? $"L{SourceStartLine}–{SourceEndLine}"
+                    : $"L{SourceStartLine}";
+            return System.IO.Path.GetFileName(SourcePdfPath);
+        }
+    }
 
     public bool EvaluateAnswer(string? userAnswer)
     {
@@ -415,6 +527,8 @@ public sealed class QuizSessionRecord
     {
         if (string.IsNullOrWhiteSpace(SourcePdfPath) || !File.Exists(SourcePdfPath))
             return false;
+        if (!SourcePdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            return false;
 
         var currentTicks = File.GetLastWriteTimeUtc(SourcePdfPath).Ticks;
         if (SourcePdfMtimeTicks.HasValue)
@@ -447,6 +561,16 @@ public sealed class QuizGenerationRequest
     public string CourseTitle { get; set; } = string.Empty;
     public string? Term { get; set; }
     public string SourcePdfPath { get; set; } = string.Empty;
+    /// <summary>Non-PDF study sources (code, markdown, text, images).</summary>
+    public List<string> SourceFilePaths { get; set; } = [];
+    /// <summary>When true and both SourcePdfPath and SourceFilePaths are set, combines PDF pages + files in one quiz.</summary>
+    public bool IncludePdfWithFileSources { get; set; }
+    public bool HasFileSources => SourceFilePaths.Count > 0;
+    public bool HasPdfSource =>
+        !string.IsNullOrWhiteSpace(SourcePdfPath)
+        && File.Exists(SourcePdfPath)
+        && (!HasFileSources || IncludePdfWithFileSources);
+    public bool IsMixedSources => HasFileSources && HasPdfSource;
     public string? SectionFilter { get; set; }
     public int? StartPage { get; set; }
     public int? EndPage { get; set; }
@@ -532,6 +656,29 @@ public sealed class QuizGenerationRequest
                 [QuizQuestionKind.Ordering] = 10
             }
         };
+    }
+
+    /// <summary>
+    /// Code-oriented default mix emphasizing trace/output prediction (Identification),
+    /// code completion (FillInTheBlank), bug/edge-case spotting (Situational), and execution ordering (Ordering).
+    /// </summary>
+    public static Dictionary<QuizQuestionKind, int> GetCodeAwareAllocations(
+        QuestionAllocationMode mode = QuestionAllocationMode.Percentages,
+        int targetCount = 10)
+    {
+        var weights = new Dictionary<QuizQuestionKind, int>
+        {
+            [QuizQuestionKind.MultipleChoice] = 20,
+            [QuizQuestionKind.Situational] = 15,
+            [QuizQuestionKind.Identification] = 25,
+            [QuizQuestionKind.TrueFalse] = 10,
+            [QuizQuestionKind.FillInTheBlank] = 20,
+            [QuizQuestionKind.Ordering] = 10
+        };
+
+        return mode == QuestionAllocationMode.ExactCounts
+            ? ScaleAllocationsToTarget(weights, Math.Clamp(targetCount, 1, 150))
+            : weights;
     }
 
     /// <summary>

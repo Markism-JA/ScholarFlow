@@ -52,6 +52,12 @@ public sealed partial class QuizStudioViewModel
 
     public void SelectPdfScope(string pdfPath)
     {
+        if (!IncludePdfWithFiles)
+        {
+            bool hadCode = HasCodeFileSelected;
+            _selectedFileSourcePaths.Clear();
+            SyncCodeAwareMixAfterFileChange(hadCode);
+        }
         SelectedPdfPath = pdfPath;
         StartPage = null;
         EndPage = null;
@@ -304,6 +310,9 @@ public sealed partial class QuizStudioViewModel
 
     public void OpenQuestionEvidenceInPdfReader(QuizQuestionRecord question)
     {
+        if (TryOpenNonPdfEvidence(question))
+            return;
+
         if (
             string.IsNullOrWhiteSpace(question.SourcePdfPath)
             || !File.Exists(question.SourcePdfPath)
@@ -347,6 +356,9 @@ public sealed partial class QuizStudioViewModel
         GroundedEvidenceAnchor anchor
     )
     {
+        if (TryOpenNonPdfEvidence(question))
+            return;
+
         if (
             string.IsNullOrWhiteSpace(question.SourcePdfPath)
             || !File.Exists(question.SourcePdfPath)
@@ -531,6 +543,23 @@ public sealed partial class QuizStudioViewModel
 
                 if (Directory.Exists(courseDir))
                 {
+                    // PDFs (including symlinked/linked ones) placed directly in the course root.
+                    foreach (
+                        var rootPdf in Directory
+                            .GetFiles(courseDir, "*.pdf")
+                            .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
+                    )
+                    {
+                        var rootName = Path.GetFileName(rootPdf);
+                        if (
+                            rootName.EndsWith("_.pdf", StringComparison.OrdinalIgnoreCase)
+                            || list.Any(x => x.FullPath.Equals(rootPdf, StringComparison.OrdinalIgnoreCase))
+                            || !File.Exists(rootPdf)
+                        )
+                            continue;
+                        list.Add((Path.GetFileNameWithoutExtension(rootName), rootPdf, false));
+                    }
+
                     foreach (
                         var dir in Directory
                             .GetDirectories(courseDir)
@@ -590,6 +619,8 @@ public sealed partial class QuizStudioViewModel
                 AvailablePdfs.FirstOrDefault(p => p.IsMaster).FullPath
                 ?? (AvailablePdfs.Count > 0 ? AvailablePdfs[0].FullPath : null);
         }
+
+        RebuildStudyFilesForCourse();
 
         if (ActiveSubTab == QuizStudioSubTab.Builder)
             InspectSelectedPdfOutlineAndPreview();

@@ -142,7 +142,7 @@ public static partial class QuizStudioViewBuilder
             qCardStack.Children.Add(
                 new TextBlock
                 {
-                    Text = $"Source Section: {q.SectionTitle} (Page {q.SourcePage})",
+                    Text = $"Source Section: {q.SectionTitle} ({(q.IsPdfSource ? $"Page {q.SourcePage}" : q.EvidenceChipLabel)})",
                     FontSize = 11.5,
                     FontWeight = FontWeight.Medium,
                     Foreground = ThemeService.Brush(ThemeService.TextMuted),
@@ -626,7 +626,7 @@ public static partial class QuizStudioViewBuilder
                 {
                     new TextBlock
                     {
-                        Text = $"Master PDF Evidence  ·  {q.SectionTitle}  ·  Page {q.SourcePage}",
+                        Text = $"{(q.IsPdfSource ? "Master PDF Evidence" : "Source Evidence")}  ·  {q.SectionTitle}  ·  {(q.IsPdfSource ? $"Page {q.SourcePage}" : q.EvidenceChipLabel)}",
                         FontSize = 11.5,
                         FontWeight = FontWeight.SemiBold,
                         Foreground = ThemeService.Brush(ThemeService.PriorityP2Fg),
@@ -665,7 +665,7 @@ public static partial class QuizStudioViewBuilder
             {
                 evidenceStack.Children.Add(
                     UiBuilder.GhostButton(
-                        $"Jump to Highlighted Statement on Page {q.SourcePage} in PDF Reader",
+                        q.IsPdfSource ? $"Jump to Highlighted Statement on Page {q.SourcePage} in PDF Reader" : $"Open {q.EvidenceChipLabel} in Source Viewer",
                         MaterialIconKind.Marker,
                         () => studio.OpenQuestionEvidenceInPdfReader(q),
                         isActive: true
@@ -889,7 +889,7 @@ public static partial class QuizStudioViewBuilder
             );
 
             var jumpBtn = UiBuilder.GhostButton(
-                $"Highlight on Page {q.SourcePage}",
+                q.IsPdfSource ? $"Highlight on Page {q.SourcePage}" : $"View {q.EvidenceChipLabel}",
                 MaterialIconKind.Marker,
                 () => studio.OpenQuestionEvidenceInPdfReader(q),
                 isActive: true
@@ -918,7 +918,7 @@ public static partial class QuizStudioViewBuilder
                     new TextBlock
                     {
                         Text =
-                            $"Evidence ({q.SectionTitle}, p. {q.SourcePage}): \"{q.VerbatimQuote}\"",
+                            $"Evidence ({q.SectionTitle}, {(q.IsPdfSource ? $"p. {q.SourcePage}" : q.EvidenceChipLabel)}): \"{q.VerbatimQuote}\"",
                         FontSize = 11.5,
                         Foreground = ThemeService.Brush(ThemeService.TextMuted),
                         TextWrapping = TextWrapping.Wrap,

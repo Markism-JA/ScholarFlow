@@ -16,8 +16,22 @@ public sealed partial class QuizLlmService
         string modelName,
         string systemPrompt,
         string userPrompt,
-        CancellationToken ct)
+        CancellationToken ct,
+        IReadOnlyList<string>? imageDataUris = null)
     {
+        // Multimodal (vision) user turn: text part + one image_url part per image.
+        object userContent = userPrompt;
+        if (imageDataUris is { Count: > 0 })
+        {
+            var parts = new List<object> { new { type = "text", text = userPrompt } };
+            parts.AddRange(imageDataUris.Select(uri => (object)new
+            {
+                type = "image_url",
+                image_url = new { url = uri },
+            }));
+            userContent = parts;
+        }
+
         var normalizedUrl = NormalizeChatCompletionsEndpoint(endpointUrl);
 
         // Try with response_format: json_object first, fallback without response_format if provider rejects it
@@ -36,7 +50,7 @@ public sealed partial class QuizLlmService
                     messages = new object[]
                     {
                         new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userPrompt }
+                        new { role = "user", content = userContent }
                     }
                 }
                 : new
@@ -46,7 +60,7 @@ public sealed partial class QuizLlmService
                     messages = new object[]
                     {
                         new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userPrompt }
+                        new { role = "user", content = userContent }
                     }
                 };
 

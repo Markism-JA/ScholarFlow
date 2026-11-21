@@ -77,13 +77,15 @@ public static partial class ScholarFlowDatabase
                     prompt, options_json, correct_answer, aliases_json, explanation,
                     source_pdf_path, source_page, section_title, verbatim_quote, highlight_rects_json,
                     srs_interval_days, srs_ease_factor, srs_due_date, srs_reps, srs_lapses, last_answered_correct,
-                    code_snippet, code_language, math_latex, diagram_text, evidence_anchors_json, image_path
+                    code_snippet, code_language, math_latex, diagram_text, evidence_anchors_json, image_path,
+                    source_start_line, source_end_line
                 ) VALUES (
                     $id, $quiz_id, $order_index, $kind, $cognitive_level, $difficulty, $topic_tag,
                     $prompt, $options_json, $correct_answer, $aliases_json, $explanation,
                     $source_pdf_path, $source_page, $section_title, $verbatim_quote, $highlight_rects_json,
                     $srs_interval_days, $srs_ease_factor, $srs_due_date, $srs_reps, $srs_lapses, $last_answered_correct,
-                    $code_snippet, $code_language, $math_latex, $diagram_text, $evidence_anchors_json, $image_path
+                    $code_snippet, $code_language, $math_latex, $diagram_text, $evidence_anchors_json, $image_path,
+                    $source_start_line, $source_end_line
                 );
                 """;
 
@@ -114,6 +116,8 @@ public static partial class ScholarFlowDatabase
                 itemCmd.Parameters.AddWithValue("$explanation", q.Explanation);
                 itemCmd.Parameters.AddWithValue("$source_pdf_path", q.SourcePdfPath);
                 itemCmd.Parameters.AddWithValue("$source_page", q.SourcePage);
+                itemCmd.Parameters.AddWithValue("$source_start_line", (object?)q.SourceStartLine ?? DBNull.Value);
+                itemCmd.Parameters.AddWithValue("$source_end_line", (object?)q.SourceEndLine ?? DBNull.Value);
                 itemCmd.Parameters.AddWithValue("$section_title", q.SectionTitle);
                 itemCmd.Parameters.AddWithValue("$verbatim_quote", q.VerbatimQuote);
                 itemCmd.Parameters.AddWithValue(
@@ -247,7 +251,8 @@ public static partial class ScholarFlowDatabase
                         prompt, options_json, correct_answer, aliases_json, explanation,
                         source_pdf_path, source_page, section_title, verbatim_quote, highlight_rects_json,
                         srs_interval_days, srs_ease_factor, srs_due_date, srs_reps, srs_lapses, last_answered_correct,
-                        code_snippet, code_language, math_latex, diagram_text, evidence_anchors_json, image_path
+                        code_snippet, code_language, math_latex, diagram_text, evidence_anchors_json, image_path,
+                    source_start_line, source_end_line
                     FROM quiz_questions
                     ORDER BY quiz_id, order_index;
                     """;
@@ -318,6 +323,8 @@ public static partial class ScholarFlowDatabase
                         MathLatex = r.FieldCount > 25 && !r.IsDBNull(25) ? r.GetString(25) : null,
                         Diagram = r.FieldCount > 26 && !r.IsDBNull(26) ? r.GetString(26) : null,
                         ImagePath = r.FieldCount > 28 && !r.IsDBNull(28) ? r.GetString(28) : null,
+                        SourceStartLine = r.FieldCount > 29 && !r.IsDBNull(29) ? r.GetInt32(29) : null,
+                        SourceEndLine = r.FieldCount > 30 && !r.IsDBNull(30) ? r.GetInt32(30) : null,
                     };
 
                     parentQuiz.Questions.Add(q);

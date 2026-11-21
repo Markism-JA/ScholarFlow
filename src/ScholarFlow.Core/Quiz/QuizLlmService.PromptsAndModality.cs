@@ -118,19 +118,29 @@ public sealed partial class QuizLlmService
             : string.Empty;
 
         var modalityRules = BuildModalitySystemRules(modality, req.ModalityMode);
+        bool fileMode = req.HasFileSources;
+        bool mixedMode = req.IsMixedSources;
+        var intro = mixedMode
+            ? "You are an expert academic examiner creating an evidence-grounded assessment combining a course study PDF and course source files (code, notes, and/or images)."
+            : fileMode
+                ? "You are an expert academic examiner creating an evidence-grounded assessment from course source files (code, notes, and/or images)."
+                : "You are an expert academic examiner creating an evidence-grounded assessment from a course study PDF.";
+        var evidenceRule = mixedMode
+            ? MixedEvidenceRule
+            : fileMode ? FileEvidenceRule : PdfEvidenceRule;
+        var evidenceSchema = mixedMode
+            ? MixedEvidenceSchema
+            : fileMode ? FileEvidenceSchema : PdfEvidenceSchema;
+        var codeFormatRules = modality.HasCode ? CodeQuestionFormatRules : string.Empty;
 
         return $$"""
-            You are an expert academic examiner creating an evidence-grounded assessment from a course study PDF.
+            {{intro}}
             {{distributionSpec}}{{weakNote}}
-            {{modalityRules}}
+            {{modalityRules}}{{codeFormatRules}}
 
             CRITICAL RULES:
             1. Return ONLY a valid JSON object matching the exact schema below. Do not include commentary outside the JSON.
-            2. Every single question MUST include an "evidence" object with:
-               - "pageNumber": the exact integer page number from the "=== [PAGE N] | Section: ... ===" header where the fact appears.
-               - "sectionTitle": the exact section title from that page header.
-               - "verbatimQuote": an exact 8 to 28 word substring copied WORD-FOR-WORD from that page's text so our PDF highlighter can locate its pixel bounding box.
-               - "secondaryQuotes" (optional string array): for Ordering questions (include key verbatim phrases for all steps) or Comparison/Distinction questions (include the contrasting statement verbatim), list additional exact quotes so multiple sections/pages are highlighted.
+            {{evidenceRule}}
             3. For MultipleChoice and Situational questions:
                - Provide 4 options in "options" (plain text without "A)" prefixes).
                - "correctAnswer" MUST exactly match one of the strings in "options".
@@ -171,16 +181,78 @@ public sealed partial class QuizLlmService
                   "codeLanguage": null,
                   "mathLatex": null,
                   "diagram": null,
-                  "evidence": {
-                    "pageNumber": 12,
-                    "sectionTitle": "Midterms / 04 Handout 1",
-                    "verbatimQuote": "Exact 8-28 word sentence copied directly from [PAGE 12]"
-                  }
+                  "evidence": {{evidenceSchema}}
                 }
               ]
             }
             """;
     }
+
+    private const string PdfEvidenceRule = """
+        2. Every single question MUST include an "evidence" object with:
+           - "pageNumber": the exact integer page number from the "=== [PAGE N] | Section: ... ===" header where the fact appears.
+           - "sectionTitle": the exact section title from that page header.
+           - "verbatimQuote": an exact 8 to 28 word substring copied WORD-FOR-WORD from that page's text so our PDF highlighter can locate its pixel bounding box.
+           - "secondaryQuotes" (optional string array): for Ordering questions (include key verbatim phrases for all steps) or Comparison/Distinction questions (include the contrasting statement verbatim), list additional exact quotes so multiple sections/pages are highlighted.
+        """;
+
+    private const string FileEvidenceRule = """
+        2. Every single question MUST include an "evidence" object with:
+           - "file": the exact file name from the "=== [FILE: name] ..." header the fact appears in (for images: the image file name).
+           - "sectionTitle": the nearest heading, class, or function name (for images: a concise diagram/component label, e.g. "L2 Cache Block").
+           - "verbatimQuote": for text/code files, 1 to 6 consecutive lines (at most ~40 words) copied CHARACTER-FOR-CHARACTER from that file WITHOUT the "L001:" line-number prefixes, so the app can resolve the exact line range. For images: write a specific directional visual pointer describing WHERE to look and WHAT visual feature proves the answer (e.g. "Top-right L2 Cache box (256 KB) connected by a bidirectional arrow to L3 Shared Cache").
+           - "startLine": the first line number (from the "L###:" prefix) of the quote. Omit for images.
+           - "region" (for images only, optional): normalized bounding box {"x": 0.0-1.0, "y": 0.0-1.0, "w": 0.0-1.0, "h": 0.0-1.0} from the top-left corner highlighting the relevant area of the image so the app can draw a spotlight box over it.
+           - The student will NOT see the source file. Any code needed to answer must be placed in "codeSnippet" so the question is self-contained; never say "see line 12".
+        """;
+
+    private const string PdfEvidenceSchema = """
+        {
+                    "pageNumber": 12,
+                    "sectionTitle": "Midterms / 04 Handout 1",
+                    "verbatimQuote": "Exact 8-28 word sentence copied directly from [PAGE 12]"
+                  }
+        """;
+
+    private const string FileEvidenceSchema = """
+        {
+                    "file": "main.cpp",
+                    "startLine": 14,
+                    "sectionTitle": "int main()",
+                    "verbatimQuote": "Exact line(s) copied from the file without the L014: prefix"
+                  }
+        """;
+
+    private const string MixedEvidenceRule = """
+        2. Every single question MUST include an "evidence" object grounded to EITHER a PDF page OR a source file:
+           - If grounded in a PDF page ("=== [PAGE N] | Section: ... ==="): set "pageNumber" (exact integer N), "sectionTitle", and "verbatimQuote" (exact 8-28 word substring copied WORD-FOR-WORD from that page), and set "file": null.
+           - If grounded in a code/text file ("=== [FILE: name] ... ==="): set "file" (exact file name), "startLine" (first line number from "L###:"), "sectionTitle" (nearest heading/class/function), and "verbatimQuote" (1-6 consecutive lines copied CHARACTER-FOR-CHARACTER WITHOUT "L001:" prefixes).
+           - If grounded in an image: set "file" (exact image file name), "sectionTitle" (concise diagram/component label), "verbatimQuote" (specific directional visual pointer describing WHERE to look and WHAT visual detail proves the answer), and optionally "region": {"x": 0.0-1.0, "y": 0.0-1.0, "w": 0.0-1.0, "h": 0.0-1.0} so the app can draw a spotlight highlight box over that area.
+           - The student will NOT see the source file. Any code needed to answer must be placed in "codeSnippet" so the question is self-contained; never say "see line 12".
+           - Cover BOTH the PDF pages and the selected source files across the quiz, and synthesize concepts across them where natural.
+        """;
+
+    private const string MixedEvidenceSchema = """
+        {
+                    "pageNumber": 12,
+                    "file": "main.cpp (set null if grounded in PDF page; set filename if grounded in a source file/image)",
+                    "startLine": 14,
+                    "sectionTitle": "Section or function name",
+                    "verbatimQuote": "Exact quote from the PDF page or source file lines (without L###: prefix)"
+                  }
+        """;
+
+    private const string CodeQuestionFormatRules = """
+
+
+        CODE QUESTION FORMATS (STRICTLY APPLY TO CODE-BASED QUESTIONS while keeping the exact question-type counts above):
+        - Every "Identification" question on code MUST be Output / Trace Prediction: put a self-contained 3-12 line excerpt in "codeSnippet" and ask "What is printed?", "What value is returned?", or "What is the value of X after execution?" with "correctAnswer" = the exact output/value (and equivalent formats in "acceptedAliases").
+        - Every "FillInTheBlank" question on code MUST be Code Completion: place "_____" in "codeSnippet" (and mention _____ in "prompt") for a single critical operator, condition, keyword, or expression; "correctAnswer" is the exact missing token/expression.
+        - Every "Ordering" question on code MUST be Execution / Control-Flow Ordering: "options" contains 3-5 runtime trace steps or statements of an algorithm from the source in exact execution order.
+        - Every "Situational" question on code MUST be Bug / Edge-Case Spotting or Tradeoff / Complexity Analysis: provide a snippet with a realistic bug/edge case (off-by-one, null/empty, overflow, wrong operator, memory/resource issue) or compare two approaches grounded in the source.
+        - For "MultipleChoice" and "TrueFalse" on code: test behavior, side-effects, invariants, or debugging rather than trivial syntax recall.
+        - Every "codeSnippet" MUST be a self-contained excerpt derived from the provided source code, never invented unrelated code.
+        """;
 
     private static string BuildModalitySystemRules(
         ContentModalityProfile modality,

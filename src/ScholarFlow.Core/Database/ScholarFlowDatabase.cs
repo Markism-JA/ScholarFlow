@@ -191,6 +191,8 @@ public static partial class ScholarFlowDatabase
                 "ALTER TABLE quiz_questions ADD COLUMN diagram_text TEXT NULL;",
                 "ALTER TABLE quiz_questions ADD COLUMN evidence_anchors_json TEXT NOT NULL DEFAULT '[]';",
                 "ALTER TABLE quiz_questions ADD COLUMN image_path TEXT NULL;",
+                "ALTER TABLE quiz_questions ADD COLUMN source_start_line INTEGER NULL;",
+                "ALTER TABLE quiz_questions ADD COLUMN source_end_line INTEGER NULL;",
             }
         )
         {
