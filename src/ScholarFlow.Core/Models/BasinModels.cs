@@ -74,6 +74,14 @@ public sealed class BasinCourseEntry
         && Origin != CourseOrigin.KnowledgeCollection
         && !string.IsNullOrWhiteSpace(CourseId)
         && !CourseId.StartsWith("local-", StringComparison.OrdinalIgnoreCase);
+
+    public string EffectiveAlias =>
+        !string.IsNullOrWhiteSpace(Alias)
+            ? Alias
+            : CourseAliasGenerator.Generate(!string.IsNullOrWhiteSpace(Title) ? Title : FolderName);
+
+    public string DisplayTitle =>
+        !string.IsNullOrWhiteSpace(Title) ? Title : FolderName.Replace('_', ' ');
 }
 
 public static class CourseAliasGenerator

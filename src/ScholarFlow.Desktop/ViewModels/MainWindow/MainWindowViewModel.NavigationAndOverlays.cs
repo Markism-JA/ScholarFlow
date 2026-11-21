@@ -161,6 +161,61 @@ public sealed partial class MainWindowViewModel
         NotifyStateChanged();
     }
 
+    public void OpenKnowledgeSearch(string? initialQuery = null)
+    {
+        ActiveMode = WorkspaceTabMode.KnowledgeSearch;
+        IsSearchModalOpen = false;
+        if (!string.IsNullOrWhiteSpace(initialQuery))
+            KnowledgeSearch.ApplyExampleQuery(initialQuery);
+        else if (!KnowledgeSearch.HasCompletedInitialIndex && !KnowledgeSearch.IsIndexing)
+            KnowledgeSearch.TriggerBackgroundIndex();
+        NotifyStateChanged();
+        Views.KnowledgeSearchViewBuilder.FocusQueryBox();
+    }
+
+    public void OpenPdfFromKnowledgeSearch(
+        string pdfFullPath,
+        int pageNumber,
+        IReadOnlyList<Core.Quiz.NormalizedHighlightRect> highlights,
+        string? verbatimQuote,
+        string? sourceHeading
+    )
+    {
+        PdfReturnMode = WorkspaceTabMode.KnowledgeSearch;
+        PdfReturnTask = null;
+        PdfOpenedFromQuiz = false;
+        if (
+            !string.Equals(
+                PdfReader.CurrentFilePath,
+                pdfFullPath,
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
+            PdfReader.LoadPdf(pdfFullPath);
+        PdfReader.SetEvidenceHighlight(pageNumber, highlights, verbatimQuote, sourceHeading);
+        ActiveMode = WorkspaceTabMode.PdfReader;
+        NotifyStateChanged();
+    }
+
+    public void OpenQuizQuestionInOrganizerFromSearch(
+        Core.Quiz.QuizSessionRecord quiz,
+        string questionId
+    )
+    {
+        ActiveMode = WorkspaceTabMode.QuizStudio;
+        QuizStudio.OpenQuizInOrganizer(quiz);
+        if (!string.IsNullOrWhiteSpace(questionId))
+        {
+            QuizStudio.SelectOrganizerQuestion(
+                questionId,
+                notify: false,
+                scrollCardIntoView: true,
+                scrollTocIntoView: true
+            );
+        }
+        NotifyStateChanged();
+    }
+
     public void OpenPdfInReader(string pdfFullPath, TaskItem? associatedTask = null)
     {
         if (ActiveMode != WorkspaceTabMode.PdfReader)
@@ -179,6 +234,12 @@ public sealed partial class MainWindowViewModel
             PdfOpenedFromQuiz = false;
             ActiveMode = WorkspaceTabMode.QuizStudio;
             NotifyStateChanged();
+            return;
+        }
+
+        if (PdfReturnMode == WorkspaceTabMode.KnowledgeSearch)
+        {
+            OpenKnowledgeSearch();
             return;
         }
 

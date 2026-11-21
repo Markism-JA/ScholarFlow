@@ -727,6 +727,7 @@ public sealed partial class QuizStudioViewModel
                     || qq.LastAnsweredCorrect == false
                 ),
         ];
+        _mainVm.KnowledgeSearch.TriggerBackgroundIndex(forceReindex: false);
     }
 
     private QuizGenerationRequest BuildCurrentRequest()

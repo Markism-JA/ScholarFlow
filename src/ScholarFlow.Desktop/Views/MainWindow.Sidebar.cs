@@ -148,6 +148,18 @@ public sealed partial class MainWindow
             )
         );
 
+        viewsStack.Children.Add(
+            BuildNavButton(
+                "Knowledge Hub",
+                MaterialIconKind.TextBoxSearchOutline,
+                0,
+                isActive: _vm.ActiveMode == WorkspaceTabMode.KnowledgeSearch,
+                () => _vm.OpenKnowledgeSearch(),
+                compact: compact,
+                subtitleTag: "Ctrl+Shift+F"
+            )
+        );
+
         int inboxCount =
             _vm.AllTasks.Count(t => !t.IsCompleted && t.IsInbox) + _vm.UnregisteredFiles.Count;
         int todayCount = _vm.AllTasks.Count(t =>

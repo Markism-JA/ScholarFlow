@@ -144,6 +144,7 @@ public sealed partial class MainWindow : Window
                 WorkspaceTabMode.PdfReader
                 or WorkspaceTabMode.SourceViewer
                 or WorkspaceTabMode.QuizStudio
+                or WorkspaceTabMode.KnowledgeSearch
             )
         && (Bounds.Width <= 0 || Bounds.Width >= 1060);
     private bool ShouldFloatInspectorOverlay =>
@@ -153,6 +154,7 @@ public sealed partial class MainWindow : Window
                 WorkspaceTabMode.PdfReader
                 or WorkspaceTabMode.SourceViewer
                 or WorkspaceTabMode.QuizStudio
+                or WorkspaceTabMode.KnowledgeSearch
             )
         && Bounds.Width is > 0 and < 1060;
 
@@ -167,6 +169,7 @@ public sealed partial class MainWindow : Window
                         WorkspaceTabMode.PdfReader
                         or WorkspaceTabMode.SourceViewer
                         or WorkspaceTabMode.QuizStudio
+                        or WorkspaceTabMode.KnowledgeSearch
                     )
                 && (width <= 0 || width >= 1060)
             )
@@ -289,6 +292,7 @@ public sealed partial class MainWindow : Window
             WorkspaceTabMode.PdfReader => PdfReaderViewBuilder.Build(_vm),
             WorkspaceTabMode.SourceViewer => SourceViewerViewBuilder.Build(_vm),
             WorkspaceTabMode.QuizStudio => QuizStudioViewBuilder.Build(_vm),
+            WorkspaceTabMode.KnowledgeSearch => KnowledgeSearchViewBuilder.Build(_vm),
             WorkspaceTabMode.CourseWorkspace when _vm.ActiveCourse is not null =>
                 CourseWorkspaceViewBuilder.Build(_vm, _vm.ActiveCourse, BuildTaskListView),
             _ => BuildTaskListView(_vm),

@@ -144,6 +144,12 @@ public static class ShortcutDispatcher
                     return;
                 }
             }
+            if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            {
+                e.Handled = true;
+                vm.OpenKnowledgeSearch();
+                return;
+            }
             if (e.Key is Key.K or Key.F)
             {
                 e.Handled = true;
@@ -245,6 +251,8 @@ public static class ShortcutDispatcher
                 e.Handled = true;
                 if (vm.IsSearchModalOpen)
                     vm.MoveSearchSelection(+1);
+                else if (vm.ActiveMode == WorkspaceTabMode.KnowledgeSearch)
+                    vm.KnowledgeSearch.MoveSelection(+1);
                 else if (vm.ActiveMode == WorkspaceTabMode.PdfReader)
                     vm.PdfReader.NextPage();
                 else if (isOrganizerActive)
@@ -258,6 +266,8 @@ public static class ShortcutDispatcher
                 e.Handled = true;
                 if (vm.IsSearchModalOpen)
                     vm.MoveSearchSelection(-1);
+                else if (vm.ActiveMode == WorkspaceTabMode.KnowledgeSearch)
+                    vm.KnowledgeSearch.MoveSelection(-1);
                 else if (vm.ActiveMode == WorkspaceTabMode.PdfReader)
                     vm.PdfReader.PreviousPage();
                 else if (isOrganizerActive)

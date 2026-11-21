@@ -66,6 +66,28 @@ public sealed partial class QuizStudioViewModel
 
     public void ApplyCodeAwareMix() => SetPreset(QuizPresetMode.CodeLab);
 
+    public void ScopeBuilderToStudyFile(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+            return;
+
+        ActiveSubTab = QuizStudioSubTab.Builder;
+        ActiveSession = null;
+        ShowStudyFiles = true;
+        bool hadCode = HasCodeFileSelected;
+        _selectedFileSourcePaths.Clear();
+        _selectedFileSourcePaths.Add(filePath);
+        IncludePdfWithFiles = false;
+        SyncCodeAwareMixAfterFileChange(hadCode);
+
+        RebuildStudyFilesForCourse(force: true);
+        GeneratedPromptPreview = string.Empty;
+        StatusMessage = $"Scoped Build to '{Path.GetFileName(filePath)}'. Configure options and generate.";
+        IsStatusError = false;
+        RefreshLivePromptPreviewIfActive();
+        _mainVm.RequestUiRefresh();
+    }
+
     public void ClearFileSources()
     {
         if (_selectedFileSourcePaths.Count == 0)

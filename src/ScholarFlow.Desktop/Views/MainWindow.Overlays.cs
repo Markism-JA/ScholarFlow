@@ -515,6 +515,7 @@ public sealed partial class MainWindow
         [
             ("Q", "Open floating Quick-Add Task modal"),
             ("/ or Ctrl+K", "Open Quick-Search & Navigation palette"),
+            ("Ctrl+Shift+F", "Open Knowledge Hub FTS5 Search (#course @pdf @code @quiz @weak)"),
             ("Esc", "Close active modal or Task Inspector drawer"),
             ("j / k or Up / Down", "Move task selection or turn PDF pages"),
             ("g / Shift+G", "Jump to top / bottom item"),

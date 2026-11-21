@@ -17,6 +17,7 @@ public enum WorkspaceTabMode
     PdfReader,
     SourceViewer,
     QuizStudio,
+    KnowledgeSearch,
 }
 
 public enum TaskGroupingMode
@@ -157,6 +158,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
     public CalendarViewModel Calendar { get; } = new();
     public PdfReaderViewModel PdfReader { get; } = new();
     public QuizStudioViewModel QuizStudio { get; }
+    public KnowledgeSearchViewModel KnowledgeSearch { get; }
 
     public event EventHandler? StateChanged;
     public event EventHandler<UiChangeKind>? UiChanged;
@@ -177,6 +179,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         SyncCoordinator.StateChanged += (_, _) =>
             Dispatcher.UIThread.Post(() => NotifyStateChanged(UiChangeKind.StatusOnly));
         QuizStudio = new QuizStudioViewModel(this);
+        KnowledgeSearch = new KnowledgeSearchViewModel(this);
         SourceViewer = new SourceViewerViewModel(() =>
             Dispatcher.UIThread.Post(() => NotifyStateChanged(UiChangeKind.SearchOrTaskList))
         );
@@ -368,6 +371,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         PdfReader.Reset();
         SourceViewer.Reset();
         QuizStudio.ResetForBasinSwitch();
+        KnowledgeSearch.ResetForBasinSwitch();
         ResetCourseMaterialsUiState();
     }
 
@@ -396,6 +400,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
             );
             Calendar.UpdateTasks([.. EnumerateAllTaskNodes(AllTasks)]);
             await QuizStudio.RefreshAsync();
+            KnowledgeSearch.TriggerBackgroundIndex(forceReindex: false);
 
             RecomputeVisibleTasks();
         }
@@ -429,6 +434,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         SyncCoordinator.NotificationEmitted -= OnCoordinatorNotification;
         PdfReader.Dispose();
         SourceViewer.Dispose();
+        KnowledgeSearch.Dispose();
         await SyncCoordinator.DisposeAsync();
     }
 }

@@ -173,6 +173,44 @@ public static partial class ScholarFlowDatabase
                 quality_rating INTEGER NOT NULL,
                 answered_at_utc TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS knowledge_files (
+                file_path TEXT PRIMARY KEY,
+                course_folder TEXT NOT NULL DEFAULT '',
+                course_alias TEXT NOT NULL DEFAULT '',
+                source_kind TEXT NOT NULL,
+                mtime_ticks INTEGER NOT NULL,
+                size_bytes INTEGER NOT NULL,
+                indexed_at_utc TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_knowledge_files_course ON knowledge_files(course_folder);
+
+            CREATE TABLE IF NOT EXISTS knowledge_chunk_map (
+                chunk_rowid INTEGER PRIMARY KEY,
+                file_path TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_knowledge_chunk_map_path ON knowledge_chunk_map(file_path);
+
+            CREATE VIRTUAL TABLE IF NOT EXISTS knowledge_chunks_fts USING fts5(
+                chunk_id UNINDEXED,
+                file_path UNINDEXED,
+                course_folder,
+                course_alias,
+                source_kind,
+                title,
+                section_title,
+                location_label UNINDEXED,
+                start_line UNINDEXED,
+                end_line UNINDEXED,
+                page_number UNINDEXED,
+                quiz_id UNINDEXED,
+                question_id UNINDEXED,
+                tags,
+                content,
+                tokenize='porter unicode61'
+            );
             """;
 
         await using var cmd = conn.CreateCommand();
