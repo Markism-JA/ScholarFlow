@@ -285,6 +285,15 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
+        if (
+            ScholarFlow.Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(fullPath)
+            && File.Exists(fullPath)
+        )
+        {
+            OpenFileInSourceViewer(fullPath, sectionTitle: task.Title);
+            return;
+        }
+
         ExternalFileLauncher.OpenLocalFile(fullPath);
     }
 

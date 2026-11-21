@@ -4,7 +4,9 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Material.Icons;
+using ScholarFlow.Core.Knowledge;
 using ScholarFlow.Core.Models;
 using ScholarFlow.Core.Tasks;
 using ScholarFlow.Desktop.Theme;
@@ -948,14 +950,25 @@ public sealed partial class MainWindow
         };
         rowBorder.PointerPressed += (_, e) =>
         {
-            if (e.GetCurrentPoint(rowBorder).Properties.IsLeftButtonPressed)
-            {
-                vm.SelectTask(task, openInspector: true);
-            }
+            if (!e.GetCurrentPoint(rowBorder).Properties.IsLeftButtonPressed)
+                return;
+            if (IsClickInsideChildButton(e.Source as Visual, rowBorder))
+                return;
+            vm.SelectTask(task, openInspector: true);
         };
 
         _taskRowsById[task.Id] = (rowBorder, titleBlock, hoverActions);
         return rowBorder;
+    }
+
+    private static bool IsClickInsideChildButton(Visual? source, Visual boundary)
+    {
+        for (var cur = source; cur is not null && !ReferenceEquals(cur, boundary); cur = cur.GetVisualParent())
+        {
+            if (cur is Button)
+                return true;
+        }
+        return false;
     }
 
     // =========================================================================
