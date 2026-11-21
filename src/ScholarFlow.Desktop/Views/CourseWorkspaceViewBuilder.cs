@@ -1382,6 +1382,19 @@ public static class CourseWorkspaceViewBuilder
                     )
                 );
             }
+            else if (
+                !isBrokenLink
+                && ScholarFlow.Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(file)
+            )
+            {
+                actions.Children.Add(
+                    UiBuilder.GhostButton(
+                        "View",
+                        MaterialIconKind.EyeOutline,
+                        () => vm.OpenFileInSourceViewer(file)
+                    )
+                );
+            }
 
             if (!isCompiledOutput)
             {

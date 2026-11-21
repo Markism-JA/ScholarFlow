@@ -263,18 +263,20 @@ public static partial class QuizRichContentRenderer
         );
         topBar.Children.Add(leftBadge);
 
-        var codeBox = new TextBox
+        var codeBlock = new SelectableTextBlock
         {
-            Text = cleanCode,
-            IsReadOnly = true,
-            AcceptsReturn = true,
             FontFamily = MonospaceFont,
             FontSize = 12.5,
-            Background = ThemeService.Brush(ThemeService.BgBase),
-            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-            BorderThickness = new Thickness(0),
-            Padding = new Thickness(6, 4),
+            Padding = new Thickness(4, 2),
             TextWrapping = TextWrapping.NoWrap,
+        };
+        SyntaxHighlighter.PopulateInlines(codeBlock, cleanCode, language);
+
+        var codeScroller = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            Content = codeBlock,
         };
 
         var copyBtn = UiBuilder.GhostButton(
@@ -282,7 +284,7 @@ public static partial class QuizRichContentRenderer
             MaterialIconKind.ContentCopy,
             async () =>
             {
-                var top = TopLevel.GetTopLevel(codeBox);
+                var top = TopLevel.GetTopLevel(codeBlock);
                 if (top?.Clipboard is not null)
                     await top.Clipboard.SetTextAsync(cleanCode);
             }
@@ -299,7 +301,7 @@ public static partial class QuizRichContentRenderer
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(8, 6),
-                Child = codeBox,
+                Child = codeScroller,
             }
         );
 

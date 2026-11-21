@@ -15,6 +15,7 @@ public enum WorkspaceTabMode
     Calendar,
     CourseWorkspace,
     PdfReader,
+    SourceViewer,
     QuizStudio,
 }
 
@@ -176,6 +177,40 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         SyncCoordinator.StateChanged += (_, _) =>
             Dispatcher.UIThread.Post(() => NotifyStateChanged(UiChangeKind.StatusOnly));
         QuizStudio = new QuizStudioViewModel(this);
+        SourceViewer = new SourceViewerViewModel(() =>
+            Dispatcher.UIThread.Post(() => NotifyStateChanged(UiChangeKind.SearchOrTaskList))
+        );
+    }
+
+    public SourceViewerViewModel SourceViewer { get; }
+    private WorkspaceTabMode _sourceViewerReturnMode = WorkspaceTabMode.CourseWorkspace;
+
+    public void OpenFileInSourceViewer(
+        string filePath,
+        int? highlightStartLine = null,
+        int? highlightEndLine = null,
+        string? sectionTitle = null
+    )
+    {
+        if (string.IsNullOrWhiteSpace(filePath))
+            return;
+
+        if (ActiveMode != WorkspaceTabMode.SourceViewer)
+            _sourceViewerReturnMode = ActiveMode;
+
+        ActiveMode = WorkspaceTabMode.SourceViewer;
+        IsSearchModalOpen = false;
+        _ = SourceViewer.LoadFileAsync(filePath, highlightStartLine, highlightEndLine, sectionTitle);
+        NotifyStateChanged();
+    }
+
+    public void ReturnFromSourceViewer()
+    {
+        ActiveMode =
+            _sourceViewerReturnMode == WorkspaceTabMode.SourceViewer
+                ? WorkspaceTabMode.TaskList
+                : _sourceViewerReturnMode;
+        NotifyStateChanged();
     }
 
     public async Task InitializeAsync()
@@ -322,6 +357,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         IsNotificationDrawerOpen = false;
 
         PdfReader.Reset();
+        SourceViewer.Reset();
         QuizStudio.ResetForBasinSwitch();
         ResetCourseMaterialsUiState();
     }
@@ -383,6 +419,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         _watcher?.Dispose();
         SyncCoordinator.NotificationEmitted -= OnCoordinatorNotification;
         PdfReader.Dispose();
+        SourceViewer.Dispose();
         await SyncCoordinator.DisposeAsync();
     }
 }

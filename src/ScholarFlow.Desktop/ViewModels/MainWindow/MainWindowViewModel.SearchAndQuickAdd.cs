@@ -141,6 +141,12 @@ public sealed partial class MainWindowViewModel
             case SearchResultKind.CourseFile when !string.IsNullOrWhiteSpace(item.PdfPath):
                 if (item.PdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                     OpenPdfInReader(item.PdfPath);
+                else if (
+                    ScholarFlow.Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(
+                        item.PdfPath
+                    )
+                )
+                    OpenFileInSourceViewer(item.PdfPath);
                 else
                     ExternalFileLauncher.OpenLocalFile(item.PdfPath);
                 break;

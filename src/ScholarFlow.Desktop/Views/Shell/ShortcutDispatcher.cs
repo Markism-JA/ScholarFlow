@@ -64,6 +64,12 @@ public static class ShortcutDispatcher
                 vm.ReturnFromPdfReader();
                 return;
             }
+            if (vm.ActiveMode == WorkspaceTabMode.SourceViewer)
+            {
+                e.Handled = true;
+                vm.ReturnFromSourceViewer();
+                return;
+            }
             if (vm.CloseTopOverlayOrDrawer())
             {
                 e.Handled = true;
@@ -83,6 +89,12 @@ public static class ShortcutDispatcher
                     vm.PdfReader.ZoomIn();
                     return;
                 }
+                if (vm.ActiveMode == WorkspaceTabMode.SourceViewer)
+                {
+                    e.Handled = true;
+                    vm.SourceViewer.ZoomIn();
+                    return;
+                }
                 if (vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen)
                 {
                     e.Handled = true;
@@ -98,6 +110,12 @@ public static class ShortcutDispatcher
                     vm.PdfReader.ZoomOut();
                     return;
                 }
+                if (vm.ActiveMode == WorkspaceTabMode.SourceViewer)
+                {
+                    e.Handled = true;
+                    vm.SourceViewer.ZoomOut();
+                    return;
+                }
                 if (vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen)
                 {
                     e.Handled = true;
@@ -111,6 +129,12 @@ public static class ShortcutDispatcher
                 {
                     e.Handled = true;
                     vm.PdfReader.ToggleFitToWidth();
+                    return;
+                }
+                if (vm.ActiveMode == WorkspaceTabMode.SourceViewer)
+                {
+                    e.Handled = true;
+                    vm.SourceViewer.ToggleFitToWindow();
                     return;
                 }
                 if (vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen)

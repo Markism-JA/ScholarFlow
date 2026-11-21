@@ -139,11 +139,21 @@ public sealed partial class MainWindow : Window
         _vm.IsSidebarCollapsed || Bounds.Width is > 0 and < 860;
     private bool ShouldDockInspectorInline =>
         _vm.IsInspectorOpen
-        && _vm.ActiveMode is not (WorkspaceTabMode.PdfReader or WorkspaceTabMode.QuizStudio)
+        && _vm.ActiveMode
+            is not (
+                WorkspaceTabMode.PdfReader
+                or WorkspaceTabMode.SourceViewer
+                or WorkspaceTabMode.QuizStudio
+            )
         && (Bounds.Width <= 0 || Bounds.Width >= 1060);
     private bool ShouldFloatInspectorOverlay =>
         _vm.IsInspectorOpen
-        && _vm.ActiveMode is not (WorkspaceTabMode.PdfReader or WorkspaceTabMode.QuizStudio)
+        && _vm.ActiveMode
+            is not (
+                WorkspaceTabMode.PdfReader
+                or WorkspaceTabMode.SourceViewer
+                or WorkspaceTabMode.QuizStudio
+            )
         && Bounds.Width is > 0 and < 1060;
 
     private void UpdateResponsiveShellColumns(double width)
@@ -152,7 +162,12 @@ public sealed partial class MainWindow : Window
         int inspW =
             (
                 _vm.IsInspectorOpen
-                && _vm.ActiveMode is not (WorkspaceTabMode.PdfReader or WorkspaceTabMode.QuizStudio)
+                && _vm.ActiveMode
+                    is not (
+                        WorkspaceTabMode.PdfReader
+                        or WorkspaceTabMode.SourceViewer
+                        or WorkspaceTabMode.QuizStudio
+                    )
                 && (width <= 0 || width >= 1060)
             )
                 ? 360
@@ -272,6 +287,7 @@ public sealed partial class MainWindow : Window
         {
             WorkspaceTabMode.Calendar => CalendarViewBuilder.Build(_vm),
             WorkspaceTabMode.PdfReader => PdfReaderViewBuilder.Build(_vm),
+            WorkspaceTabMode.SourceViewer => SourceViewerViewBuilder.Build(_vm),
             WorkspaceTabMode.QuizStudio => QuizStudioViewBuilder.Build(_vm),
             WorkspaceTabMode.CourseWorkspace when _vm.ActiveCourse is not null =>
                 CourseWorkspaceViewBuilder.Build(_vm, _vm.ActiveCourse, BuildTaskListView),
