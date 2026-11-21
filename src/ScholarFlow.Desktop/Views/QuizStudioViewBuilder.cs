@@ -16,8 +16,6 @@ namespace ScholarFlow.Desktop.Views;
 /// </summary>
 public static partial class QuizStudioViewBuilder
 {
-    private static readonly string[] AcademicTerms = ["Prelims", "Midterms", "Prefinals", "Finals"];
-
     public static Control Build(MainWindowViewModel vm)
     {
         var studio = vm.QuizStudio;
@@ -46,33 +44,39 @@ public static partial class QuizStudioViewBuilder
         var root = new Grid
         {
             RowDefinitions = RowDefinitions.Parse("Auto,*"),
-            Margin = new Thickness(20, 14, 20, 14),
+            Margin = new Thickness(18, 12, 18, 12),
+            ClipToBounds = true,
         };
 
-        // Top Fixed Header & Subject / Sub-Tab Strip
-        var topStack = new StackPanel { Spacing = 10, Margin = new Thickness(0, 0, 0, 12) };
+        // Top Fixed Header & Subject / Sub-Tab Strip (fully responsive, wraps cleanly on narrow windows)
+        var topStack = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 10) };
 
-        var titleRow = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
-        var titleLeft = new StackPanel { Spacing = 2 };
-        var titleLine = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        var titleLeft = new StackPanel { Spacing = 3 };
+        var titleLine = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         titleLine.Children.Add(
             new TextBlock
             {
                 Text = "Test & Active Recall",
-                FontSize = 20,
+                FontSize = 19,
                 FontWeight = FontWeight.Bold,
                 Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 8, 2),
             }
         );
         if (studio.SelectedCourse is not null)
         {
-            titleLine.Children.Add(
-                UiBuilder.Pill(
-                    $"#{studio.SelectedCourse.Alias} · {studio.SelectedCourse.Title}",
-                    ThemeService.Brush(ThemeService.AccentPrimary),
-                    ThemeService.Brush(ThemeService.AccentSoftBg)
-                )
+            var coursePill = UiBuilder.Pill(
+                $"#{studio.SelectedCourse.EffectiveAlias} · {studio.SelectedCourse.DisplayTitle}",
+                ThemeService.Brush(ThemeService.AccentPrimary),
+                ThemeService.Brush(ThemeService.AccentSoftBg)
             );
+            coursePill.Margin = new Thickness(0, 0, 6, 2);
+            titleLine.Children.Add(coursePill);
         }
         titleLeft.Children.Add(titleLine);
 
@@ -100,45 +104,36 @@ public static partial class QuizStudioViewBuilder
                 Text = studio.ActiveSubTab == QuizStudioSubTab.Builder
                     ? builderScopeSubtitle
                     : $"{courseQuizCount} saved quiz(zes) in subject  ·  {studio.AllDueReviewQuestions.Count} due card(s) across basin",
-                FontSize = 12,
+                FontSize = 11.5,
                 Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
-        titleRow.Children.Add(titleLeft);
 
-        // Right Utility Actions (Due Deck, AI Settings)
-        var utilityRow = new StackPanel
+        var utilityWrap = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center,
         };
 
         int dueCount = studio.AllDueReviewQuestions.Count;
-        utilityRow.Children.Add(
-            UiBuilder.GhostButton(
-                dueCount > 0 ? $"Practice Due ({dueCount})" : "Practice Deck",
-                MaterialIconKind.CardsOutline,
-                () => studio.StartDueSpacedRepetitionDeck(studio.SelectedCourse?.FolderName),
-                isActive: dueCount > 0
-            )
+        var dueBtn = UiBuilder.GhostButton(
+            dueCount > 0 ? $"Practice Due ({dueCount})" : "Practice Deck",
+            MaterialIconKind.CardsOutline,
+            () => studio.StartDueSpacedRepetitionDeck(studio.SelectedCourse?.FolderName),
+            isActive: dueCount > 0
         );
+        dueBtn.Margin = new Thickness(0, 0, 6, 4);
+        utilityWrap.Children.Add(dueBtn);
 
-        utilityRow.Children.Add(
-            UiBuilder.GhostButton(
-                "AI Engine",
-                MaterialIconKind.CogOutline,
-                studio.ToggleAiSettings,
-                isActive: studio.IsAiSettingsOpen
-            )
+        var aiEngineBtn = UiBuilder.GhostButton(
+            "AI Engine",
+            MaterialIconKind.CogOutline,
+            studio.ToggleAiSettings,
+            isActive: studio.IsAiSettingsOpen
         );
-
-        Grid.SetColumn(utilityRow, 1);
-        titleRow.Children.Add(utilityRow);
-        topStack.Children.Add(titleRow);
-
-        // Subject Switcher + Sub-Tab Switcher Bar
-        var navBarGrid = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        aiEngineBtn.Margin = new Thickness(0, 0, 0, 4);
+        utilityWrap.Children.Add(aiEngineBtn);
 
         var subjectWrap = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (var c in vm.Courses.Where(x => !x.IsArchived))
@@ -146,7 +141,7 @@ public static partial class QuizStudioViewBuilder
             var captured = c;
             bool isSelected = studio.SelectedCourse?.FolderName == c.FolderName;
             var btn = UiBuilder.GhostButton(
-                $"#{c.Alias}",
+                $"#{c.EffectiveAlias}",
                 isSelected ? MaterialIconKind.Check : null,
                 () => studio.SelectCourseScope(captured),
                 isActive: isSelected
@@ -154,83 +149,144 @@ public static partial class QuizStudioViewBuilder
             btn.Margin = new Thickness(0, 0, 5, 4);
             subjectWrap.Children.Add(btn);
         }
-        navBarGrid.Children.Add(subjectWrap);
 
-        var subTabRow = new StackPanel
+        var subTabWrap = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        subTabRow.Children.Add(
-            UiBuilder.GhostButton(
-                "Build",
-                MaterialIconKind.CreationOutline,
-                () => studio.SetSubTab(QuizStudioSubTab.Builder),
-                isActive: studio.ActiveSubTab == QuizStudioSubTab.Builder
-            )
+        var buildTabBtn = UiBuilder.GhostButton(
+            "Build",
+            MaterialIconKind.CreationOutline,
+            () => studio.SetSubTab(QuizStudioSubTab.Builder),
+            isActive: studio.ActiveSubTab == QuizStudioSubTab.Builder
         );
+        buildTabBtn.Margin = new Thickness(0, 0, 5, 4);
+        subTabWrap.Children.Add(buildTabBtn);
 
-        subTabRow.Children.Add(
-            UiBuilder.GhostButton(
-                $"Quiz Catalog ({studio.SavedQuizzes.Count})",
-                MaterialIconKind.LibraryShelves,
-                () => studio.SetSubTab(QuizStudioSubTab.Catalog),
-                isActive: studio.ActiveSubTab == QuizStudioSubTab.Catalog
-            )
+        var catalogTabBtn = UiBuilder.GhostButton(
+            $"Quiz Catalog ({studio.SavedQuizzes.Count})",
+            MaterialIconKind.LibraryShelves,
+            () => studio.SetSubTab(QuizStudioSubTab.Catalog),
+            isActive: studio.ActiveSubTab == QuizStudioSubTab.Catalog
         );
+        catalogTabBtn.Margin = new Thickness(0, 0, 5, 4);
+        subTabWrap.Children.Add(catalogTabBtn);
 
-        subTabRow.Children.Add(
-            UiBuilder.GhostButton(
-                studio.OrganizerQuiz is not null
-                && (
-                    studio.SelectedCourse is null
-                    || string.Equals(
-                        studio.OrganizerQuiz.CourseFolder,
-                        studio.SelectedCourse.FolderName,
-                        StringComparison.OrdinalIgnoreCase
-                    )
+        var organizerTabBtn = UiBuilder.GhostButton(
+            studio.OrganizerQuiz is not null
+            && (
+                studio.SelectedCourse is null
+                || string.Equals(
+                    studio.OrganizerQuiz.CourseFolder,
+                    studio.SelectedCourse.FolderName,
+                    StringComparison.OrdinalIgnoreCase
                 )
-                    ? $"Deck Organizer ({studio.OrganizerQuiz.Questions.Count})"
-                    : "Deck Organizer",
-                MaterialIconKind.TuneVariant,
-                () =>
-                {
-                    bool matchesCourse =
-                        studio.OrganizerQuiz is not null
-                        && (
-                            studio.SelectedCourse is null
-                            || string.Equals(
-                                studio.OrganizerQuiz.CourseFolder,
-                                studio.SelectedCourse.FolderName,
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        );
-                    if (!matchesCourse)
-                    {
-                        var courseQuiz = studio.SavedQuizzes.FirstOrDefault(q =>
-                            studio.SelectedCourse is null
-                            || string.Equals(
-                                q.CourseFolder,
-                                studio.SelectedCourse.FolderName,
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        );
-                        if (courseQuiz is not null)
-                        {
-                            studio.OpenQuizInOrganizer(courseQuiz);
-                            return;
-                        }
-                    }
-                    studio.SetSubTab(QuizStudioSubTab.Organizer);
-                },
-                isActive: studio.ActiveSubTab == QuizStudioSubTab.Organizer
             )
+                ? $"Deck Organizer ({studio.OrganizerQuiz.Questions.Count})"
+                : "Deck Organizer",
+            MaterialIconKind.TuneVariant,
+            () =>
+            {
+                bool matchesCourse =
+                    studio.OrganizerQuiz is not null
+                    && (
+                        studio.SelectedCourse is null
+                        || string.Equals(
+                            studio.OrganizerQuiz.CourseFolder,
+                            studio.SelectedCourse.FolderName,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    );
+                if (!matchesCourse)
+                {
+                    var courseQuiz = studio.SavedQuizzes.FirstOrDefault(q =>
+                        studio.SelectedCourse is null
+                        || string.Equals(
+                            q.CourseFolder,
+                            studio.SelectedCourse.FolderName,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    );
+                    if (courseQuiz is not null)
+                    {
+                        studio.OpenQuizInOrganizer(courseQuiz);
+                        return;
+                    }
+                }
+                studio.SetSubTab(QuizStudioSubTab.Organizer);
+            },
+            isActive: studio.ActiveSubTab == QuizStudioSubTab.Organizer
         );
+        organizerTabBtn.Margin = new Thickness(0, 0, 0, 4);
+        subTabWrap.Children.Add(organizerTabBtn);
 
-        Grid.SetColumn(subTabRow, 1);
-        navBarGrid.Children.Add(subTabRow);
-        topStack.Children.Add(navBarGrid);
+        // Responsive header host: switches cleanly between 2-column (>= 820px) and stacked (< 820px)
+        var responsiveHeaderHost = new Border();
+        bool? lastCompactHeader = null;
+
+        void ApplyHeaderLayout(bool compact)
+        {
+            if (lastCompactHeader == compact && responsiveHeaderHost.Child is not null)
+                return;
+            lastCompactHeader = compact;
+
+            static void Detach(Control c)
+            {
+                if (c.Parent is Panel p)
+                    p.Children.Remove(c);
+                else if (c.Parent is Decorator d && ReferenceEquals(d.Child, c))
+                    d.Child = null;
+            }
+
+            Detach(titleLeft);
+            Detach(utilityWrap);
+            Detach(subjectWrap);
+            Detach(subTabWrap);
+
+            var hdrStack = new StackPanel { Spacing = 8 };
+            if (compact)
+            {
+                hdrStack.Children.Add(titleLeft);
+                hdrStack.Children.Add(utilityWrap);
+                hdrStack.Children.Add(subTabWrap);
+                if (subjectWrap.Children.Count > 0)
+                    hdrStack.Children.Add(subjectWrap);
+            }
+            else
+            {
+                var row1 = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+                    ColumnSpacing = 12,
+                };
+                row1.Children.Add(titleLeft);
+                Grid.SetColumn(utilityWrap, 1);
+                row1.Children.Add(utilityWrap);
+                hdrStack.Children.Add(row1);
+
+                var row2 = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+                    ColumnSpacing = 12,
+                };
+                row2.Children.Add(subjectWrap);
+                Grid.SetColumn(subTabWrap, 1);
+                row2.Children.Add(subTabWrap);
+                hdrStack.Children.Add(row2);
+            }
+
+            responsiveHeaderHost.Child = hdrStack;
+        }
+
+        ApplyHeaderLayout(false);
+        root.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width > 0)
+                ApplyHeaderLayout(e.NewSize.Width < 820);
+        };
+
+        topStack.Children.Add(responsiveHeaderHost);
 
         // Status / Feedback Line + Active Indeterminate Progress Indicator
         if (!string.IsNullOrWhiteSpace(studio.StatusMessage) || studio.IsBusy)

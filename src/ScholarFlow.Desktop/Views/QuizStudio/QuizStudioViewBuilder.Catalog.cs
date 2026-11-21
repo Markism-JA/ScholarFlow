@@ -42,178 +42,184 @@ public static partial class QuizStudioViewBuilder
             )
             .ToList();
 
-        var barGrid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto"),
-            ColumnSpacing = 8,
-        };
-        barGrid.Children.Add(
+        // Responsive Catalog Header & Actions (wraps cleanly on any viewport width)
+        var catalogHeaderStack = new StackPanel { Spacing = 6 };
+        catalogHeaderStack.Children.Add(
             new TextBlock
             {
                 Text = studio.CatalogShowAllCourses
-                    ? $"All Subjects Catalog ({filteredQuizzes.Count} saved)"
-                    : $"{studio.SelectedCourse?.Title ?? "Subject"} Catalog ({filteredQuizzes.Count} saved) — Shuffle in isolation, Organize, or Combine 2+ decks",
-                FontSize = 12.5,
+                    ? $"All Subjects Catalog · {filteredQuizzes.Count} saved"
+                    : $"{studio.SelectedCourse?.DisplayTitle ?? "Subject"} Catalog · {filteredQuizzes.Count} saved",
+                FontSize = 13,
                 FontWeight = FontWeight.SemiBold,
-                Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                VerticalAlignment = VerticalAlignment.Center,
+                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
 
+        var actionsWrap = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
         var toggleAllBtn = UiBuilder.GhostButton(
             studio.CatalogShowAllCourses
-                ? "Filter: Active Subject"
-                : $"Show All Subjects ({studio.SavedQuizzes.Count})",
+                ? "Active Subject Only"
+                : $"All Subjects ({studio.SavedQuizzes.Count})",
             MaterialIconKind.FilterVariant,
             studio.ToggleCatalogShowAllCourses,
             isActive: studio.CatalogShowAllCourses
         );
-        Grid.SetColumn(toggleAllBtn, 1);
-        barGrid.Children.Add(toggleAllBtn);
+        toggleAllBtn.Margin = new Thickness(0, 0, 6, 4);
+        actionsWrap.Children.Add(toggleAllBtn);
 
-        var headerActions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        headerActions.Children.Add(
-            UiBuilder.GhostButton(
-                "Interleaved Review",
-                MaterialIconKind.ShuffleVariant,
-                () =>
-                    studio.StartInterleavedReviewSession(
-                        allCourses: studio.CatalogShowAllCourses
-                    )
-            )
+        var interleavedBtn = UiBuilder.GhostButton(
+            "Interleaved Review",
+            MaterialIconKind.ShuffleVariant,
+            () =>
+                studio.StartInterleavedReviewSession(
+                    allCourses: studio.CatalogShowAllCourses
+                )
         );
-        headerActions.Children.Add(
-            UiBuilder.GhostButton(
-                "Import JSON",
-                MaterialIconKind.FileImportOutline,
-                async () =>
-                {
-                    var top = TopLevel.GetTopLevel(barGrid);
-                    if (top?.StorageProvider is null)
-                        return;
-                    var files = await top.StorageProvider.OpenFilePickerAsync(
-                        new Avalonia.Platform.Storage.FilePickerOpenOptions
-                        {
-                            Title =
-                                $"Import Quiz Deck JSON into {studio.SelectedCourse?.Title ?? "Course"}",
-                            AllowMultiple = false,
-                            FileTypeFilter =
-                            [
-                                new Avalonia.Platform.Storage.FilePickerFileType("JSON Files")
-                                {
-                                    Patterns = ["*.json"],
-                                },
-                            ],
-                        }
-                    );
-                    var path = files
-                        .Select(f =>
-                            Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(f)
-                        )
-                        .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p));
-                    if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+        interleavedBtn.Margin = new Thickness(0, 0, 6, 4);
+        actionsWrap.Children.Add(interleavedBtn);
+
+        var importJsonBtn = UiBuilder.GhostButton(
+            "Import JSON",
+            MaterialIconKind.FileImportOutline,
+            async () =>
+            {
+                var top = TopLevel.GetTopLevel(actionsWrap);
+                if (top?.StorageProvider is null)
+                    return;
+                var files = await top.StorageProvider.OpenFilePickerAsync(
+                    new Avalonia.Platform.Storage.FilePickerOpenOptions
                     {
-                        var raw = await File.ReadAllTextAsync(path);
-                        await studio.ImportDeckJsonToSelectedCourseAsync(raw);
+                        Title =
+                            $"Import Quiz Deck JSON into {studio.SelectedCourse?.Title ?? "Course"}",
+                        AllowMultiple = false,
+                        FileTypeFilter =
+                        [
+                            new Avalonia.Platform.Storage.FilePickerFileType("JSON Files")
+                            {
+                                Patterns = ["*.json"],
+                            },
+                        ],
                     }
+                );
+                var path = files
+                    .Select(f =>
+                        Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(f)
+                    )
+                    .FirstOrDefault(p => !string.IsNullOrWhiteSpace(p));
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                {
+                    var raw = await File.ReadAllTextAsync(path);
+                    await studio.ImportDeckJsonToSelectedCourseAsync(raw);
                 }
-            )
+            }
         );
-        headerActions.Children.Add(
-            UiBuilder.PrimaryButton(
-                "New Assessment",
-                MaterialIconKind.Plus,
-                () => studio.SetSubTab(QuizStudioSubTab.Builder)
-            )
-        );
-        Grid.SetColumn(headerActions, 2);
-        barGrid.Children.Add(headerActions);
-        stack.Children.Add(barGrid);
+        importJsonBtn.Margin = new Thickness(0, 0, 6, 4);
+        actionsWrap.Children.Add(importJsonBtn);
 
-        // Term Filter & Isolated Playback Controls Bar
-        var filterAndPlaybackGrid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
-            ColumnSpacing = 8,
-        };
-        var termFilterRow = new WrapPanel { Orientation = Orientation.Horizontal };
-        var allTermBtn = UiBuilder.GhostButton(
-            "All Terms",
-            studio.CatalogTermFilter is null ? MaterialIconKind.Check : null,
-            () => studio.SetCatalogTermFilter(null),
-            isActive: studio.CatalogTermFilter is null
+        var newAssessBtn = UiBuilder.PrimaryButton(
+            "New Assessment",
+            MaterialIconKind.Plus,
+            () => studio.SetSubTab(QuizStudioSubTab.Builder)
         );
-        allTermBtn.Margin = new Thickness(0, 0, 5, 4);
-        termFilterRow.Children.Add(allTermBtn);
+        newAssessBtn.Margin = new Thickness(0, 0, 0, 4);
+        actionsWrap.Children.Add(newAssessBtn);
 
-        foreach (var term in AcademicTerms)
+        catalogHeaderStack.Children.Add(actionsWrap);
+        stack.Children.Add(catalogHeaderStack);
+
+        // Dynamic Term Filter (driven by vm.ActiveTerms + actual deck terms; hidden on Local-Only basins with no terms)
+        var effectiveTerms = new List<string>(vm.ActiveTerms);
+        foreach (
+            var existingTerm in studio
+                .SavedQuizzes.Select(q => q.Term?.Trim())
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Cast<string>()
+        )
         {
-            var capturedTerm = term;
-            bool isTermActive = string.Equals(
-                studio.CatalogTermFilter,
-                term,
-                StringComparison.OrdinalIgnoreCase
-            );
-            var tBtn = UiBuilder.GhostButton(
-                term,
-                isTermActive ? MaterialIconKind.Check : null,
-                () => studio.SetCatalogTermFilter(capturedTerm),
-                isActive: isTermActive
-            );
-            tBtn.Margin = new Thickness(0, 0, 5, 4);
-            termFilterRow.Children.Add(tBtn);
+            if (!effectiveTerms.Contains(existingTerm, StringComparer.OrdinalIgnoreCase))
+                effectiveTerms.Add(existingTerm);
         }
-        filterAndPlaybackGrid.Children.Add(termFilterRow);
 
-        var playbackToggles = new StackPanel
+        var filterAndPlaybackWrap = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 6,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        playbackToggles.Children.Add(
-            UiBuilder.GhostButton(
-                "Shuffle Questions on Start",
-                studio.ShuffleQuestionsOnStart
-                    ? MaterialIconKind.CheckboxMarked
-                    : MaterialIconKind.CheckboxBlankOutline,
-                studio.ToggleShuffleQuestionsOnStart,
-                isActive: studio.ShuffleQuestionsOnStart
-            )
-        );
-        playbackToggles.Children.Add(
-            UiBuilder.GhostButton(
-                "Shuffle MCQ Options",
-                studio.ShuffleOptionsOnStart
-                    ? MaterialIconKind.CheckboxMarked
-                    : MaterialIconKind.CheckboxBlankOutline,
-                studio.ToggleShuffleOptionsOnStart,
-                isActive: studio.ShuffleOptionsOnStart
-            )
-        );
-        Grid.SetColumn(playbackToggles, 1);
-        filterAndPlaybackGrid.Children.Add(playbackToggles);
-        stack.Children.Add(filterAndPlaybackGrid);
 
-        // Multi-Quiz Combiner & Organizer Action Bar
+        if (effectiveTerms.Count > 0)
+        {
+            var allTermBtn = UiBuilder.GhostButton(
+                "All Terms",
+                studio.CatalogTermFilter is null ? MaterialIconKind.Check : null,
+                () => studio.SetCatalogTermFilter(null),
+                isActive: studio.CatalogTermFilter is null
+            );
+            allTermBtn.Margin = new Thickness(0, 0, 5, 4);
+            filterAndPlaybackWrap.Children.Add(allTermBtn);
+
+            foreach (var term in effectiveTerms)
+            {
+                var capturedTerm = term;
+                bool isTermActive = string.Equals(
+                    studio.CatalogTermFilter,
+                    term,
+                    StringComparison.OrdinalIgnoreCase
+                );
+                var tBtn = UiBuilder.GhostButton(
+                    term,
+                    isTermActive ? MaterialIconKind.Check : null,
+                    () => studio.SetCatalogTermFilter(capturedTerm),
+                    isActive: isTermActive
+                );
+                tBtn.Margin = new Thickness(0, 0, 5, 4);
+                filterAndPlaybackWrap.Children.Add(tBtn);
+            }
+        }
+
+        var shuffleQBtn = UiBuilder.GhostButton(
+            "Shuffle Questions",
+            studio.ShuffleQuestionsOnStart
+                ? MaterialIconKind.CheckboxMarked
+                : MaterialIconKind.CheckboxBlankOutline,
+            studio.ToggleShuffleQuestionsOnStart,
+            isActive: studio.ShuffleQuestionsOnStart
+        );
+        shuffleQBtn.Margin = new Thickness(effectiveTerms.Count > 0 ? 6 : 0, 0, 5, 4);
+        filterAndPlaybackWrap.Children.Add(shuffleQBtn);
+
+        var shuffleOptBtn = UiBuilder.GhostButton(
+            "Shuffle Options",
+            studio.ShuffleOptionsOnStart
+                ? MaterialIconKind.CheckboxMarked
+                : MaterialIconKind.CheckboxBlankOutline,
+            studio.ToggleShuffleOptionsOnStart,
+            isActive: studio.ShuffleOptionsOnStart
+        );
+        shuffleOptBtn.Margin = new Thickness(0, 0, 0, 4);
+        filterAndPlaybackWrap.Children.Add(shuffleOptBtn);
+
+        stack.Children.Add(filterAndPlaybackWrap);
+
+        // Multi-Quiz Combiner & Organizer Action Bar (responsive 2-row stack)
         if (studio.SelectedQuizIdsForMerge.Count > 0)
         {
-            var mergeGrid = new Grid
-            {
-                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto,Auto"),
-                ColumnSpacing = 8,
-            };
+            var mergeStack = new StackPanel { Spacing = 6 };
             var mergeTitleBox = new TextBox
             {
-                Watermark = "Composite exam title (e.g. SQA Prelims + Midterms Comprehensive)...",
+                Watermark = "Composite deck title (e.g. Comprehensive Review Exam)...",
                 FontSize = 12,
+                HorizontalAlignment = HorizontalAlignment.Stretch,
             };
-            mergeGrid.Children.Add(mergeTitleBox);
+            mergeStack.Children.Add(mergeTitleBox);
+
+            var mergeBtnsWrap = new WrapPanel { Orientation = Orientation.Horizontal };
 
             var interleavedSelectedBtn = UiBuilder.GhostButton(
                 $"Interleaved Review ({studio.SelectedQuizIdsForMerge.Count})",
@@ -225,8 +231,8 @@ public static partial class QuizStudioViewBuilder
                     ),
                 isActive: true
             );
-            Grid.SetColumn(interleavedSelectedBtn, 1);
-            mergeGrid.Children.Add(interleavedSelectedBtn);
+            interleavedSelectedBtn.Margin = new Thickness(0, 0, 6, 4);
+            mergeBtnsWrap.Children.Add(interleavedSelectedBtn);
 
             var curateBtn = UiBuilder.GhostButton(
                 $"Curate in Organizer ({studio.SelectedQuizIdsForMerge.Count})",
@@ -234,8 +240,8 @@ public static partial class QuizStudioViewBuilder
                 () => studio.OpenSelectedQuizzesInOrganizer(mergeTitleBox.Text),
                 isActive: true
             );
-            Grid.SetColumn(curateBtn, 2);
-            mergeGrid.Children.Add(curateBtn);
+            curateBtn.Margin = new Thickness(0, 0, 6, 4);
+            mergeBtnsWrap.Children.Add(curateBtn);
 
             var mergeShuffleBtn = UiBuilder.PrimaryButton(
                 $"Combine & Shuffle ({studio.SelectedQuizIdsForMerge.Count})",
@@ -246,8 +252,8 @@ public static partial class QuizStudioViewBuilder
                         shuffleQuestions: true
                     )
             );
-            Grid.SetColumn(mergeShuffleBtn, 3);
-            mergeGrid.Children.Add(mergeShuffleBtn);
+            mergeShuffleBtn.Margin = new Thickness(0, 0, 6, 4);
+            mergeBtnsWrap.Children.Add(mergeShuffleBtn);
 
             var mergeOrderedBtn = UiBuilder.GhostButton(
                 "Combine In-Order",
@@ -258,10 +264,11 @@ public static partial class QuizStudioViewBuilder
                         shuffleQuestions: false
                     )
             );
-            Grid.SetColumn(mergeOrderedBtn, 4);
-            mergeGrid.Children.Add(mergeOrderedBtn);
+            mergeOrderedBtn.Margin = new Thickness(0, 0, 0, 4);
+            mergeBtnsWrap.Children.Add(mergeOrderedBtn);
 
-            stack.Children.Add(UiBuilder.Card(mergeGrid, padding: new Thickness(12, 8)));
+            mergeStack.Children.Add(mergeBtnsWrap);
+            stack.Children.Add(UiBuilder.Card(mergeStack, padding: new Thickness(12, 8)));
         }
 
         if (filteredQuizzes.Count == 0)
@@ -484,31 +491,53 @@ public static partial class QuizStudioViewBuilder
 
         if (!compact)
         {
-            var exportPdfBtn = UiBuilder.IconButton(
+            async Task ExportCatalogPdfAsync(string suffix, string dialogTitle, QuizPdfExportOptions options)
+            {
+                var top = TopLevel.GetTopLevel(actions);
+                if (top?.StorageProvider is null)
+                    return;
+                var file = await top.StorageProvider.SaveFilePickerAsync(
+                    new Avalonia.Platform.Storage.FilePickerSaveOptions
+                    {
+                        Title = dialogTitle,
+                        SuggestedFileName =
+                            $"{ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title + suffix, ".pdf")}",
+                        DefaultExtension = "pdf",
+                    }
+                );
+                var outPath = file is null
+                    ? null
+                    : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file);
+                if (!string.IsNullOrWhiteSpace(outPath))
+                    await studio.ExportQuizToPdfFileAsync(quiz, outPath, options);
+            }
+
+            var printFlyout = new MenuFlyout();
+            var mExam = new MenuItem { Header = "Printable Exam (Worksheet + Hints + Key)" };
+            mExam.Click += async (_, _) =>
+                await ExportCatalogPdfAsync("_Exam", "Export Printable Exam PDF", QuizPdfExportOptions.ExamDefault);
+            var mGuide = new MenuItem { Header = "Study Guide (Inline Answers & Feedback)" };
+            mGuide.Click += async (_, _) =>
+                await ExportCatalogPdfAsync("_StudyGuide", "Export Study Guide PDF", QuizPdfExportOptions.StudyGuide);
+            var mBlank = new MenuItem { Header = "Questions Only (Blank Exam Sheet)" };
+            mBlank.Click += async (_, _) =>
+                await ExportCatalogPdfAsync("_QuestionsOnly", "Export Questions-Only PDF", QuizPdfExportOptions.QuestionsOnly);
+            printFlyout.Items.Add(mExam);
+            printFlyout.Items.Add(mGuide);
+            printFlyout.Items.Add(mBlank);
+
+            Button? exportPdfBtn = null;
+            exportPdfBtn = UiBuilder.IconButton(
                 MaterialIconKind.PrinterOutline,
-                async () =>
+                () =>
                 {
-                    var top = TopLevel.GetTopLevel(actions);
-                    if (top?.StorageProvider is null)
-                        return;
-                    var file = await top.StorageProvider.SaveFilePickerAsync(
-                        new Avalonia.Platform.Storage.FilePickerSaveOptions
-                        {
-                            Title = "Export Printable Quiz PDF",
-                            SuggestedFileName =
-                                $"{ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title, ".pdf")}",
-                            DefaultExtension = "pdf",
-                        }
-                    );
-                    var outPath = file is null
-                        ? null
-                        : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file);
-                    if (!string.IsNullOrWhiteSpace(outPath))
-                        await studio.ExportQuizToPdfFileAsync(quiz, outPath);
+                    if (exportPdfBtn is not null)
+                        printFlyout.ShowAt(exportPdfBtn);
                 },
                 14.5,
                 ThemeService.Brush(ThemeService.TextSecondary)
             );
+            ToolTip.SetTip(exportPdfBtn, "Export Printable PDF (Exam, Study Guide, or Questions Only)");
             actions.Children.Add(exportPdfBtn);
 
             var exportJsonBtn = UiBuilder.IconButton(

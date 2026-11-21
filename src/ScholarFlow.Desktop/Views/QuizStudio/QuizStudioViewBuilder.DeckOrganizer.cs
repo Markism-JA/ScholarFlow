@@ -318,8 +318,7 @@ public static partial class QuizStudioViewBuilder
 
         moreFlyout.Items.Add(new Separator());
 
-        var exportPdfItem = new MenuItem { Header = "Export Printable PDF" };
-        exportPdfItem.Click += async (_, _) =>
+        async Task SaveDeckPdfWithOptionsAsync(string suffix, string dialogTitle, QuizPdfExportOptions options)
         {
             var top = TopLevel.GetTopLevel(moreBtn);
             if (top?.StorageProvider is null)
@@ -327,9 +326,9 @@ public static partial class QuizStudioViewBuilder
             var file = await top.StorageProvider.SaveFilePickerAsync(
                 new Avalonia.Platform.Storage.FilePickerSaveOptions
                 {
-                    Title = "Export Printable Quiz PDF",
+                    Title = dialogTitle,
                     SuggestedFileName =
-                        $"{ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(deck.Title, ".pdf")}",
+                        $"{ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(deck.Title + suffix, ".pdf")}",
                     DefaultExtension = "pdf",
                 }
             );
@@ -337,9 +336,23 @@ public static partial class QuizStudioViewBuilder
                 ? null
                 : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file);
             if (!string.IsNullOrWhiteSpace(outPath))
-                await studio.ExportQuizToPdfFileAsync(deck, outPath);
-        };
+                await studio.ExportQuizToPdfFileAsync(deck, outPath, options);
+        }
+
+        var exportPdfItem = new MenuItem { Header = "Export Printable Exam PDF (Worksheet + Hints + Key)" };
+        exportPdfItem.Click += async (_, _) =>
+            await SaveDeckPdfWithOptionsAsync("_Exam", "Export Printable Exam PDF", QuizPdfExportOptions.ExamDefault);
         moreFlyout.Items.Add(exportPdfItem);
+
+        var exportStudyGuideItem = new MenuItem { Header = "Export Study Guide PDF (Inline Answers & Feedback)" };
+        exportStudyGuideItem.Click += async (_, _) =>
+            await SaveDeckPdfWithOptionsAsync("_StudyGuide", "Export Study Guide PDF", QuizPdfExportOptions.StudyGuide);
+        moreFlyout.Items.Add(exportStudyGuideItem);
+
+        var exportBlankExamItem = new MenuItem { Header = "Export Questions-Only PDF (Blank Exam Sheet)" };
+        exportBlankExamItem.Click += async (_, _) =>
+            await SaveDeckPdfWithOptionsAsync("_QuestionsOnly", "Export Questions-Only PDF", QuizPdfExportOptions.QuestionsOnly);
+        moreFlyout.Items.Add(exportBlankExamItem);
 
         var exportJsonItem = new MenuItem { Header = "Export Deck JSON" };
         exportJsonItem.Click += async (_, _) =>
@@ -451,22 +464,36 @@ public static partial class QuizStudioViewBuilder
         sortPageItem.Click += (_, _) => studio.SortOrganizerQuestionsByPage();
         moreFlyout.Items.Add(sortPageItem);
 
-        moreFlyout.Items.Add(new Separator());
-        var termMenu = new MenuItem { Header = $"Term ({deck.Term ?? "None"})" };
-        foreach (var term in AcademicTerms)
+        if (vm.ActiveTerms.Count > 0 || !string.IsNullOrWhiteSpace(deck.Term))
         {
-            var capturedTerm = term;
-            bool isCurrTerm = string.Equals(deck.Term, term, StringComparison.OrdinalIgnoreCase);
-            var termSub = new MenuItem { Header = isCurrTerm ? $"✓ {term}" : term };
-            termSub.Click += (_, _) =>
+            moreFlyout.Items.Add(new Separator());
+            var termMenu = new MenuItem { Header = $"Term ({deck.Term ?? "None"})" };
+            foreach (var term in vm.ActiveTerms)
             {
-                deck.Term = isCurrTerm ? null : capturedTerm;
-                studio.MarkOrganizerDirty();
-                vm.RequestUiRefresh();
-            };
-            termMenu.Items.Add(termSub);
+                var capturedTerm = term;
+                bool isCurrTerm = string.Equals(deck.Term, term, StringComparison.OrdinalIgnoreCase);
+                var termSub = new MenuItem { Header = isCurrTerm ? $"✓ {term}" : term };
+                termSub.Click += (_, _) =>
+                {
+                    deck.Term = isCurrTerm ? null : capturedTerm;
+                    studio.MarkOrganizerDirty();
+                    vm.RequestUiRefresh();
+                };
+                termMenu.Items.Add(termSub);
+            }
+            if (!string.IsNullOrWhiteSpace(deck.Term))
+            {
+                var clearTermSub = new MenuItem { Header = "Clear Term" };
+                clearTermSub.Click += (_, _) =>
+                {
+                    deck.Term = null;
+                    studio.MarkOrganizerDirty();
+                    vm.RequestUiRefresh();
+                };
+                termMenu.Items.Add(clearTermSub);
+            }
+            moreFlyout.Items.Add(termMenu);
         }
-        moreFlyout.Items.Add(termMenu);
 
         moreBtn.Flyout = moreFlyout;
         Grid.SetColumn(moreBtn, col++);
