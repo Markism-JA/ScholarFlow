@@ -32,6 +32,18 @@ public static class PdfQuizGrounder
         StringComparer.OrdinalIgnoreCase
     );
 
+    private sealed record CachedPdfWordData(
+        long LastWriteTicks,
+        int TotalPages,
+        (string? Term, string SectionBreadcrumb)[] PageSections,
+        ConcurrentDictionary<int, CachedPageWordIndex> PageWords,
+        object ExtractionLock
+    );
+
+    private static readonly ConcurrentDictionary<string, CachedPdfWordData> PdfWordIndexCache = new(
+        StringComparer.OrdinalIgnoreCase
+    );
+
     public static IReadOnlyList<PdfOutlineSectionInfo> InspectOutlineSections(
         string pdfPath,
         out int totalPages
@@ -616,6 +628,7 @@ public static class PdfQuizGrounder
     /// <summary>
     /// Grounds every question in the list against the source PDF, snapping SourcePage if off by 1-2 pages
     /// and computing exact normalized [0..1] highlight bounding boxes for the VerbatimQuote.
+    /// Uses a persistent per-PDF word-index cache and parallelizes quote matching across CPU cores.
     /// </summary>
     public static void GroundQuestionsToPdf(
         string pdfPath,
@@ -626,16 +639,65 @@ public static class PdfQuizGrounder
         if (string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
 
+        var questionList = questions as IList<QuizQuestionRecord> ?? questions.ToList();
+        if (questionList.Count == 0)
+            return;
+
         try
         {
-            using var doc = PdfDocument.Open(pdfPath);
-            if (doc.NumberOfPages == 0)
+            long currentTicks = File.GetLastWriteTimeUtc(pdfPath).Ticks;
+            PdfDocument? lazyDoc = null;
+
+            PdfDocument EnsureDocOpen()
+            {
+                return lazyDoc ??= PdfDocument.Open(pdfPath);
+            }
+
+            if (
+                !PdfWordIndexCache.TryGetValue(pdfPath, out var cached)
+                || cached.LastWriteTicks != currentTicks
+            )
+            {
+                var doc = EnsureDocOpen();
+                if (doc.NumberOfPages == 0)
+                    return;
+
+                var sections = BuildPageSectionMap(doc);
+                cached = new CachedPdfWordData(
+                    currentTicks,
+                    doc.NumberOfPages,
+                    sections,
+                    new ConcurrentDictionary<int, CachedPageWordIndex>(),
+                    new object()
+                );
+                PdfWordIndexCache[pdfPath] = cached;
+            }
+
+            int totalPages = cached.TotalPages;
+            if (totalPages <= 0)
                 return;
 
-            var pageSections = BuildPageSectionMap(doc);
-            var pageWordCache = new Dictionary<int, CachedPageWordIndex>();
+            var pageSections = cached.PageSections;
+            var pageWordCache = cached.PageWords;
 
-            foreach (var q in questions)
+            CachedPageWordIndex GetPageIndex(int pageNum)
+            {
+                if (pageWordCache.TryGetValue(pageNum, out var existing))
+                    return existing;
+
+                lock (cached.ExtractionLock)
+                {
+                    if (pageWordCache.TryGetValue(pageNum, out existing))
+                        return existing;
+
+                    var doc = EnsureDocOpen();
+                    var built = BuildPageWordIndex(doc, pageNum);
+                    pageWordCache[pageNum] = built;
+                    return built;
+                }
+            }
+
+            void GroundSingleQuestion(QuizQuestionRecord q)
             {
                 q.SourcePdfPath = pdfPath;
                 var candidateQuotes = CollectCandidateQuotes(q);
@@ -647,14 +709,14 @@ public static class PdfQuizGrounder
 
                 foreach (var quote in candidateQuotes)
                 {
-                    var rects = ComputeHighlightRectsCached(
-                        doc,
-                        pageWordCache,
+                    var rects = ComputeHighlightRectsFromProvider(
+                        totalPages,
+                        GetPageIndex,
                         q.SourcePage,
                         quote,
                         out int resolvedPage
                     );
-                    resolvedPage = Math.Clamp(resolvedPage, 1, doc.NumberOfPages);
+                    resolvedPage = Math.Clamp(resolvedPage, 1, totalPages);
                     if (rects.Count == 0)
                         continue;
 
@@ -686,14 +748,14 @@ public static class PdfQuizGrounder
                 // Fallback to whole VerbatimQuote if splitting yielded nothing
                 if (primaryRects.Count == 0 && !string.IsNullOrWhiteSpace(q.VerbatimQuote))
                 {
-                    primaryRects = ComputeHighlightRectsCached(
-                        doc,
-                        pageWordCache,
+                    primaryRects = ComputeHighlightRectsFromProvider(
+                        totalPages,
+                        GetPageIndex,
                         q.SourcePage,
                         q.VerbatimQuote,
                         out int fallbackPage
                     );
-                    primaryPage = Math.Clamp(fallbackPage, 1, doc.NumberOfPages);
+                    primaryPage = Math.Clamp(fallbackPage, 1, totalPages);
                     if (primaryRects.Count > 0)
                     {
                         var sec = pageSections[primaryPage].SectionBreadcrumb;
@@ -708,7 +770,7 @@ public static class PdfQuizGrounder
                     }
                 }
 
-                q.SourcePage = Math.Clamp(primaryPage, 1, doc.NumberOfPages);
+                q.SourcePage = Math.Clamp(primaryPage, 1, totalPages);
                 q.HighlightRects = primaryRects;
                 q.EvidenceAnchors = resolvedAnchors;
 
@@ -718,6 +780,23 @@ public static class PdfQuizGrounder
                     if (!string.IsNullOrWhiteSpace(sec))
                         q.SectionTitle = sec;
                 }
+            }
+
+            try
+            {
+                if (questionList.Count >= 4)
+                {
+                    Parallel.ForEach(questionList, GroundSingleQuestion);
+                }
+                else
+                {
+                    foreach (var q in questionList)
+                        GroundSingleQuestion(q);
+                }
+            }
+            finally
+            {
+                lazyDoc?.Dispose();
             }
         }
         catch
@@ -835,15 +914,8 @@ public static class PdfQuizGrounder
         HashSet<string> UniqueTokens
     );
 
-    private static CachedPageWordIndex GetOrBuildPageWordIndex(
-        PdfDocument doc,
-        Dictionary<int, CachedPageWordIndex> cache,
-        int pageNum
-    )
+    private static CachedPageWordIndex BuildPageWordIndex(PdfDocument doc, int pageNum)
     {
-        if (cache.TryGetValue(pageNum, out var existing))
-            return existing;
-
         var page = doc.GetPage(pageNum);
         var words = GetVisibleWordsInReadingOrder(page);
         var tokenWords = new List<(Word Word, string Token)>(words.Count);
@@ -859,14 +931,12 @@ public static class PdfQuizGrounder
             }
         }
 
-        var built = new CachedPageWordIndex(
+        return new CachedPageWordIndex(
             Math.Max(1.0, page.Width),
             Math.Max(1.0, page.Height),
             tokenWords,
             unique
         );
-        cache[pageNum] = built;
-        return built;
     }
 
     public static List<NormalizedHighlightRect> ComputeHighlightRects(
@@ -874,24 +944,34 @@ public static class PdfQuizGrounder
         int hintPage,
         string? verbatimQuote,
         out int resolvedPage
-    ) =>
-        ComputeHighlightRectsCached(
-            doc,
-            new Dictionary<int, CachedPageWordIndex>(),
+    )
+    {
+        var localCache = new Dictionary<int, CachedPageWordIndex>();
+        return ComputeHighlightRectsFromProvider(
+            doc.NumberOfPages,
+            p =>
+            {
+                if (!localCache.TryGetValue(p, out var idx))
+                {
+                    idx = BuildPageWordIndex(doc, p);
+                    localCache[p] = idx;
+                }
+                return idx;
+            },
             hintPage,
             verbatimQuote,
             out resolvedPage
         );
+    }
 
-    private static List<NormalizedHighlightRect> ComputeHighlightRectsCached(
-        PdfDocument doc,
-        Dictionary<int, CachedPageWordIndex> pageWordCache,
+    private static List<NormalizedHighlightRect> ComputeHighlightRectsFromProvider(
+        int totalPages,
+        Func<int, CachedPageWordIndex> getPageIndex,
         int hintPage,
         string? verbatimQuote,
         out int resolvedPage
     )
     {
-        int totalPages = doc.NumberOfPages;
         resolvedPage = Math.Clamp(hintPage <= 0 ? 1 : hintPage, 1, Math.Max(1, totalPages));
         if (totalPages == 0 || string.IsNullOrWhiteSpace(verbatimQuote))
             return [];
@@ -925,7 +1005,7 @@ public static class PdfQuizGrounder
 
         foreach (var pageNum in localPages)
         {
-            var pageIdx = GetOrBuildPageWordIndex(doc, pageWordCache, pageNum);
+            var pageIdx = getPageIndex(pageNum);
             if (pageIdx.TokenWords.Count == 0)
                 continue;
 
@@ -958,7 +1038,7 @@ public static class PdfQuizGrounder
                 if (localSet.Contains(pageNum))
                     continue;
 
-                var pageIdx = GetOrBuildPageWordIndex(doc, pageWordCache, pageNum);
+                var pageIdx = getPageIndex(pageNum);
                 if (pageIdx.TokenWords.Count == 0)
                     continue;
 

@@ -88,11 +88,17 @@ public static partial class QuizStudioViewBuilder
                     StringComparison.OrdinalIgnoreCase
                 )
             );
+        var builderScopeSubtitle = studio.IsMixedSourceMode
+            ? $"Sources: {studio.SelectedFileSourcePaths.Count} file(s) + {pdfFileName} ({studio.ScopePreviewPageCount} PDF page(s) in scope)"
+            : studio.IsFileSourceMode
+                ? $"Sources: {studio.SelectedFileSourcePaths.Count} study file(s) selected"
+                : $"Source: {pdfFileName} ({studio.ScopePreviewPageCount}/{studio.PdfTotalPages} page(s) in scope)";
+
         titleLeft.Children.Add(
             new TextBlock
             {
                 Text = studio.ActiveSubTab == QuizStudioSubTab.Builder
-                    ? $"Source: {pdfFileName} ({studio.PdfTotalPages} pages)  ·  {studio.ScopePreviewPageCount} content page(s) in active scope"
+                    ? builderScopeSubtitle
                     : $"{courseQuizCount} saved quiz(zes) in subject  ·  {studio.AllDueReviewQuestions.Count} due card(s) across basin",
                 FontSize = 12,
                 Foreground = ThemeService.Brush(ThemeService.TextSecondary),
@@ -158,7 +164,7 @@ public static partial class QuizStudioViewBuilder
         };
         subTabRow.Children.Add(
             UiBuilder.GhostButton(
-                "Builder & PDF Preview",
+                "Build",
                 MaterialIconKind.CreationOutline,
                 () => studio.SetSubTab(QuizStudioSubTab.Builder),
                 isActive: studio.ActiveSubTab == QuizStudioSubTab.Builder

@@ -150,6 +150,9 @@ public sealed partial class QuizStudioViewModel
         int budget = ManualPromptBudgetChars;
         try
         {
+            if (!updateStatus)
+                await Task.Delay(220, token);
+
             var (prompt, totalCount, includedCount) = await Task.Run(
                 () =>
                 {
@@ -250,15 +253,29 @@ public sealed partial class QuizStudioViewModel
     public void SetPreset(QuizPresetMode preset)
     {
         SelectedPreset = preset;
-        IsCodeAwareMixActive = false;
+        IsCodeAwareMixActive = preset == QuizPresetMode.CodeLab;
         if (preset != QuizPresetMode.Custom)
         {
-            KindAllocations = QuizGenerationRequest.GetDefaultAllocationsForPreset(
-                preset,
-                AllocationMode
-            );
+            KindAllocations =
+                preset == QuizPresetMode.CodeLab
+                    ? QuizGenerationRequest.GetCodeAwareAllocations(AllocationMode, QuestionCount)
+                    : QuizGenerationRequest.GetDefaultAllocationsForPreset(preset, AllocationMode);
             if (AllocationMode == QuestionAllocationMode.ExactCounts)
                 QuestionCount = Math.Clamp(KindAllocations.Values.Sum(), 1, 150);
+
+            CognitiveAllocations =
+                QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(preset);
+            CognitiveMix = preset switch
+            {
+                QuizPresetMode.QuickReview => CognitiveMixPreset.Foundations,
+                QuizPresetMode.WeakTopicDrill or QuizPresetMode.CodeLab =>
+                    CognitiveMixPreset.ExamApplication,
+                QuizPresetMode.DeepMastery => CognitiveMixPreset.DeepMastery,
+                _ => CognitiveMixPreset.Balanced,
+            };
+
+            if (preset == QuizPresetMode.WeakTopicDrill)
+                FocusWeakSpots = true;
         }
         RefreshLivePromptPreviewIfActive();
         _mainVm.RequestUiRefresh();
@@ -621,12 +638,14 @@ public sealed partial class QuizStudioViewModel
         try
         {
             var session = await _llmService.GenerateQuizAsync(req);
+            var qualityReport = QuizQualityCritic.Audit(session);
             AppendTargetQuizId = null;
             AppendTargetQuizTitle = null;
-            await RefreshAsync(SelectedCourse, SelectedPdfPath);
+            UpsertSavedQuizInMemory(session);
             StartQuizSession(session);
-            StatusMessage =
-                $"Generated '{session.Title}' ({session.Questions.Count} grounded questions).";
+            StatusMessage = qualityReport.HasIssues
+                ? $"Generated '{session.Title}' ({session.Questions.Count} items · Critic: {qualityReport.SummaryText} — review in Organizer)."
+                : $"Generated '{session.Title}' ({session.Questions.Count} grounded questions · All quality checks passed).";
         }
         catch (Exception ex)
         {
@@ -660,14 +679,16 @@ public sealed partial class QuizStudioViewModel
         try
         {
             var session = await _llmService.ImportQuizFromJsonAsync(req, rawJson);
+            var qualityReport = QuizQualityCritic.Audit(session);
             AppendTargetQuizId = null;
             AppendTargetQuizTitle = null;
             IsManualJsonModalOpen = false;
             ManualJsonInput = string.Empty;
-            await RefreshAsync(SelectedCourse, SelectedPdfPath);
+            UpsertSavedQuizInMemory(session);
             StartQuizSession(session);
-            StatusMessage =
-                $"Imported and PDF-grounded {session.Questions.Count} questions from Web AI JSON.";
+            StatusMessage = qualityReport.HasIssues
+                ? $"Imported {session.Questions.Count} questions · Critic: {qualityReport.SummaryText} — review in Organizer."
+                : $"Imported and grounded {session.Questions.Count} questions from Web AI JSON · All quality checks passed.";
             IsStatusError = false;
         }
         catch (Exception ex)
@@ -681,6 +702,31 @@ public sealed partial class QuizStudioViewModel
         }
 
         _mainVm.RequestUiRefresh();
+    }
+
+    private void UpsertSavedQuizInMemory(QuizSessionRecord session)
+    {
+        var list = SavedQuizzes.ToList();
+        int existingIdx = list.FindIndex(q =>
+            string.Equals(q.Id, session.Id, StringComparison.OrdinalIgnoreCase)
+        );
+        if (existingIdx >= 0)
+            list[existingIdx] = session;
+        else
+            list.Insert(0, session);
+
+        SavedQuizzes = list;
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        AllDueReviewQuestions =
+        [
+            .. SavedQuizzes
+                .SelectMany(q => q.Questions)
+                .Where(qq =>
+                    !qq.SrsDueDate.HasValue
+                    || qq.SrsDueDate.Value <= today
+                    || qq.LastAnsweredCorrect == false
+                ),
+        ];
     }
 
     private QuizGenerationRequest BuildCurrentRequest()
@@ -715,6 +761,12 @@ public sealed partial class QuizStudioViewModel
             AllocationMode = AllocationMode,
             KindAllocations = new Dictionary<QuizQuestionKind, int>(KindAllocations),
             ModalityMode = ModalityMode,
+            CognitiveMix = CognitiveMix,
+            CognitiveAllocations = new Dictionary<CognitiveLevel, int>(CognitiveAllocations),
+            SelectedArchetypes = [.. SelectedArchetypes],
+            FocusWeakSpots = FocusWeakSpots,
+            EnableContrastiveExplanations = EnableContrastiveExplanations,
+            IncludeProgressiveHints = IncludeProgressiveHints,
             ExcludePromptsOrTopics = excludes,
             CustomInstructions = CustomPromptInstructions,
             AppendToQuizId = AppendTargetQuizId,

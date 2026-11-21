@@ -74,6 +74,8 @@ public sealed partial class QuizStudioViewModel
                         CorrectAnswer = orig.CorrectAnswer,
                         AcceptedAliases = [.. orig.AcceptedAliases],
                         Explanation = orig.Explanation,
+                        Hint = orig.Hint,
+                        Archetype = orig.Archetype,
                         CodeSnippet = orig.CodeSnippet,
                         CodeLanguage = orig.CodeLanguage,
                         MathLatex = orig.MathLatex,
@@ -421,6 +423,8 @@ public sealed partial class QuizStudioViewModel
             CorrectAnswer = orig.CorrectAnswer,
             AcceptedAliases = [.. orig.AcceptedAliases],
             Explanation = orig.Explanation,
+            Hint = orig.Hint,
+            Archetype = orig.Archetype,
             CodeSnippet = orig.CodeSnippet,
             CodeLanguage = orig.CodeLanguage,
             MathLatex = orig.MathLatex,
@@ -428,6 +432,8 @@ public sealed partial class QuizStudioViewModel
             ImagePath = orig.ImagePath,
             SourcePdfPath = orig.SourcePdfPath,
             SourcePage = orig.SourcePage,
+            SourceStartLine = orig.SourceStartLine,
+            SourceEndLine = orig.SourceEndLine,
             SectionTitle = orig.SectionTitle,
             VerbatimQuote = orig.VerbatimQuote,
             HighlightRects = [.. orig.HighlightRects],
@@ -448,6 +454,7 @@ public sealed partial class QuizStudioViewModel
     public void MarkOrganizerDirty()
     {
         IsOrganizerDirty = true;
+        InvalidateOrganizerQualityCache();
     }
 
     public void SetOrganizerSearchQueryQuiet(string query)
@@ -469,6 +476,10 @@ public sealed partial class QuizStudioViewModel
         if (deck is null)
             return [];
 
+        var qualityFlaggedIds =
+            OrganizerHealthFilter == OrganizerHealthFilter.QualityIssues
+                ? GetCachedOrganizerQualityReport().FlaggedQuestionIds
+                : null;
         var qSearch = OrganizerSearchQuery.Trim();
         return deck
             .Questions.Where(q =>
@@ -483,12 +494,16 @@ public sealed partial class QuizStudioViewModel
                 )
                 && OrganizerHealthFilter switch
                 {
+                    OrganizerHealthFilter.QualityIssues =>
+                        qualityFlaggedIds is not null && qualityFlaggedIds.Contains(q.Id),
                     OrganizerHealthFilter.MissingEvidence =>
-                        q.HighlightRects.Count == 0 || string.IsNullOrWhiteSpace(q.VerbatimQuote),
+                        string.IsNullOrWhiteSpace(q.VerbatimQuote)
+                        || (q.IsPdfSource && q.HighlightRects.Count == 0),
                     OrganizerHealthFilter.HasRichMedia =>
                         !string.IsNullOrWhiteSpace(q.CodeSnippet)
                         || !string.IsNullOrWhiteSpace(q.MathLatex)
-                        || !string.IsNullOrWhiteSpace(q.Diagram),
+                        || !string.IsNullOrWhiteSpace(q.Diagram)
+                        || !string.IsNullOrWhiteSpace(q.ImagePath),
                     OrganizerHealthFilter.FlaggedForAi =>
                         DeckAiFixSelectedIds.Contains(q.Id)
                         || string.Equals(
@@ -764,6 +779,7 @@ public sealed partial class QuizStudioViewModel
 
             OrganizerQuiz.Questions[idx] = CloneQuestionForEdit(EditingQuestionDraft);
             IsOrganizerDirty = true;
+            InvalidateOrganizerQualityCache();
         }
 
         if (moveDelta != 0 && idx >= 0)
@@ -1463,6 +1479,7 @@ public sealed partial class QuizStudioViewModel
         try
         {
             await Task.Run(() => QuizExportService.ApplySingleQuestionFixJson(question, rawJson));
+            InvalidateOrganizerQualityCache();
             if (OrganizerQuiz is not null)
                 await SaveOrganizerDeckAsync();
             FlaggingQuestionId = null;
@@ -1526,29 +1543,25 @@ public sealed partial class QuizStudioViewModel
         }
     }
 
+    public string? DeckAiFixFeedback { get; private set; }
+    public bool IsDeckAiFixError { get; private set; }
+
     public void OpenDeckAiFixModal()
     {
         if (OrganizerQuiz is null)
             return;
 
         IsDeckAiFixModalOpen = true;
-        if (DeckAiFixSelectedIds.Count == 0)
-        {
-            foreach (
-                var q in OrganizerQuiz.Questions.Where(x =>
-                    x.HighlightRects.Count == 0 || string.IsNullOrWhiteSpace(x.VerbatimQuote)
-                )
-            )
-            {
-                DeckAiFixSelectedIds.Add(q.Id);
-            }
-        }
+        DeckAiFixFeedback = null;
+        IsDeckAiFixError = false;
         _mainVm.RequestUiRefresh();
     }
 
     public void CloseDeckAiFixModal()
     {
         IsDeckAiFixModalOpen = false;
+        DeckAiFixFeedback = null;
+        IsDeckAiFixError = false;
         _mainVm.RequestUiRefresh();
     }
 
@@ -1556,6 +1569,62 @@ public sealed partial class QuizStudioViewModel
     {
         if (!DeckAiFixSelectedIds.Add(questionId))
             DeckAiFixSelectedIds.Remove(questionId);
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void SelectQualityIssuesForBulkAiFix()
+    {
+        if (OrganizerQuiz is null)
+            return;
+
+        var report = GetCachedOrganizerQualityReport();
+        DeckAiFixSelectedIds.Clear();
+        foreach (var qid in report.FlaggedQuestionIds)
+            DeckAiFixSelectedIds.Add(qid);
+
+        if (report.HasIssues)
+        {
+            var distinctCodes = report.Issues.Select(i => i.Code).Distinct().ToList();
+            var directives = new List<string>
+            {
+                $"Repair the {report.FlaggedQuestionIds.Count} quality-critic flagged question(s) ({string.Join(", ", distinctCodes)}):"
+            };
+            foreach (var issue in report.Issues.Take(15))
+            {
+                int qNum = OrganizerQuiz.Questions.FindIndex(x =>
+                    string.Equals(x.Id, issue.QuestionId, StringComparison.OrdinalIgnoreCase)
+                ) + 1;
+                directives.Add($"- Q{qNum} [{issue.Code}]: {issue.Message}");
+            }
+            DeckAiFixInstructions = string.Join("\n", directives);
+            DeckAiFixFeedback = $"Selected {DeckAiFixSelectedIds.Count} question(s) with quality issues and pre-filled repair notes.";
+            IsDeckAiFixError = false;
+        }
+        else
+        {
+            DeckAiFixFeedback = "No quality issues detected in this deck.";
+            IsDeckAiFixError = false;
+        }
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void SelectAllQuestionsForBulkAiFix()
+    {
+        if (OrganizerQuiz is null)
+            return;
+        DeckAiFixSelectedIds.Clear();
+        foreach (var q in OrganizerQuiz.Questions)
+            DeckAiFixSelectedIds.Add(q.Id);
+        DeckAiFixFeedback = $"Selected all {DeckAiFixSelectedIds.Count} question(s) in this deck.";
+        IsDeckAiFixError = false;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void ClearBulkAiFixSelection()
+    {
+        DeckAiFixSelectedIds.Clear();
+        DeckAiFixFeedback = null;
+        IsDeckAiFixError = false;
         _mainVm.RequestUiRefresh();
     }
 
@@ -1581,6 +1650,8 @@ public sealed partial class QuizStudioViewModel
             targets,
             DeckAiFixInstructions
         );
+        DeckAiFixFeedback = $"Built & copied fix prompt for {targets.Count} targeted question(s). Paste the AI JSON response below.";
+        IsDeckAiFixError = false;
         _mainVm.RequestUiRefresh();
         return DeckAiFixPromptPreview;
     }
@@ -1635,23 +1706,47 @@ public sealed partial class QuizStudioViewModel
         if (OrganizerQuiz is null)
             return;
 
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            DeckAiFixFeedback = "Paste the AI JSON response before clicking Apply.";
+            IsDeckAiFixError = true;
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
+        var fallbackTargetIds = OrganizerQuiz
+            .Questions.Where(q => DeckAiFixSelectedIds.Contains(q.Id))
+            .Select(q => q.Id)
+            .ToList();
+        if (fallbackTargetIds.Count == 0)
+            fallbackTargetIds = OrganizerQuiz.Questions.Take(15).Select(q => q.Id).ToList();
+
         try
         {
             var (updated, added) = await Task.Run(() =>
-                QuizExportService.ApplyDeckComprehensiveFixJson(OrganizerQuiz, rawJson)
+                QuizExportService.ApplyDeckComprehensiveFixJson(
+                    OrganizerQuiz,
+                    rawJson,
+                    fallbackTargetIds
+                )
             );
+            InvalidateOrganizerQualityCache();
             await SaveOrganizerDeckAsync();
             IsDeckAiFixModalOpen = false;
             DeckAiFixPromptPreview = string.Empty;
             DeckAiFixJsonInput = string.Empty;
+            DeckAiFixFeedback = null;
+            IsDeckAiFixError = false;
             DeckAiFixSelectedIds.Clear();
             StatusMessage =
-                $"Comprehensive AI fix applied: {updated} question(s) updated, {added} question(s) added & grounded.";
+                $"Bulk AI fix applied: {updated} question(s) updated, {added} question(s) added & grounded.";
             IsStatusError = false;
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Comprehensive Fix JSON error: {ex.Message}";
+            DeckAiFixFeedback = $"Could not apply JSON: {ex.Message}";
+            IsDeckAiFixError = true;
+            StatusMessage = $"Bulk Fix JSON error: {ex.Message}";
             IsStatusError = true;
         }
         _mainVm.RequestUiRefresh();

@@ -78,14 +78,14 @@ public static partial class ScholarFlowDatabase
                     source_pdf_path, source_page, section_title, verbatim_quote, highlight_rects_json,
                     srs_interval_days, srs_ease_factor, srs_due_date, srs_reps, srs_lapses, last_answered_correct,
                     code_snippet, code_language, math_latex, diagram_text, evidence_anchors_json, image_path,
-                    source_start_line, source_end_line
+                    source_start_line, source_end_line, hint, archetype
                 ) VALUES (
                     $id, $quiz_id, $order_index, $kind, $cognitive_level, $difficulty, $topic_tag,
                     $prompt, $options_json, $correct_answer, $aliases_json, $explanation,
                     $source_pdf_path, $source_page, $section_title, $verbatim_quote, $highlight_rects_json,
                     $srs_interval_days, $srs_ease_factor, $srs_due_date, $srs_reps, $srs_lapses, $last_answered_correct,
                     $code_snippet, $code_language, $math_latex, $diagram_text, $evidence_anchors_json, $image_path,
-                    $source_start_line, $source_end_line
+                    $source_start_line, $source_end_line, $hint, $archetype
                 );
                 """;
 
@@ -163,6 +163,14 @@ public static partial class ScholarFlowDatabase
                 itemCmd.Parameters.AddWithValue(
                     "$image_path",
                     (object?)q.ImagePath ?? DBNull.Value
+                );
+                itemCmd.Parameters.AddWithValue(
+                    "$hint",
+                    (object?)q.Hint ?? DBNull.Value
+                );
+                itemCmd.Parameters.AddWithValue(
+                    "$archetype",
+                    (object?)q.Archetype ?? DBNull.Value
                 );
                 await itemCmd.ExecuteNonQueryAsync(ct);
             }
@@ -252,7 +260,7 @@ public static partial class ScholarFlowDatabase
                         source_pdf_path, source_page, section_title, verbatim_quote, highlight_rects_json,
                         srs_interval_days, srs_ease_factor, srs_due_date, srs_reps, srs_lapses, last_answered_correct,
                         code_snippet, code_language, math_latex, diagram_text, evidence_anchors_json, image_path,
-                    source_start_line, source_end_line
+                    source_start_line, source_end_line, hint, archetype
                     FROM quiz_questions
                     ORDER BY quiz_id, order_index;
                     """;
@@ -325,6 +333,8 @@ public static partial class ScholarFlowDatabase
                         ImagePath = r.FieldCount > 28 && !r.IsDBNull(28) ? r.GetString(28) : null,
                         SourceStartLine = r.FieldCount > 29 && !r.IsDBNull(29) ? r.GetInt32(29) : null,
                         SourceEndLine = r.FieldCount > 30 && !r.IsDBNull(30) ? r.GetInt32(30) : null,
+                        Hint = r.FieldCount > 31 && !r.IsDBNull(31) ? r.GetString(31) : null,
+                        Archetype = r.FieldCount > 32 && !r.IsDBNull(32) ? r.GetString(32) : null,
                     };
 
                     parentQuiz.Questions.Add(q);
@@ -340,44 +350,72 @@ public static partial class ScholarFlowDatabase
     }
 
     /// <summary>
-    /// Records a student's question attempt and updates SM-2 / FSRS spaced repetition interval and due date.
-    /// qualityRating: 1 = Again (Fail), 3 = Hard, 4 = Good, 5 = Easy.
+    /// Applies SM-2 / FSRS spaced-repetition update with optional metacognitive confidence calibration:
+    /// - Certain + Wrong (Hypercorrection penalty): +2 lapses, -0.30 ease, 1d reset.
+    /// - Guess + Right (Lucky guess dampener): caps effective quality at 3 (Hard) and dampens interval growth.
+    /// - Unsure + Right: reduces quality by 1 (min 3).
+    /// - Certain + Right: boosts default Good (4) to Easy (5).
     /// </summary>
-    public static async Task RecordQuestionAttemptAsync(
-        string basinRoot,
+    public static int ApplyConfidenceCalibratedSrs(
         QuizQuestionRecord question,
-        string userAnswer,
         bool isCorrect,
         int qualityRating = 4,
-        CancellationToken ct = default
+        ConfidenceLevel confidence = ConfidenceLevel.None,
+        DateOnly? todayOverride = null
     )
     {
-        if (string.IsNullOrWhiteSpace(basinRoot))
-            return;
-
         int q = !isCorrect ? 1 : Math.Clamp(qualityRating, 3, 5);
-        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        if (isCorrect)
+        {
+            q = confidence switch
+            {
+                ConfidenceLevel.Guess => 3,
+                ConfidenceLevel.Unsure => Math.Max(3, q - 1),
+                ConfidenceLevel.Certain when q == 4 => 5,
+                _ => q,
+            };
+        }
+
+        var today = todayOverride ?? DateOnly.FromDateTime(DateTime.Today);
 
         if (q < 3)
         {
             question.SrsReps = 0;
-            question.SrsLapses++;
+            bool hypercorrection = confidence == ConfidenceLevel.Certain;
+            question.SrsLapses += hypercorrection ? 2 : 1;
             question.SrsIntervalDays = 1.0;
-            question.SrsEaseFactor = Math.Max(1.3, question.SrsEaseFactor - 0.2);
+            question.SrsEaseFactor = Math.Max(1.3, question.SrsEaseFactor - (hypercorrection ? 0.30 : 0.20));
             question.SrsDueDate = today.AddDays(1);
         }
         else
         {
             question.SrsReps++;
-            if (question.SrsReps == 1)
-                question.SrsIntervalDays = q == 5 ? 3.0 : 1.0;
-            else if (question.SrsReps == 2)
-                question.SrsIntervalDays = q == 5 ? 6.0 : 4.0;
+            if (confidence == ConfidenceLevel.Guess)
+            {
+                // Lucky guess dampener: keep interval conservative so the student re-tests soon
+                if (question.SrsReps == 1)
+                    question.SrsIntervalDays = 1.0;
+                else if (question.SrsReps == 2)
+                    question.SrsIntervalDays = 2.0;
+                else
+                    question.SrsIntervalDays = Math.Round(
+                        Math.Max(2.0, question.SrsIntervalDays * Math.Max(1.2, question.SrsEaseFactor * 0.75)),
+                        1
+                    );
+            }
             else
-                question.SrsIntervalDays = Math.Round(
-                    question.SrsIntervalDays * question.SrsEaseFactor,
-                    1
-                );
+            {
+                if (question.SrsReps == 1)
+                    question.SrsIntervalDays = q == 5 ? 3.0 : 1.0;
+                else if (question.SrsReps == 2)
+                    question.SrsIntervalDays = q == 5 ? 6.0 : 4.0;
+                else
+                    question.SrsIntervalDays = Math.Round(
+                        question.SrsIntervalDays * question.SrsEaseFactor,
+                        1
+                    );
+            }
 
             double easeDelta = 0.1 - (5 - q) * (0.08 + (5 - q) * 0.02);
             question.SrsEaseFactor = Math.Clamp(question.SrsEaseFactor + easeDelta, 1.3, 3.2);
@@ -387,6 +425,27 @@ public static partial class ScholarFlowDatabase
         }
 
         question.LastAnsweredCorrect = isCorrect;
+        return q;
+    }
+
+    /// <summary>
+    /// Records a student's question attempt and updates SM-2 / FSRS spaced repetition interval and due date.
+    /// qualityRating: 1 = Again (Fail), 3 = Hard, 4 = Good, 5 = Easy.
+    /// </summary>
+    public static async Task RecordQuestionAttemptAsync(
+        string basinRoot,
+        QuizQuestionRecord question,
+        string userAnswer,
+        bool isCorrect,
+        int qualityRating = 4,
+        ConfidenceLevel confidence = ConfidenceLevel.None,
+        CancellationToken ct = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(basinRoot))
+            return;
+
+        int q = ApplyConfidenceCalibratedSrs(question, isCorrect, qualityRating, confidence);
 
         await DbLock.WaitAsync(ct);
         try
@@ -411,7 +470,10 @@ public static partial class ScholarFlowDatabase
                 upd.Parameters.AddWithValue("$ef", question.SrsEaseFactor);
                 upd.Parameters.AddWithValue(
                     "$due",
-                    question.SrsDueDate.Value.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                    (question.SrsDueDate ?? DateOnly.FromDateTime(DateTime.Today)).ToString(
+                        "yyyy-MM-dd",
+                        CultureInfo.InvariantCulture
+                    )
                 );
                 upd.Parameters.AddWithValue("$reps", question.SrsReps);
                 upd.Parameters.AddWithValue("$lapses", question.SrsLapses);

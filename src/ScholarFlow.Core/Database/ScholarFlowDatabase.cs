@@ -193,6 +193,8 @@ public static partial class ScholarFlowDatabase
                 "ALTER TABLE quiz_questions ADD COLUMN image_path TEXT NULL;",
                 "ALTER TABLE quiz_questions ADD COLUMN source_start_line INTEGER NULL;",
                 "ALTER TABLE quiz_questions ADD COLUMN source_end_line INTEGER NULL;",
+                "ALTER TABLE quiz_questions ADD COLUMN hint TEXT NULL;",
+                "ALTER TABLE quiz_questions ADD COLUMN archetype TEXT NULL;",
             }
         )
         {

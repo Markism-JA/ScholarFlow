@@ -79,6 +79,16 @@ public static partial class QuizStudioViewBuilder
         };
         headerActions.Children.Add(
             UiBuilder.GhostButton(
+                "Interleaved Review",
+                MaterialIconKind.ShuffleVariant,
+                () =>
+                    studio.StartInterleavedReviewSession(
+                        allCourses: studio.CatalogShowAllCourses
+                    )
+            )
+        );
+        headerActions.Children.Add(
+            UiBuilder.GhostButton(
                 "Import JSON",
                 MaterialIconKind.FileImportOutline,
                 async () =>
@@ -195,7 +205,7 @@ public static partial class QuizStudioViewBuilder
         {
             var mergeGrid = new Grid
             {
-                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto"),
+                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto,Auto"),
                 ColumnSpacing = 8,
             };
             var mergeTitleBox = new TextBox
@@ -205,13 +215,26 @@ public static partial class QuizStudioViewBuilder
             };
             mergeGrid.Children.Add(mergeTitleBox);
 
+            var interleavedSelectedBtn = UiBuilder.GhostButton(
+                $"Interleaved Review ({studio.SelectedQuizIdsForMerge.Count})",
+                MaterialIconKind.Brain,
+                () =>
+                    studio.StartInterleavedReviewSession(
+                        allCourses: true,
+                        selectedDecksOnly: true
+                    ),
+                isActive: true
+            );
+            Grid.SetColumn(interleavedSelectedBtn, 1);
+            mergeGrid.Children.Add(interleavedSelectedBtn);
+
             var curateBtn = UiBuilder.GhostButton(
                 $"Curate in Organizer ({studio.SelectedQuizIdsForMerge.Count})",
                 MaterialIconKind.TuneVariant,
                 () => studio.OpenSelectedQuizzesInOrganizer(mergeTitleBox.Text),
                 isActive: true
             );
-            Grid.SetColumn(curateBtn, 1);
+            Grid.SetColumn(curateBtn, 2);
             mergeGrid.Children.Add(curateBtn);
 
             var mergeShuffleBtn = UiBuilder.PrimaryButton(
@@ -223,7 +246,7 @@ public static partial class QuizStudioViewBuilder
                         shuffleQuestions: true
                     )
             );
-            Grid.SetColumn(mergeShuffleBtn, 2);
+            Grid.SetColumn(mergeShuffleBtn, 3);
             mergeGrid.Children.Add(mergeShuffleBtn);
 
             var mergeOrderedBtn = UiBuilder.GhostButton(
@@ -235,7 +258,7 @@ public static partial class QuizStudioViewBuilder
                         shuffleQuestions: false
                     )
             );
-            Grid.SetColumn(mergeOrderedBtn, 3);
+            Grid.SetColumn(mergeOrderedBtn, 4);
             mergeGrid.Children.Add(mergeOrderedBtn);
 
             stack.Children.Add(UiBuilder.Card(mergeGrid, padding: new Thickness(12, 8)));
@@ -260,7 +283,7 @@ public static partial class QuizStudioViewBuilder
                             new TextBlock
                             {
                                 Text =
-                                    "Switch to 'Builder & PDF Preview' to generate a grounded exam from your Master PDF, or click 'Show All Subjects'.",
+                                    "Switch to 'Build' to generate a grounded exam from your course materials, or click 'Show All Subjects'.",
                                 FontSize = 12,
                                 Foreground = ThemeService.Brush(ThemeService.TextMuted),
                             },

@@ -382,12 +382,14 @@ public static class QuizExportService
             targetId = q.Id,
             kind = q.Kind.ToString(),
             cognitiveLevel = q.CognitiveLevel.ToString(),
+            archetype = q.Archetype,
             difficulty = q.Difficulty,
             topicTag = q.TopicTag,
             prompt = q.Prompt,
             options = q.Options,
             correctAnswer = q.CorrectAnswer,
             acceptedAliases = q.AcceptedAliases,
+            hint = q.Hint,
             explanation = q.Explanation,
             codeSnippet = q.CodeSnippet,
             codeLanguage = q.CodeLanguage,
@@ -424,9 +426,9 @@ public static class QuizExportService
 
         var sb = new StringBuilder();
         sb.AppendLine($"You are performing a comprehensive AI repair & enhancement on the quiz deck \"{deck.Title}\" ({deck.CourseTitle}).");
-        sb.AppendLine("Return ONLY a valid JSON object matching this exact schema (no markdown fences):");
+        sb.AppendLine("Return ONLY a valid JSON object matching this exact schema (no markdown fences, preserve each item's exact \"targetId\"):");
         sb.AppendLine("{");
-        sb.AppendLine("  \"updatedQuestions\": [ { \"targetId\": \"existing-id\", \"kind\": \"...\", \"cognitiveLevel\": \"...\", \"difficulty\": 3, \"topicTag\": \"...\", \"prompt\": \"...\", \"options\": [...], \"correctAnswer\": \"...\", \"acceptedAliases\": [], \"explanation\": \"...\", \"codeSnippet\": null, \"codeLanguage\": null, \"mathLatex\": null, \"diagram\": null, \"evidence\": { \"pageNumber\": 1, \"sectionTitle\": \"...\", \"verbatimQuote\": \"...\" } } ],");
+        sb.AppendLine("  \"updatedQuestions\": [ { \"targetId\": \"existing-id\", \"kind\": \"...\", \"cognitiveLevel\": \"Recall | Comprehension | Application | Analysis\", \"archetype\": \"FarTransfer | DiscriminativeContrast | CausalPerturbation | SpotTheFlaw | DualCoding | null\", \"difficulty\": 3, \"topicTag\": \"...\", \"prompt\": \"...\", \"options\": [...], \"correctAnswer\": \"...\", \"acceptedAliases\": [], \"hint\": \"1-sentence clue without revealing the answer (or null)\", \"explanation\": \"Why correct: ... Why distractors fail: ... Core principle: ...\", \"codeSnippet\": null, \"codeLanguage\": null, \"mathLatex\": null, \"diagram\": null, \"evidence\": { \"pageNumber\": 1, \"sectionTitle\": \"...\", \"verbatimQuote\": \"...\" } } ],");
         sb.AppendLine("  \"newQuestions\": [ { \"kind\": \"...\", ...same fields without targetId... } ]");
         sb.AppendLine("}");
         sb.AppendLine();
@@ -450,19 +452,25 @@ public static class QuizExportService
     {
         public List<ComprehensiveUpdatedQuestionDto> UpdatedQuestions { get; set; } = [];
         public List<GeneratedQuestionDto> NewQuestions { get; set; } = [];
+        /// <summary>Fallback when an LLM returns standard { "questions": [...] } instead of updatedQuestions.</summary>
+        public List<ComprehensiveUpdatedQuestionDto> Questions { get; set; } = [];
     }
 
     private sealed class ComprehensiveUpdatedQuestionDto
     {
         public string? TargetId { get; set; }
+        public string? Id { get; set; }
+        public int? QuestionNumber { get; set; }
         public string Kind { get; set; } = string.Empty;
         public string CognitiveLevel { get; set; } = string.Empty;
+        public string? Archetype { get; set; }
         public int Difficulty { get; set; } = 3;
         public string TopicTag { get; set; } = string.Empty;
         public string Prompt { get; set; } = string.Empty;
         public List<string> Options { get; set; } = [];
         public string CorrectAnswer { get; set; } = string.Empty;
         public List<string> AcceptedAliases { get; set; } = [];
+        public string? Hint { get; set; }
         public string Explanation { get; set; } = string.Empty;
         public string? CodeSnippet { get; set; }
         public string? CodeLanguage { get; set; }
@@ -470,17 +478,21 @@ public static class QuizExportService
         public string? Diagram { get; set; }
         public EvidenceAnchorDto? Evidence { get; set; }
 
+        public string? EffectiveId => !string.IsNullOrWhiteSpace(TargetId) ? TargetId : Id;
+
         public GeneratedQuestionDto ToGeneratedDto() =>
             new()
             {
                 Kind = Kind,
                 CognitiveLevel = CognitiveLevel,
+                Archetype = Archetype,
                 Difficulty = Difficulty,
                 TopicTag = TopicTag,
                 Prompt = Prompt,
                 Options = Options,
                 CorrectAnswer = CorrectAnswer,
                 AcceptedAliases = AcceptedAliases,
+                Hint = Hint,
                 Explanation = Explanation,
                 CodeSnippet = CodeSnippet,
                 CodeLanguage = CodeLanguage,
@@ -492,31 +504,64 @@ public static class QuizExportService
 
     public static (int UpdatedCount, int AddedCount) ApplyDeckComprehensiveFixJson(
         QuizSessionRecord deck,
-        string rawJson)
+        string rawJson,
+        IReadOnlyList<string>? fallbackTargetIds = null)
     {
+        if (string.IsNullOrWhiteSpace(rawJson))
+            throw new InvalidOperationException("Paste a valid JSON response before applying.");
+
         var cleaned = ExtractJsonPayload(rawJson);
-        var payload = JsonSerializer.Deserialize<ComprehensiveFixResponseDto>(cleaned, PrettyJsonOpts)
-            ?? throw new InvalidOperationException("Could not parse comprehensive deck fix JSON.");
+        List<ComprehensiveUpdatedQuestionDto> updateCandidates = [];
+        List<GeneratedQuestionDto> newCandidates = [];
+
+        if (cleaned.StartsWith('['))
+        {
+            updateCandidates =
+                JsonSerializer.Deserialize<List<ComprehensiveUpdatedQuestionDto>>(cleaned, PrettyJsonOpts)
+                ?? [];
+        }
+        else
+        {
+            var payload = JsonSerializer.Deserialize<ComprehensiveFixResponseDto>(cleaned, PrettyJsonOpts)
+                ?? throw new InvalidOperationException("Could not parse comprehensive deck fix JSON.");
+
+            updateCandidates = payload.UpdatedQuestions.Count > 0
+                ? payload.UpdatedQuestions
+                : payload.Questions;
+            newCandidates = payload.NewQuestions;
+
+            // Single-object fallback: { "targetId": "...", "prompt": "..." }
+            if (updateCandidates.Count == 0 && newCandidates.Count == 0)
+            {
+                var single = JsonSerializer.Deserialize<ComprehensiveUpdatedQuestionDto>(cleaned, PrettyJsonOpts);
+                if (single is not null && !string.IsNullOrWhiteSpace(single.Prompt))
+                    updateCandidates.Add(single);
+            }
+        }
 
         int updated = 0;
-        var touched = new List<QuizQuestionRecord>();
+        var touched = new List<(QuizQuestionRecord Question, EvidenceAnchorDto? Evidence)>();
+        var alreadyUpdated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var upd in payload.UpdatedQuestions)
+        for (int idx = 0; idx < updateCandidates.Count; idx++)
         {
-            var target = !string.IsNullOrWhiteSpace(upd.TargetId)
-                ? deck.Questions.FirstOrDefault(q => string.Equals(q.Id, upd.TargetId, StringComparison.OrdinalIgnoreCase))
-                : null;
+            var upd = updateCandidates[idx];
+            var target = ResolveTargetQuestion(deck, upd, idx, updateCandidates.Count, fallbackTargetIds, alreadyUpdated);
             if (target is null)
                 continue;
 
             ApplyDtoToQuestion(target, upd.ToGeneratedDto());
-            touched.Add(target);
+            alreadyUpdated.Add(target.Id);
+            touched.Add((target, upd.Evidence));
             updated++;
         }
 
         int added = 0;
-        foreach (var addDto in payload.NewQuestions)
+        foreach (var addDto in newCandidates)
         {
+            if (string.IsNullOrWhiteSpace(addDto.Prompt))
+                continue;
+
             var newQ = new QuizQuestionRecord
             {
                 QuizId = deck.Id,
@@ -526,14 +571,97 @@ public static class QuizExportService
             };
             ApplyDtoToQuestion(newQ, addDto);
             deck.Questions.Add(newQ);
-            touched.Add(newQ);
+            touched.Add((newQ, addDto.Evidence));
             added++;
         }
 
-        if (touched.Count > 0 && !string.IsNullOrWhiteSpace(deck.SourcePdfPath) && File.Exists(deck.SourcePdfPath))
-            PdfQuizGrounder.GroundQuestionsToPdf(deck.SourcePdfPath, touched);
+        if (updated == 0 && added == 0)
+        {
+            throw new InvalidOperationException(
+                "No matching questions were updated or added. Ensure the JSON contains \"updatedQuestions\" (with each item's \"targetId\") or \"newQuestions\"."
+            );
+        }
+
+        var pdfTouched = touched
+            .Where(t => t.Question.IsPdfSource && !string.IsNullOrWhiteSpace(deck.SourcePdfPath) && File.Exists(deck.SourcePdfPath))
+            .Select(t => t.Question)
+            .ToList();
+        if (pdfTouched.Count > 0)
+            PdfQuizGrounder.GroundQuestionsToPdf(deck.SourcePdfPath, pdfTouched);
+
+        var fileTouched = touched
+            .Where(t => !t.Question.IsPdfSource && !string.IsNullOrWhiteSpace(t.Question.SourcePdfPath) && File.Exists(t.Question.SourcePdfPath))
+            .ToList();
+        if (fileTouched.Count > 0)
+        {
+            var distinctPaths = fileTouched
+                .Select(t => t.Question.SourcePdfPath)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(distinctPaths, fileTouched);
+        }
 
         return (updated, added);
+    }
+
+    private static QuizQuestionRecord? ResolveTargetQuestion(
+        QuizSessionRecord deck,
+        ComprehensiveUpdatedQuestionDto upd,
+        int candidateIndex,
+        int candidateCount,
+        IReadOnlyList<string>? fallbackTargetIds,
+        HashSet<string> alreadyUpdated)
+    {
+        var rawId = upd.EffectiveId?.Trim();
+
+        // 1. Exact ID match
+        if (!string.IsNullOrWhiteSpace(rawId))
+        {
+            var exact = deck.Questions.FirstOrDefault(q =>
+                string.Equals(q.Id, rawId, StringComparison.OrdinalIgnoreCase)
+            );
+            if (exact is not null)
+                return exact;
+
+            // 2. 1-based label match ("1", "#1", "Q1")
+            var digits = rawId.TrimStart('#', 'Q', 'q', ' ');
+            if (int.TryParse(digits, out int oneBased) && oneBased >= 1 && oneBased <= deck.Questions.Count)
+                return deck.Questions[oneBased - 1];
+        }
+
+        // 3. Explicit questionNumber (1-based)
+        if (upd.QuestionNumber is >= 1 && upd.QuestionNumber.Value <= deck.Questions.Count)
+            return deck.Questions[upd.QuestionNumber.Value - 1];
+
+        // 4. Positional match against selected target IDs when counts align
+        if (
+            fallbackTargetIds is { Count: > 0 }
+            && candidateIndex < fallbackTargetIds.Count
+            && candidateCount <= fallbackTargetIds.Count
+        )
+        {
+            var posId = fallbackTargetIds[candidateIndex];
+            var byPos = deck.Questions.FirstOrDefault(q =>
+                string.Equals(q.Id, posId, StringComparison.OrdinalIgnoreCase)
+                && !alreadyUpdated.Contains(q.Id)
+            );
+            if (byPos is not null)
+                return byPos;
+        }
+
+        // 5. Fallback: exact prompt match against an un-updated question in the deck
+        if (!string.IsNullOrWhiteSpace(upd.Prompt))
+        {
+            var cleanPrompt = upd.Prompt.Trim();
+            var byPrompt = deck.Questions.FirstOrDefault(q =>
+                !alreadyUpdated.Contains(q.Id)
+                && string.Equals(q.Prompt.Trim(), cleanPrompt, StringComparison.OrdinalIgnoreCase)
+            );
+            if (byPrompt is not null)
+                return byPrompt;
+        }
+
+        return null;
     }
 
     public static void ApplySingleQuestionFixJson(QuizQuestionRecord target, string rawJson)
@@ -557,8 +685,10 @@ public static class QuizExportService
 
         ApplyDtoToQuestion(target, dto);
 
-        if (!string.IsNullOrWhiteSpace(target.SourcePdfPath) && File.Exists(target.SourcePdfPath))
+        if (target.IsPdfSource && !string.IsNullOrWhiteSpace(target.SourcePdfPath) && File.Exists(target.SourcePdfPath))
             PdfQuizGrounder.GroundQuestionsToPdf(target.SourcePdfPath, [target]);
+        else if (!target.IsPdfSource && !string.IsNullOrWhiteSpace(target.SourcePdfPath) && File.Exists(target.SourcePdfPath))
+            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles([target.SourcePdfPath], [(target, dto.Evidence)]);
     }
 
     private static void ApplyDtoToQuestion(QuizQuestionRecord target, GeneratedQuestionDto dto)
@@ -570,13 +700,27 @@ public static class QuizExportService
 
         target.Difficulty = Math.Clamp(dto.Difficulty, 1, 5);
         if (!string.IsNullOrWhiteSpace(dto.TopicTag))
-            target.TopicTag = dto.TopicTag.Trim();
+            target.TopicTag = dto.TopicTag.Trim().ToLowerInvariant().TrimStart('@', '#');
         if (!string.IsNullOrWhiteSpace(dto.Prompt))
             target.Prompt = dto.Prompt.Trim();
-        target.Options = dto.Options?.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList() ?? [];
-        target.CorrectAnswer = (dto.CorrectAnswer ?? string.Empty).Trim();
-        target.AcceptedAliases = dto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()).ToList() ?? [];
+
+        var (options, correctAnswer) = QuizLlmService.CanonicalizeOptionsAndAnswer(
+            target.Kind,
+            dto.Options,
+            dto.CorrectAnswer
+        );
+        target.Options = options;
+        target.CorrectAnswer = correctAnswer;
+        target.AcceptedAliases = dto.AcceptedAliases?
+            .Where(a => !string.IsNullOrWhiteSpace(a))
+            .Select(a => a.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? [];
         target.Explanation = (dto.Explanation ?? string.Empty).Trim();
+        if (dto.Hint is not null)
+            target.Hint = string.IsNullOrWhiteSpace(dto.Hint) ? null : dto.Hint.Trim();
+        if (dto.Archetype is not null)
+            target.Archetype = string.IsNullOrWhiteSpace(dto.Archetype) ? null : dto.Archetype.Trim();
         target.CodeSnippet = string.IsNullOrWhiteSpace(dto.CodeSnippet) ? null : dto.CodeSnippet;
         target.CodeLanguage = string.IsNullOrWhiteSpace(dto.CodeLanguage) ? null : dto.CodeLanguage;
         target.MathLatex = string.IsNullOrWhiteSpace(dto.MathLatex) ? null : dto.MathLatex;
@@ -596,7 +740,29 @@ public static class QuizExportService
     private static string ExtractJsonPayload(string raw)
     {
         var trimmed = raw.Trim();
+
+        // Strip markdown ```json ... ``` code fences first if present
+        int fenceStart = trimmed.IndexOf("```", StringComparison.Ordinal);
+        if (fenceStart >= 0)
+        {
+            int afterFence = trimmed.IndexOf('\n', fenceStart);
+            if (afterFence > fenceStart)
+            {
+                int fenceEnd = trimmed.IndexOf("```", afterFence + 1, StringComparison.Ordinal);
+                if (fenceEnd > afterFence)
+                    trimmed = trimmed[(afterFence + 1)..fenceEnd].Trim();
+            }
+        }
+
         int firstBrace = trimmed.IndexOf('{');
+        int firstBracket = trimmed.IndexOf('[');
+        if (firstBracket >= 0 && (firstBrace < 0 || firstBracket < firstBrace))
+        {
+            int lastBracket = trimmed.LastIndexOf(']');
+            if (lastBracket > firstBracket)
+                return trimmed[firstBracket..(lastBracket + 1)];
+        }
+
         int lastBrace = trimmed.LastIndexOf('}');
         if (firstBrace >= 0 && lastBrace > firstBrace)
             return trimmed[firstBrace..(lastBrace + 1)];

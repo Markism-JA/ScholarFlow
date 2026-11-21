@@ -108,31 +108,7 @@ public static partial class QuizStudioViewBuilder
         }
         else if (studio.IsLoadingPreviewPage || studio.IsInspectingPdf)
         {
-            pageVisual = new StackPanel
-            {
-                VerticalAlignment = VerticalAlignment.Center,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                Spacing = 10,
-                Children =
-                {
-                    new ProgressBar
-                    {
-                        IsIndeterminate = true,
-                        MinWidth = 120,
-                        MaxWidth = 220,
-                        HorizontalAlignment = HorizontalAlignment.Stretch,
-                        Height = 4,
-                        Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
-                    },
-                    new TextBlock
-                    {
-                        Text = $"Rendering PDF Page {studio.CurrentPreviewPdfPage}...",
-                        FontSize = 12,
-                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                    },
-                },
-            };
+            pageVisual = BuildPdfPageSkeleton(studio.CurrentPreviewPdfPage);
         }
         else
         {

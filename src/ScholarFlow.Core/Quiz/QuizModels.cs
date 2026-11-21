@@ -20,11 +20,38 @@ public enum CognitiveLevel
     Analysis
 }
 
+public enum CognitiveMixPreset
+{
+    Balanced,
+    Foundations,
+    ExamApplication,
+    DeepMastery
+}
+
+public enum QuestionArchetype
+{
+    FarTransfer,
+    DiscriminativeContrast,
+    CausalPerturbation,
+    SpotTheFlaw,
+    DualCoding
+}
+
+public enum ConfidenceLevel
+{
+    None = 0,
+    Guess = 1,
+    Unsure = 2,
+    Certain = 3
+}
+
 public enum QuizPresetMode
 {
     ExamSimulator,
     QuickReview,
     WeakTopicDrill,
+    DeepMastery,
+    CodeLab,
     Custom
 }
 
@@ -198,6 +225,12 @@ public sealed class GeneratedQuestionDto
     [JsonPropertyName("explanation")]
     public string Explanation { get; set; } = string.Empty;
 
+    [JsonPropertyName("hint")]
+    public string? Hint { get; set; }
+
+    [JsonPropertyName("archetype")]
+    public string? Archetype { get; set; }
+
     [JsonPropertyName("codeSnippet")]
     public string? CodeSnippet { get; set; }
 
@@ -249,6 +282,8 @@ public sealed class QuizQuestionRecord
     public string CorrectAnswer { get; set; } = string.Empty;
     public List<string> AcceptedAliases { get; set; } = [];
     public string Explanation { get; set; } = string.Empty;
+    public string? Hint { get; set; }
+    public string? Archetype { get; set; }
     public string? CodeSnippet { get; set; }
     public string? CodeLanguage { get; set; }
     public string? MathLatex { get; set; }
@@ -580,6 +615,16 @@ public sealed class QuizGenerationRequest
     public QuestionAllocationMode AllocationMode { get; set; } = QuestionAllocationMode.Percentages;
     public Dictionary<QuizQuestionKind, int> KindAllocations { get; set; } = GetDefaultAllocationsForPreset(QuizPresetMode.ExamSimulator);
     public QuizContentModalityMode ModalityMode { get; set; } = QuizContentModalityMode.AutoDetect;
+    public CognitiveMixPreset CognitiveMix { get; set; } = CognitiveMixPreset.Balanced;
+    /// <summary>
+    /// Customizable cognitive depth weights (Recall / Comprehension / Application / Analysis).
+    /// When null or empty, falls back to <see cref="CognitiveMix"/> weights.
+    /// </summary>
+    public Dictionary<CognitiveLevel, int>? CognitiveAllocations { get; set; }
+    public List<QuestionArchetype> SelectedArchetypes { get; set; } = [];
+    public bool FocusWeakSpots { get; set; }
+    public bool EnableContrastiveExplanations { get; set; } = true;
+    public bool IncludeProgressiveHints { get; set; } = true;
     public List<string> ExcludePromptsOrTopics { get; set; } = [];
     public string? CustomInstructions { get; set; }
     public string? AppendToQuizId { get; set; }
@@ -588,10 +633,132 @@ public sealed class QuizGenerationRequest
     public string ModelName { get; set; } = "gemini-2.5-flash";
     public bool UseOfflineHeuristicFallback { get; set; }
 
+    public static Dictionary<CognitiveLevel, int> GetDefaultCognitiveAllocationsForMix(
+        CognitiveMixPreset mix
+    ) =>
+        mix switch
+        {
+            CognitiveMixPreset.Foundations => new()
+            {
+                [CognitiveLevel.Recall] = 40,
+                [CognitiveLevel.Comprehension] = 35,
+                [CognitiveLevel.Application] = 20,
+                [CognitiveLevel.Analysis] = 5,
+            },
+            CognitiveMixPreset.ExamApplication => new()
+            {
+                [CognitiveLevel.Recall] = 10,
+                [CognitiveLevel.Comprehension] = 20,
+                [CognitiveLevel.Application] = 40,
+                [CognitiveLevel.Analysis] = 30,
+            },
+            CognitiveMixPreset.DeepMastery => new()
+            {
+                [CognitiveLevel.Recall] = 5,
+                [CognitiveLevel.Comprehension] = 15,
+                [CognitiveLevel.Application] = 35,
+                [CognitiveLevel.Analysis] = 45,
+            },
+            _ => new()
+            {
+                [CognitiveLevel.Recall] = 20,
+                [CognitiveLevel.Comprehension] = 30,
+                [CognitiveLevel.Application] = 30,
+                [CognitiveLevel.Analysis] = 20,
+            },
+        };
+
+    public static Dictionary<CognitiveLevel, int> GetDefaultCognitiveAllocationsForPreset(
+        QuizPresetMode preset
+    ) =>
+        preset switch
+        {
+            QuizPresetMode.QuickReview => GetDefaultCognitiveAllocationsForMix(
+                CognitiveMixPreset.Foundations
+            ),
+            QuizPresetMode.WeakTopicDrill or QuizPresetMode.CodeLab =>
+                GetDefaultCognitiveAllocationsForMix(CognitiveMixPreset.ExamApplication),
+            QuizPresetMode.DeepMastery => GetDefaultCognitiveAllocationsForMix(
+                CognitiveMixPreset.DeepMastery
+            ),
+            _ => GetDefaultCognitiveAllocationsForMix(CognitiveMixPreset.Balanced),
+        };
+
+    public Dictionary<CognitiveLevel, int> ResolveCognitivePercentages()
+    {
+        var allLevels = Enum.GetValues<CognitiveLevel>();
+        if (CognitiveAllocations is null || CognitiveAllocations.Values.Sum(v => Math.Max(0, v)) <= 0)
+            return GetDefaultCognitiveAllocationsForMix(CognitiveMix);
+
+        int sum = allLevels.Sum(l => Math.Max(0, CognitiveAllocations.GetValueOrDefault(l, 0)));
+        if (sum == 100)
+        {
+            return allLevels.ToDictionary(
+                l => l,
+                l => Math.Max(0, CognitiveAllocations.GetValueOrDefault(l, 0))
+            );
+        }
+
+        // Normalize arbitrary positive weights to percentages summing to 100
+        var scaled = new Dictionary<CognitiveLevel, int>();
+        var remainders = new List<(CognitiveLevel Level, double Rem, int Weight)>();
+        int allocated = 0;
+        foreach (var l in allLevels)
+        {
+            int w = Math.Max(0, CognitiveAllocations.GetValueOrDefault(l, 0));
+            double exact = w * 100.0 / sum;
+            int fl = (int)Math.Floor(exact);
+            scaled[l] = fl;
+            allocated += fl;
+            remainders.Add((l, exact - fl, w));
+        }
+        foreach (var item in remainders
+                     .OrderByDescending(r => r.Rem)
+                     .ThenByDescending(r => r.Weight)
+                     .Take(Math.Max(0, 100 - allocated)))
+        {
+            scaled[item.Level]++;
+        }
+        return scaled;
+    }
+
+    public Dictionary<CognitiveLevel, int> ResolveExactCognitiveCounts(int? targetTotalOverride = null)
+    {
+        int total = Math.Clamp(targetTotalOverride ?? QuestionCount, 1, 150);
+        var pcts = ResolveCognitivePercentages();
+        var allLevels = Enum.GetValues<CognitiveLevel>();
+        var result = allLevels.ToDictionary(l => l, _ => 0);
+        int sum = Math.Max(1, pcts.Values.Sum());
+
+        var remainders = new List<(CognitiveLevel Level, double Rem, int Weight)>();
+        int allocated = 0;
+        foreach (var l in allLevels)
+        {
+            int w = Math.Max(0, pcts.GetValueOrDefault(l, 0));
+            if (w == 0) continue;
+            double exact = (double)w * total / sum;
+            int fl = (int)Math.Floor(exact);
+            result[l] = fl;
+            allocated += fl;
+            remainders.Add((l, exact - fl, w));
+        }
+        foreach (var item in remainders
+                     .OrderByDescending(r => r.Rem)
+                     .ThenByDescending(r => r.Weight)
+                     .Take(Math.Max(0, total - allocated)))
+        {
+            result[item.Level]++;
+        }
+        return result;
+    }
+
     public static Dictionary<QuizQuestionKind, int> GetDefaultAllocationsForPreset(
         QuizPresetMode preset,
         QuestionAllocationMode mode = QuestionAllocationMode.Percentages)
     {
+        if (preset == QuizPresetMode.CodeLab)
+            return GetCodeAwareAllocations(mode, 10);
+
         if (mode == QuestionAllocationMode.ExactCounts)
         {
             return preset switch
@@ -613,6 +780,15 @@ public sealed class QuizGenerationRequest
                     [QuizQuestionKind.TrueFalse] = 0,
                     [QuizQuestionKind.FillInTheBlank] = 2,
                     [QuizQuestionKind.Ordering] = 0
+                },
+                QuizPresetMode.DeepMastery => new()
+                {
+                    [QuizQuestionKind.MultipleChoice] = 2,
+                    [QuizQuestionKind.Situational] = 3,
+                    [QuizQuestionKind.Identification] = 2,
+                    [QuizQuestionKind.TrueFalse] = 0,
+                    [QuizQuestionKind.FillInTheBlank] = 1,
+                    [QuizQuestionKind.Ordering] = 2
                 },
                 _ => new()
                 {
@@ -645,6 +821,15 @@ public sealed class QuizGenerationRequest
                 [QuizQuestionKind.TrueFalse] = 0,
                 [QuizQuestionKind.FillInTheBlank] = 20,
                 [QuizQuestionKind.Ordering] = 0
+            },
+            QuizPresetMode.DeepMastery => new()
+            {
+                [QuizQuestionKind.MultipleChoice] = 20,
+                [QuizQuestionKind.Situational] = 30,
+                [QuizQuestionKind.Identification] = 20,
+                [QuizQuestionKind.TrueFalse] = 0,
+                [QuizQuestionKind.FillInTheBlank] = 10,
+                [QuizQuestionKind.Ordering] = 20
             },
             _ => new()
             {

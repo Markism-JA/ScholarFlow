@@ -73,6 +73,8 @@ public sealed partial class QuizStudioViewModel
                     CorrectAnswer = orig.CorrectAnswer,
                     AcceptedAliases = [.. orig.AcceptedAliases],
                     Explanation = orig.Explanation,
+                    Hint = orig.Hint,
+                    Archetype = orig.Archetype,
                     SourcePdfPath = orig.SourcePdfPath,
                     SourcePage = orig.SourcePage,
                     SourceStartLine = orig.SourceStartLine,
@@ -153,6 +155,7 @@ public sealed partial class QuizStudioViewModel
         }
 
         IsShowingResultsSummary = false;
+        ResetPerQuestionSuperEngineState();
         _mainVm.RequestUiRefresh();
     }
 
@@ -240,6 +243,7 @@ public sealed partial class QuizStudioViewModel
     {
         ActiveSession = null;
         IsShowingResultsSummary = false;
+        ResetPerQuestionSuperEngineState();
         _mainVm.RequestUiRefresh();
     }
 
@@ -255,12 +259,19 @@ public sealed partial class QuizStudioViewModel
         IsAnswerRevealed = true;
         SessionResults[q.Id] = (answer, isCorrect);
 
+        var appliedConfidence = UseConfidenceCalibration ? SelectedConfidence : ConfidenceLevel.None;
         await ScholarFlowDatabase.RecordQuestionAttemptAsync(
             _mainVm.BasinRoot,
             q,
             answer,
             isCorrect,
-            isCorrect ? qualityRating : 1
+            isCorrect ? qualityRating : 1,
+            appliedConfidence
+        );
+        LastConfidenceFeedback = FormatConfidenceCalibrationFeedback(
+            appliedConfidence,
+            isCorrect,
+            q.SrsIntervalDays
         );
 
         await PersistActiveInProgressAsync();
@@ -324,6 +335,7 @@ public sealed partial class QuizStudioViewModel
         if (CurrentQuestionIndex + 1 < ActiveSession.Questions.Count)
         {
             CurrentQuestionIndex++;
+            ResetPerQuestionSuperEngineState();
             var nextQ = CurrentQuestion;
             if (nextQ is not null && SessionResults.TryGetValue(nextQ.Id, out var prev))
             {
@@ -374,6 +386,7 @@ public sealed partial class QuizStudioViewModel
             return;
 
         CurrentQuestionIndex--;
+        ResetPerQuestionSuperEngineState();
         var q = CurrentQuestion;
         if (q is not null && SessionResults.TryGetValue(q.Id, out var prev))
         {
@@ -400,6 +413,7 @@ public sealed partial class QuizStudioViewModel
             return;
 
         CurrentQuestionIndex = index;
+        ResetPerQuestionSuperEngineState();
         var q = CurrentQuestion;
         if (q is not null && SessionResults.TryGetValue(q.Id, out var prev))
         {

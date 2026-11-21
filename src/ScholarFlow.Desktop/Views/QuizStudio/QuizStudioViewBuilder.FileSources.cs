@@ -22,23 +22,39 @@ public static partial class QuizStudioViewBuilder
             _ => MaterialIconKind.CodeTags,
         };
 
-    /// <summary>Selector card: pick code / notes / images as quiz sources (alone or combined with the active PDF).</summary>
-    private static Control BuildFileSourcesCard(QuizStudioViewModel studio)
+    /// <summary>
+    /// Inline Course Files selector strip embedded directly inside Card 1 ("1. Study Sources &amp; Scope")
+    /// so PDFs and Code/Markdown/Images live in one unified source section.
+    /// </summary>
+    private static Control BuildInlineFileSourcesSection(QuizStudioViewModel studio)
     {
-        var stack = new StackPanel { Spacing = 8 };
-        var header = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"), ColumnSpacing = 6 };
+        var stack = new StackPanel { Spacing = 6 };
+        var header = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 6,
+        };
+
+        var labelText = studio.IsMixedSourceMode
+            ? $"Course Files ({studio.SelectedFileSourcePaths.Count} selected · Combined with PDF)"
+            : studio.IsFileSourceMode
+                ? $"Course Files ({studio.SelectedFileSourcePaths.Count} selected · Files Only)"
+                : $"Course Files — Code, Notes & Diagrams ({studio.StudyFiles.Count} available)";
+
         header.Children.Add(
-            UiBuilder.SectionHeader(
-                studio.IsMixedSourceMode
-                    ? $"Code, Notes & Images ({studio.SelectedFileSourcePaths.Count} selected · Combined with PDF)"
-                    : studio.IsFileSourceMode
-                        ? $"Code, Notes & Images ({studio.SelectedFileSourcePaths.Count} selected · Files Only)"
-                        : "Code, Notes & Images (files only or combine with PDF)"
-            )
+            new TextBlock
+            {
+                Text = labelText,
+                FontSize = 11.5,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                VerticalAlignment = VerticalAlignment.Center,
+            }
         );
 
         var headerActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
-        bool hasValidPdf = !string.IsNullOrWhiteSpace(studio.SelectedPdfPath) && File.Exists(studio.SelectedPdfPath);
+        bool hasValidPdf =
+            !string.IsNullOrWhiteSpace(studio.SelectedPdfPath) && File.Exists(studio.SelectedPdfPath);
         if (studio.IsFileSourceMode && hasValidPdf)
         {
             headerActions.Children.Add(
@@ -58,26 +74,40 @@ public static partial class QuizStudioViewBuilder
             );
         }
 
-        headerActions.Children.Add(
-            UiBuilder.GhostButton(
-                studio.ShowStudyFiles ? "Hide Files" : $"Files ({studio.StudyFiles.Count})",
-                studio.ShowStudyFiles ? MaterialIconKind.ChevronUp : MaterialIconKind.ChevronDown,
-                studio.ToggleShowStudyFiles,
-                isActive: studio.ShowStudyFiles
-            )
-        );
+        if (studio.StudyFiles.Count > 0)
+        {
+            headerActions.Children.Add(
+                UiBuilder.GhostButton(
+                    studio.ShowStudyFiles ? "Hide Files" : $"Browse Files ({studio.StudyFiles.Count})",
+                    studio.ShowStudyFiles
+                        ? MaterialIconKind.ChevronUp
+                        : MaterialIconKind.ChevronDown,
+                    studio.ToggleShowStudyFiles,
+                    isActive: studio.ShowStudyFiles
+                )
+            );
+        }
+
         Grid.SetColumn(headerActions, 1);
         header.Children.Add(headerActions);
         stack.Children.Add(header);
 
-        if (studio.StudyFiles.Count == 0)
+        if (studio.IsLoadingStudyFiles)
         {
-            stack.Children.Add(MutedNote("No code, markdown, text, or image files found in this course folder."));
-            return UiBuilder.Card(stack, padding: new Thickness(12, 10));
+            var skelRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+            skelRow.Children.Add(BuildSkeletonBlock(24, 96, 0.55, new CornerRadius(5)));
+            skelRow.Children.Add(BuildSkeletonBlock(24, 118, 0.45, new CornerRadius(5)));
+            skelRow.Children.Add(BuildSkeletonBlock(24, 84, 0.40, new CornerRadius(5)));
+            stack.Children.Add(skelRow);
+            return stack;
         }
 
-        // Always show selected files as removable pills so the chosen scope stays visible when the list is collapsed.
-        var selected = studio.StudyFiles.Where(f => studio.IsFileSourceSelected(f.FilePath)).ToList();
+        if (studio.StudyFiles.Count == 0)
+            return stack;
+
+        var selected = studio
+            .StudyFiles.Where(f => studio.IsFileSourceSelected(f.FilePath))
+            .ToList();
         var visible = studio.ShowStudyFiles ? studio.StudyFiles : selected;
         if (visible.Count > 0)
         {
@@ -99,74 +129,27 @@ public static partial class QuizStudioViewBuilder
                 studio.ShowStudyFiles && visible.Count > 18
                     ? new Border
                     {
-                        MaxHeight = 190,
+                        MaxHeight = 180,
                         Child = UiBuilder.PersistentScrollViewer("quiz-study-files", wrap),
                     }
                     : wrap
             );
         }
-        else
-        {
-            stack.Children.Add(MutedNote("Open Files and tap code, notes, or images to quiz from them (alone or combined with your PDF)."));
-        }
 
-        if (studio.HasCodeFileSelected)
-        {
-            var mixRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            mixRow.Children.Add(
-                UiBuilder.GhostButton(
-                    studio.IsCodeAwareMixActive ? "Code-Aware Mix Active" : "Apply Code-Aware Mix",
-                    MaterialIconKind.CodeBraces,
-                    studio.ApplyCodeAwareMix,
-                    isActive: studio.IsCodeAwareMixActive
-                )
-            );
-            mixRow.Children.Add(
-                new TextBlock
-                {
-                    Text = "Boosts Trace/Output (ID), Code Completion (Fill), Bug Spotting (Sit) & Execution Order",
-                    FontSize = 11,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextWrapping = TextWrapping.Wrap,
-                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                }
-            );
-            stack.Children.Add(mixRow);
-        }
-
-        return UiBuilder.Card(stack, padding: new Thickness(12, 10));
-    }
-
-    private static Control BuildFileModeScopeNote(QuizStudioViewModel studio)
-    {
-        int images = studio.SelectedFileSourcePaths.Count(ImagePacketPacker.IsImage);
-        int text = studio.SelectedFileSourcePaths.Count - images;
-        var stack = new StackPanel { Spacing = 4 };
-        stack.Children.Add(
-            UiBuilder.SectionHeader(
-                studio.IsMixedSourceMode
-                    ? "Combined Files Included Alongside PDF Scope"
-                    : "2. Scope = Selected Files"
-            )
-        );
-        stack.Children.Add(
-            MutedNote(
-                $"{text} code/text file(s) and {images} image(s). Evidence is grounded to exact line ranges "
-                    + "(or the source image). API AI sends numbered lines + vision images; Web AI mode copies the same prompt "
-                    + "and can pack images/PDF into one uploadable PDF."
-            )
-        );
-        return UiBuilder.Card(stack, padding: new Thickness(12, 10));
+        return stack;
     }
 
     /// <summary>Right pane in file-only mode: selected files with one-click open in the Source Viewer.</summary>
-    private static Control BuildFileSourcesPreviewPane(MainWindowViewModel vm, QuizStudioViewModel studio)
+    private static Control BuildFileSourcesPreviewPane(
+        MainWindowViewModel vm,
+        QuizStudioViewModel studio
+    )
     {
         var stack = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 20) };
         stack.Children.Add(
             new TextBlock
             {
-                Text = "Selected Source Files",
+                Text = $"Selected Study Files ({studio.SelectedFileSourcePaths.Count})",
                 FontSize = 13,
                 FontWeight = FontWeight.SemiBold,
                 Foreground = ThemeService.Brush(ThemeService.TextPrimary),
@@ -176,7 +159,11 @@ public static partial class QuizStudioViewBuilder
         foreach (var path in studio.SelectedFileSourcePaths.ToList())
         {
             var d = StudySourceClassifier.Describe(path);
-            var row = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"), ColumnSpacing = 8 };
+            var row = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
+                ColumnSpacing = 8,
+            };
             row.Children.Add(
                 new Material.Icons.Avalonia.MaterialIcon
                 {
@@ -188,7 +175,11 @@ public static partial class QuizStudioViewBuilder
                 }
             );
 
-            var info = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+            var info = new StackPanel
+            {
+                Spacing = 1,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
             info.Children.Add(
                 new TextBlock
                 {
@@ -210,7 +201,11 @@ public static partial class QuizStudioViewBuilder
             Grid.SetColumn(info, 1);
             row.Children.Add(info);
 
-            var open = UiBuilder.GhostButton("View", MaterialIconKind.OpenInNew, () => vm.OpenFileInSourceViewer(path));
+            var open = UiBuilder.GhostButton(
+                "View",
+                MaterialIconKind.OpenInNew,
+                () => vm.OpenFileInSourceViewer(path)
+            );
             Grid.SetColumn(open, 2);
             row.Children.Add(open);
 
@@ -239,7 +234,11 @@ public static partial class QuizStudioViewBuilder
         }
 
         var stripStack = new StackPanel { Spacing = 4 };
-        stripStack.Children.Add(UiBuilder.SectionHeader($"Combined Files ({studio.SelectedFileSourcePaths.Count}) — Click to View"));
+        stripStack.Children.Add(
+            UiBuilder.SectionHeader(
+                $"Combined Files ({studio.SelectedFileSourcePaths.Count}) — Click to View"
+            )
+        );
         stripStack.Children.Add(filesWrap);
         grid.Children.Add(UiBuilder.Card(stripStack, padding: new Thickness(10, 8)));
 
@@ -248,13 +247,4 @@ public static partial class QuizStudioViewBuilder
         grid.Children.Add(pdfPane);
         return grid;
     }
-
-    private static TextBlock MutedNote(string text) =>
-        new()
-        {
-            Text = text,
-            FontSize = 12,
-            TextWrapping = TextWrapping.Wrap,
-            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-        };
 }

@@ -34,6 +34,7 @@ public enum SnipCaptureMode
 public enum OrganizerHealthFilter
 {
     All,
+    QualityIssues,
     MissingEvidence,
     HasRichMedia,
     FlaggedForAi,
@@ -74,10 +75,26 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         public int? StartPage { get; set; }
         public int? EndPage { get; set; }
         public HashSet<string> SelectedSectionKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> SelectedFileSourcePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public bool IncludePdfWithFiles { get; set; }
+        public bool ShowStudyFiles { get; set; }
+        public bool IsCodeAwareMixActive { get; set; }
         public int PreviewScopeIndex { get; set; }
         public QuizBuilderOutputMode BuilderOutputMode { get; set; } = QuizBuilderOutputMode.AiApi;
         public int QuestionCount { get; set; } = 10;
         public QuizPresetMode SelectedPreset { get; set; } = QuizPresetMode.ExamSimulator;
+        public QuestionAllocationMode AllocationMode { get; set; } = QuestionAllocationMode.Percentages;
+        public Dictionary<QuizQuestionKind, int> KindAllocations { get; set; } =
+            QuizGenerationRequest.GetDefaultAllocationsForPreset(QuizPresetMode.ExamSimulator);
+        public CognitiveMixPreset CognitiveMix { get; set; } = CognitiveMixPreset.Balanced;
+        public Dictionary<CognitiveLevel, int> CognitiveAllocations { get; set; } =
+            QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(QuizPresetMode.ExamSimulator);
+        public QuizContentModalityMode ModalityMode { get; set; } = QuizContentModalityMode.AutoDetect;
+        public HashSet<QuestionArchetype> SelectedArchetypes { get; } = [];
+        public bool FocusWeakSpots { get; set; }
+        public bool EnableContrastiveExplanations { get; set; } = true;
+        public bool IncludeProgressiveHints { get; set; } = true;
+        public string CustomPromptInstructions { get; set; } = string.Empty;
         public QuizSessionRecord? OrganizerQuiz { get; set; }
         public bool IsManualJsonModalOpen { get; set; }
     }
@@ -325,10 +342,28 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         state.SelectedSectionKeys.Clear();
         foreach (var k in SelectedSectionKeys)
             state.SelectedSectionKeys.Add(k);
+        state.SelectedFileSourcePaths.Clear();
+        foreach (var fp in _selectedFileSourcePaths)
+            state.SelectedFileSourcePaths.Add(fp);
+        state.IncludePdfWithFiles = IncludePdfWithFiles;
+        state.ShowStudyFiles = ShowStudyFiles;
+        state.IsCodeAwareMixActive = IsCodeAwareMixActive;
         state.PreviewScopeIndex = PreviewScopeIndex;
         state.BuilderOutputMode = BuilderOutputMode;
         state.QuestionCount = QuestionCount;
         state.SelectedPreset = SelectedPreset;
+        state.AllocationMode = AllocationMode;
+        state.KindAllocations = new Dictionary<QuizQuestionKind, int>(KindAllocations);
+        state.CognitiveMix = CognitiveMix;
+        state.CognitiveAllocations = new Dictionary<CognitiveLevel, int>(CognitiveAllocations);
+        state.ModalityMode = ModalityMode;
+        state.SelectedArchetypes.Clear();
+        foreach (var a in SelectedArchetypes)
+            state.SelectedArchetypes.Add(a);
+        state.FocusWeakSpots = FocusWeakSpots;
+        state.EnableContrastiveExplanations = EnableContrastiveExplanations;
+        state.IncludeProgressiveHints = IncludeProgressiveHints;
+        state.CustomPromptInstructions = CustomPromptInstructions;
         state.OrganizerQuiz = OrganizerQuiz;
         state.IsManualJsonModalOpen = IsManualJsonModalOpen;
     }
@@ -346,10 +381,28 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
             SelectedSectionKeys.Clear();
             foreach (var k in state.SelectedSectionKeys)
                 SelectedSectionKeys.Add(k);
+            _selectedFileSourcePaths.Clear();
+            foreach (var fp in state.SelectedFileSourcePaths)
+                _selectedFileSourcePaths.Add(fp);
+            IncludePdfWithFiles = state.IncludePdfWithFiles;
+            ShowStudyFiles = state.ShowStudyFiles;
+            IsCodeAwareMixActive = state.IsCodeAwareMixActive;
             PreviewScopeIndex = state.PreviewScopeIndex;
             BuilderOutputMode = state.BuilderOutputMode;
             QuestionCount = state.QuestionCount;
             SelectedPreset = state.SelectedPreset;
+            AllocationMode = state.AllocationMode;
+            KindAllocations = new Dictionary<QuizQuestionKind, int>(state.KindAllocations);
+            CognitiveMix = state.CognitiveMix;
+            CognitiveAllocations = new Dictionary<CognitiveLevel, int>(state.CognitiveAllocations);
+            ModalityMode = state.ModalityMode;
+            SelectedArchetypes.Clear();
+            foreach (var a in state.SelectedArchetypes)
+                SelectedArchetypes.Add(a);
+            FocusWeakSpots = state.FocusWeakSpots;
+            EnableContrastiveExplanations = state.EnableContrastiveExplanations;
+            IncludeProgressiveHints = state.IncludeProgressiveHints;
+            CustomPromptInstructions = state.CustomPromptInstructions;
             OrganizerQuiz = state.OrganizerQuiz;
             IsManualJsonModalOpen = state.IsManualJsonModalOpen;
         }
@@ -362,13 +415,33 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
             StartPage = null;
             EndPage = null;
             SelectedSectionKeys.Clear();
+            _selectedFileSourcePaths.Clear();
+            IncludePdfWithFiles = false;
+            ShowStudyFiles = false;
+            IsCodeAwareMixActive = false;
             PreviewScopeIndex = 0;
             BuilderOutputMode = QuizBuilderOutputMode.AiApi;
             QuestionCount = 10;
             SelectedPreset = QuizPresetMode.ExamSimulator;
+            AllocationMode = QuestionAllocationMode.Percentages;
+            KindAllocations = QuizGenerationRequest.GetDefaultAllocationsForPreset(
+                QuizPresetMode.ExamSimulator,
+                QuestionAllocationMode.Percentages
+            );
+            CognitiveMix = CognitiveMixPreset.Balanced;
+            CognitiveAllocations = QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(
+                QuizPresetMode.ExamSimulator
+            );
+            ModalityMode = QuizContentModalityMode.AutoDetect;
+            SelectedArchetypes.Clear();
+            FocusWeakSpots = false;
+            EnableContrastiveExplanations = true;
+            IncludeProgressiveHints = true;
+            CustomPromptInstructions = string.Empty;
             OrganizerQuiz = null;
             IsManualJsonModalOpen = false;
         }
+        InvalidateOrganizerQualityCache();
     }
 
     public void SetSubTab(QuizStudioSubTab tab)

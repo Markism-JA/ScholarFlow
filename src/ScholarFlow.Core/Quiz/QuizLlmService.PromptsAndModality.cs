@@ -113,10 +113,7 @@ public sealed partial class QuizLlmService
               + (disabledKinds.Count > 0 ? $" Do NOT generate any of: {string.Join(", ", disabledKinds)}." : "")
             : "Generate a balanced academic assessment across requested question types.";
 
-        var weakNote = req.Preset == QuizPresetMode.WeakTopicDrill && weakTopics.Count > 0
-            ? $"\nFocus heavily on previously missed/weak topics: {string.Join(", ", weakTopics)}."
-            : string.Empty;
-
+        var pedagogicalBlueprint = QuizBlueprintBuilder.BuildPedagogicalBlueprintBlock(req, weakTopics, modality);
         var modalityRules = BuildModalitySystemRules(modality, req.ModalityMode);
         bool fileMode = req.HasFileSources;
         bool mixedMode = req.IsMixedSources;
@@ -135,7 +132,10 @@ public sealed partial class QuizLlmService
 
         return $$"""
             {{intro}}
-            {{distributionSpec}}{{weakNote}}
+            {{distributionSpec}}
+
+            {{pedagogicalBlueprint}}
+
             {{modalityRules}}{{codeFormatRules}}
 
             CRITICAL RULES:
@@ -144,7 +144,7 @@ public sealed partial class QuizLlmService
             3. For MultipleChoice and Situational questions:
                - Provide 4 options in "options" (plain text without "A)" prefixes).
                - "correctAnswer" MUST exactly match one of the strings in "options".
-               - Distractors must be plausible sibling concepts from the same handout.
+               - Distractors must be plausible sibling concepts or misconceptions from the same material, with balanced option lengths.
             4. For Identification:
                - "options" must be an empty array [].
                - "correctAnswer" must be the concise canonical term (1-4 words).
@@ -170,13 +170,15 @@ public sealed partial class QuizLlmService
                 {
                   "kind": "MultipleChoice | Situational | Identification | TrueFalse | FillInTheBlank | Ordering",
                   "cognitiveLevel": "Recall | Comprehension | Application | Analysis",
+                  "archetype": "FarTransfer | DiscriminativeContrast | CausalPerturbation | SpotTheFlaw | DualCoding",
                   "difficulty": 3,
                   "topicTag": "short-kebab-tag",
                   "prompt": "Clear question stem, scenario, or sentence containing _____...",
                   "options": ["Option 1", "Option 2", "Option 3", "Option 4"],
                   "correctAnswer": "Option 1",
                   "acceptedAliases": [],
-                  "explanation": "Concise explanation of why the answer is correct and why distractors are wrong.",
+                  "hint": "Brief 1-sentence scaffold clue that nudges recall without giving away the answer (or null if disabled).",
+                  "explanation": "Why correct: ... Why distractors fail: ... Core principle: ...",
                   "codeSnippet": null,
                   "codeLanguage": null,
                   "mathLatex": null,

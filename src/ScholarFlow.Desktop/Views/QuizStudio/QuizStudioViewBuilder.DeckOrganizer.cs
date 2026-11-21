@@ -518,10 +518,17 @@ public static partial class QuizStudioViewBuilder
             filtersStack.Children.Add(kindWrap);
 
             // Health & @TopicTag Pills
+            var deckQualityReport = studio.GetCachedOrganizerQualityReport();
             var tagHealthWrap = new WrapPanel { Orientation = Orientation.Horizontal };
             foreach (
                 var (hf, hLabel) in new[]
                 {
+                    (
+                        OrganizerHealthFilter.QualityIssues,
+                        deckQualityReport.HasIssues
+                            ? $"Quality Issues ({deckQualityReport.FlaggedQuestionIds.Count})"
+                            : "Quality Issues (0)"
+                    ),
                     (OrganizerHealthFilter.MissingEvidence, "Missing Evidence"),
                     (OrganizerHealthFilter.HasRichMedia, "Code / Math / Diagram"),
                     (OrganizerHealthFilter.FlaggedForAi, "Flagged for AI"),
@@ -1154,6 +1161,39 @@ public static partial class QuizStudioViewBuilder
                     : ThemeService.Brush(ThemeService.PriorityP3Bg)
             )
         );
+        AddMetaBadge(
+            UiBuilder.PillBadge(
+                q.CognitiveLevel.ToString(),
+                ThemeService.Brush(ThemeService.PriorityP3Fg),
+                ThemeService.Brush(ThemeService.PriorityP3Bg)
+            )
+        );
+        if (!string.IsNullOrWhiteSpace(q.Archetype))
+        {
+            AddMetaBadge(
+                UiBuilder.PillBadge(
+                    QuizBlueprintBuilder.FormatArchetypeBadge(q.Archetype),
+                    ThemeService.Brush(ThemeService.PriorityP2Fg),
+                    ThemeService.Brush(ThemeService.PriorityP2Bg)
+                )
+            );
+        }
+        var qCriticIssues = studio.GetCachedOrganizerQualityReport().GetIssuesFor(q.Id);
+        if (qCriticIssues.Count > 0)
+        {
+            bool hasErr = qCriticIssues.Any(i => i.Severity == QualityIssueSeverity.Error);
+            AddMetaBadge(
+                UiBuilder.PillBadge(
+                    $"{qCriticIssues.Count} issue{(qCriticIssues.Count == 1 ? "" : "s")}: {qCriticIssues[0].Code}",
+                    hasErr
+                        ? ThemeService.Brush(ThemeService.PriorityP1Fg)
+                        : ThemeService.Brush(ThemeService.PriorityP2Fg),
+                    hasErr
+                        ? ThemeService.Brush(ThemeService.PriorityP1Bg)
+                        : ThemeService.Brush(ThemeService.PriorityP2Bg)
+                )
+            );
+        }
         if (!string.IsNullOrWhiteSpace(q.TopicTag))
         {
             AddMetaBadge(
@@ -1264,749 +1304,6 @@ public static partial class QuizStudioViewBuilder
             handledEventsToo: true
         );
         return cardBorder;
-    }
-
-    private static Control BuildFloatingQuestionEditorOverlay(
-        MainWindowViewModel vm,
-        QuizStudioViewModel studio
-    )
-    {
-        var draft = studio.EditingQuestionDraft!;
-        var deck = studio.OrganizerQuiz!;
-        int deckIdx = deck.Questions.FindIndex(q =>
-            string.Equals(q.Id, draft.Id, StringComparison.OrdinalIgnoreCase)
-        );
-
-        var modalStack = new StackPanel { Spacing = 10 };
-
-        // Modal Header
-        var headerGrid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto,Auto"),
-            ColumnSpacing = 6,
-        };
-        headerGrid.Children.Add(
-            new TextBlock
-            {
-                Text = $"Edit Question #{deckIdx + 1} of {deck.Questions.Count}",
-                FontSize = 15,
-                FontWeight = FontWeight.Bold,
-                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                VerticalAlignment = VerticalAlignment.Center,
-            }
-        );
-
-        var prevBtn = UiBuilder.IconButton(
-            MaterialIconKind.ChevronLeft,
-            () => studio.CommitEditingQuestionDraft(-1),
-            16
-        );
-        prevBtn.IsEnabled = deckIdx > 0;
-        Grid.SetColumn(prevBtn, 1);
-        headerGrid.Children.Add(prevBtn);
-
-        var nextBtn = UiBuilder.IconButton(
-            MaterialIconKind.ChevronRight,
-            () => studio.CommitEditingQuestionDraft(+1),
-            16
-        );
-        nextBtn.IsEnabled = deckIdx >= 0 && deckIdx < deck.Questions.Count - 1;
-        Grid.SetColumn(nextBtn, 2);
-        headerGrid.Children.Add(nextBtn);
-
-        var cancelBtn = UiBuilder.GhostButton(
-            "Cancel",
-            MaterialIconKind.Close,
-            studio.CancelEditingQuestionDraft
-        );
-        Grid.SetColumn(cancelBtn, 3);
-        headerGrid.Children.Add(cancelBtn);
-
-        var doneBtn = UiBuilder.PrimaryButton(
-            "Done",
-            MaterialIconKind.Check,
-            () => studio.CommitEditingQuestionDraft(0)
-        );
-        Grid.SetColumn(doneBtn, 4);
-        headerGrid.Children.Add(doneBtn);
-        modalStack.Children.Add(headerGrid);
-
-        // Kind Switcher
-        var kindWrap = new WrapPanel { Orientation = Orientation.Horizontal };
-        foreach (var k in Enum.GetValues<QuizQuestionKind>())
-        {
-            var capturedK = k;
-            var kBtn = UiBuilder.GhostButton(
-                k.ToString(),
-                draft.Kind == k ? MaterialIconKind.Check : null,
-                () =>
-                {
-                    draft.Kind = capturedK;
-                    if (capturedK == QuizQuestionKind.TrueFalse)
-                    {
-                        draft.Options = ["True", "False"];
-                        if (!string.Equals(draft.CorrectAnswer, "False", StringComparison.OrdinalIgnoreCase))
-                            draft.CorrectAnswer = "True";
-                    }
-                    else if (
-                        capturedK is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational
-                        && draft.Options.Count < 2
-                    )
-                    {
-                        draft.Options = ["Option A", "Option B", "Option C", "Option D"];
-                        draft.CorrectAnswer = "Option A";
-                    }
-                    else if (capturedK == QuizQuestionKind.Ordering && draft.Options.Count < 2)
-                    {
-                        draft.Options = ["Step 1", "Step 2", "Step 3"];
-                        draft.CorrectAnswer = "Step 1 -> Step 2 -> Step 3";
-                    }
-                    vm.RequestUiRefresh();
-                },
-                isActive: draft.Kind == k
-            );
-            kBtn.Margin = new Thickness(0, 0, 5, 4);
-            kindWrap.Children.Add(kBtn);
-        }
-        modalStack.Children.Add(kindWrap);
-
-        // Prompt
-        var promptBox = new TextBox
-        {
-            Text = draft.Prompt,
-            Watermark =
-                draft.Kind == QuizQuestionKind.FillInTheBlank
-                    ? "Question prompt (use _____ for the blank)..."
-                    : "Question prompt...",
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 60,
-            FontSize = 13,
-        };
-        promptBox.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == TextBox.TextProperty)
-                draft.Prompt = promptBox.Text ?? string.Empty;
-        };
-        modalStack.Children.Add(promptBox);
-
-        // Kind-Specific Answer Editor
-        if (draft.Kind == QuizQuestionKind.TrueFalse)
-        {
-            var tfRow = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 8,
-            };
-            tfRow.Children.Add(
-                new TextBlock
-                {
-                    Text = "Correct Answer:",
-                    FontSize = 12,
-                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                    VerticalAlignment = VerticalAlignment.Center,
-                }
-            );
-            foreach (var tfVal in new[] { "True", "False" })
-            {
-                bool isSel = string.Equals(
-                    draft.CorrectAnswer.Trim(),
-                    tfVal,
-                    StringComparison.OrdinalIgnoreCase
-                );
-                tfRow.Children.Add(
-                    UiBuilder.GhostButton(
-                        tfVal,
-                        isSel ? MaterialIconKind.CheckCircle : MaterialIconKind.CircleOutline,
-                        () =>
-                        {
-                            draft.CorrectAnswer = tfVal;
-                            vm.RequestUiRefresh();
-                        },
-                        isActive: isSel
-                    )
-                );
-            }
-            modalStack.Children.Add(tfRow);
-        }
-        else if (
-            draft.Kind
-            is QuizQuestionKind.MultipleChoice
-                or QuizQuestionKind.Situational
-                or QuizQuestionKind.Ordering
-        )
-        {
-            bool isOrdering = draft.Kind == QuizQuestionKind.Ordering;
-            var optsHeader = new Grid
-            {
-                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
-                ColumnSpacing = 8,
-            };
-            optsHeader.Children.Add(
-                new TextBlock
-                {
-                    Text = isOrdering
-                        ? "Steps in CORRECT chronological order:"
-                        : "Options (click the radio circle to set the correct answer):",
-                    FontSize = 11.5,
-                    Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                    VerticalAlignment = VerticalAlignment.Center,
-                }
-            );
-            var addOptBtn = UiBuilder.GhostButton(
-                isOrdering ? "Add Step" : "Add Option",
-                MaterialIconKind.Plus,
-                () =>
-                {
-                    draft.Options.Add(
-                        isOrdering
-                            ? $"Step {draft.Options.Count + 1}"
-                            : $"Option {draft.Options.Count + 1}"
-                    );
-                    if (isOrdering && draft.Options.Count >= 2)
-                        draft.CorrectAnswer = string.Join(" -> ", draft.Options);
-                    vm.RequestUiRefresh();
-                }
-            );
-            Grid.SetColumn(addOptBtn, 1);
-            optsHeader.Children.Add(addOptBtn);
-            modalStack.Children.Add(optsHeader);
-
-            var optsListStack = new StackPanel { Spacing = 6 };
-            for (int oi = 0; oi < draft.Options.Count; oi++)
-            {
-                int capturedIdx = oi;
-                var currentVal = draft.Options[oi];
-                bool isCorrectChoice =
-                    !isOrdering
-                    && string.Equals(
-                        currentVal.Trim(),
-                        draft.CorrectAnswer.Trim(),
-                        StringComparison.OrdinalIgnoreCase
-                    );
-
-                var optRow = new Grid
-                {
-                    ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto,Auto"),
-                    ColumnSpacing = 6,
-                };
-
-                if (isOrdering)
-                {
-                    var numPill = UiBuilder.PillBadge(
-                        $"{oi + 1}",
-                        ThemeService.Brush(ThemeService.AccentPrimary),
-                        ThemeService.Brush(ThemeService.AccentSoftBg)
-                    );
-                    numPill.VerticalAlignment = VerticalAlignment.Center;
-                    optRow.Children.Add(numPill);
-                }
-                else
-                {
-                    var markBtn = UiBuilder.IconButton(
-                        isCorrectChoice
-                            ? MaterialIconKind.RadioboxMarked
-                            : MaterialIconKind.RadioboxBlank,
-                        () =>
-                        {
-                            draft.CorrectAnswer = draft.Options[capturedIdx];
-                            vm.RequestUiRefresh();
-                        },
-                        18,
-                        isCorrectChoice
-                            ? ThemeService.Brush(ThemeService.SuccessFg)
-                            : ThemeService.Brush(ThemeService.TextMuted)
-                    );
-                    markBtn.VerticalAlignment = VerticalAlignment.Center;
-                    optRow.Children.Add(markBtn);
-                }
-
-                var optItemBox = new TextBox
-                {
-                    Text = currentVal,
-                    Watermark = isOrdering ? $"Step {oi + 1}..." : $"Option {oi + 1}...",
-                    TextWrapping = TextWrapping.Wrap,
-                    FontSize = 12,
-                };
-                optItemBox.PropertyChanged += (_, e) =>
-                {
-                    if (e.Property == TextBox.TextProperty && capturedIdx < draft.Options.Count)
-                    {
-                        var wasCorrect =
-                            !isOrdering
-                            && string.Equals(
-                                draft.Options[capturedIdx].Trim(),
-                                draft.CorrectAnswer.Trim(),
-                                StringComparison.OrdinalIgnoreCase
-                            );
-                        var nextText = optItemBox.Text ?? string.Empty;
-                        draft.Options[capturedIdx] = nextText;
-                        if (wasCorrect)
-                            draft.CorrectAnswer = nextText.Trim();
-                        else if (isOrdering && draft.Options.Count >= 2)
-                            draft.CorrectAnswer = string.Join(" -> ", draft.Options);
-                    }
-                };
-                Grid.SetColumn(optItemBox, 1);
-                optRow.Children.Add(optItemBox);
-
-                if (isOrdering)
-                {
-                    var upBtn = UiBuilder.IconButton(
-                        MaterialIconKind.ArrowUp,
-                        () =>
-                        {
-                            if (capturedIdx <= 0)
-                                return;
-                            (draft.Options[capturedIdx - 1], draft.Options[capturedIdx]) = (
-                                draft.Options[capturedIdx],
-                                draft.Options[capturedIdx - 1]
-                            );
-                            draft.CorrectAnswer = string.Join(" -> ", draft.Options);
-                            vm.RequestUiRefresh();
-                        },
-                        14
-                    );
-                    Grid.SetColumn(upBtn, 2);
-                    optRow.Children.Add(upBtn);
-
-                    var downBtn = UiBuilder.IconButton(
-                        MaterialIconKind.ArrowDown,
-                        () =>
-                        {
-                            if (capturedIdx >= draft.Options.Count - 1)
-                                return;
-                            (draft.Options[capturedIdx + 1], draft.Options[capturedIdx]) = (
-                                draft.Options[capturedIdx],
-                                draft.Options[capturedIdx + 1]
-                            );
-                            draft.CorrectAnswer = string.Join(" -> ", draft.Options);
-                            vm.RequestUiRefresh();
-                        },
-                        14
-                    );
-                    Grid.SetColumn(downBtn, 3);
-                    optRow.Children.Add(downBtn);
-                }
-
-                var delOptBtn = UiBuilder.IconButton(
-                    MaterialIconKind.Close,
-                    () =>
-                    {
-                        if (capturedIdx < draft.Options.Count)
-                        {
-                            draft.Options.RemoveAt(capturedIdx);
-                            if (isOrdering && draft.Options.Count >= 2)
-                                draft.CorrectAnswer = string.Join(" -> ", draft.Options);
-                            vm.RequestUiRefresh();
-                        }
-                    },
-                    14,
-                    ThemeService.Brush(ThemeService.PriorityP1Fg)
-                );
-                Grid.SetColumn(delOptBtn, 4);
-                optRow.Children.Add(delOptBtn);
-
-                optsListStack.Children.Add(optRow);
-            }
-            modalStack.Children.Add(optsListStack);
-        }
-        else
-        {
-            var ansGrid = new Grid
-            {
-                ColumnDefinitions = ColumnDefinitions.Parse("*,*"),
-                ColumnSpacing = 8,
-            };
-            var correctBox = new TextBox
-            {
-                Text = draft.CorrectAnswer,
-                Watermark = "Correct Answer...",
-                FontSize = 12,
-            };
-            correctBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                    draft.CorrectAnswer = (correctBox.Text ?? string.Empty).Trim();
-            };
-            ansGrid.Children.Add(correctBox);
-
-            var aliasBox = new TextBox
-            {
-                Text = string.Join(", ", draft.AcceptedAliases),
-                Watermark = "Accepted synonyms/aliases (comma-separated)...",
-                FontSize = 12,
-            };
-            aliasBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                {
-                    draft.AcceptedAliases =
-                    [
-                        .. (aliasBox.Text ?? string.Empty).Split(
-                            ',',
-                            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-                        ),
-                    ];
-                }
-            };
-            Grid.SetColumn(aliasBox, 1);
-            ansGrid.Children.Add(aliasBox);
-            modalStack.Children.Add(ansGrid);
-        }
-
-        // Explanation
-        var expBox = new TextBox
-        {
-            Text = draft.Explanation,
-            Watermark = "Explanation / rationale...",
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 46,
-            FontSize = 12,
-        };
-        expBox.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == TextBox.TextProperty)
-                draft.Explanation = (expBox.Text ?? string.Empty).Trim();
-        };
-        modalStack.Children.Add(expBox);
-
-        // Collapsible Rich Content & PDF Evidence Grounding Parity
-        modalStack.Children.Add(
-            UiBuilder.GhostButton(
-                studio.IsEditingAdvancedOpen
-                    ? "▾ Hide Rich Content & PDF Evidence Grounding"
-                    : "▸ Show Rich Content & PDF Evidence Grounding",
-                null,
-                studio.ToggleEditingAdvancedOpen,
-                isActive: studio.IsEditingAdvancedOpen
-            )
-        );
-
-        if (studio.IsEditingAdvancedOpen)
-        {
-            var metaGrid = new Grid
-            {
-                ColumnDefinitions = ColumnDefinitions.Parse("90,*,*"),
-                ColumnSpacing = 8,
-            };
-            var pageBox = new TextBox
-            {
-                Text = draft.SourcePage > 0 ? draft.SourcePage.ToString() : "1",
-                Watermark = "Page #",
-                FontSize = 12,
-            };
-            pageBox.PropertyChanged += (_, e) =>
-            {
-                if (
-                    e.Property == TextBox.TextProperty
-                    && int.TryParse(pageBox.Text?.Trim(), out int p)
-                    && p > 0
-                )
-                    draft.SourcePage = p;
-            };
-            metaGrid.Children.Add(pageBox);
-
-            var secBox = new TextBox
-            {
-                Text = draft.SectionTitle,
-                Watermark = "Section title...",
-                FontSize = 12,
-            };
-            secBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                    draft.SectionTitle = (secBox.Text ?? string.Empty).Trim();
-            };
-            Grid.SetColumn(secBox, 1);
-            metaGrid.Children.Add(secBox);
-
-            var tagBox = new TextBox
-            {
-                Text = draft.TopicTag,
-                Watermark = "Topic @tag...",
-                FontSize = 12,
-            };
-            tagBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                    draft.TopicTag = (tagBox.Text ?? string.Empty).Trim();
-            };
-            Grid.SetColumn(tagBox, 2);
-            metaGrid.Children.Add(tagBox);
-            modalStack.Children.Add(metaGrid);
-
-            var quoteBox = new TextBox
-            {
-                Text = draft.VerbatimQuote,
-                Watermark = "Verbatim quote from PDF page for pixel highlight grounding...",
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.Wrap,
-                MinHeight = 42,
-                FontSize = 11.5,
-            };
-            quoteBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                    draft.VerbatimQuote = (quoteBox.Text ?? string.Empty).Trim();
-            };
-            modalStack.Children.Add(quoteBox);
-
-            var groundRow = new WrapPanel { Orientation = Orientation.Horizontal };
-            var snipBtn = UiBuilder.PrimaryButton(
-                $"Open Dedicated PDF Snipper ({draft.EvidenceAnchors.Count} anchor(s))",
-                MaterialIconKind.SelectionDrag,
-                async () => await studio.OpenDedicatedSnipperAsync()
-            );
-            snipBtn.Margin = new Thickness(0, 0, 6, 4);
-            groundRow.Children.Add(snipBtn);
-
-            var groundBtn = UiBuilder.GhostButton(
-                "Ground Quote",
-                MaterialIconKind.Marker,
-                studio.GroundEditingDraftToPdf,
-                isActive: draft.HighlightRects.Count > 0
-            );
-            groundBtn.Margin = new Thickness(0, 0, 6, 4);
-            groundRow.Children.Add(groundBtn);
-
-            var loadPageBtn = UiBuilder.GhostButton(
-                "Load Page Text",
-                MaterialIconKind.FileDocumentOutline,
-                async () => await studio.LoadEditingPageTextAsync()
-            );
-            loadPageBtn.Margin = new Thickness(0, 0, 8, 4);
-            groundRow.Children.Add(loadPageBtn);
-
-            if (!string.IsNullOrWhiteSpace(studio.EditingGroundStatus))
-            {
-                groundRow.Children.Add(
-                    new TextBlock
-                    {
-                        Text = studio.EditingGroundStatus,
-                        FontSize = 11.5,
-                        Foreground = studio.EditingGroundStatus.StartsWith('✓')
-                            ? ThemeService.Brush(ThemeService.SuccessFg)
-                            : ThemeService.Brush(ThemeService.PriorityP2Fg),
-                        VerticalAlignment = VerticalAlignment.Center,
-                    }
-                );
-            }
-            modalStack.Children.Add(groundRow);
-
-            if (draft.EvidenceAnchors.Count > 0)
-            {
-                var anchorsStack = new StackPanel { Spacing = 4 };
-                for (int ai = 0; ai < draft.EvidenceAnchors.Count; ai++)
-                {
-                    int capturedAi = ai;
-                    var anchor = draft.EvidenceAnchors[ai];
-                    var anchorRow = new Grid
-                    {
-                        ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
-                        ColumnSpacing = 6,
-                    };
-                    anchorRow.Children.Add(
-                        UiBuilder.Pill(
-                            $"p.{anchor.PageNumber} ({anchor.HighlightRects.Count})",
-                            ThemeService.Brush(ThemeService.AccentPrimary),
-                            ThemeService.Brush(ThemeService.AccentSoftBg),
-                            fontSize: 10.5
-                        )
-                    );
-                    var anchorDesc = new TextBlock
-                    {
-                        Text = !string.IsNullOrWhiteSpace(anchor.VerbatimQuote)
-                            ? anchor.VerbatimQuote
-                            : (!string.IsNullOrWhiteSpace(anchor.SectionTitle) ? anchor.SectionTitle : "Visual region"),
-                        FontSize = 11.5,
-                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        [Grid.ColumnProperty] = 1,
-                    };
-                    anchorRow.Children.Add(anchorDesc);
-                    var rmBtn = UiBuilder.IconButton(
-                        MaterialIconKind.Close,
-                        () => studio.RemoveEvidenceAnchor(capturedAi),
-                        13,
-                        ThemeService.Brush(ThemeService.PriorityP1Fg)
-                    );
-                    Grid.SetColumn(rmBtn, 2);
-                    anchorRow.Children.Add(rmBtn);
-                    anchorsStack.Children.Add(anchorRow);
-                }
-                modalStack.Children.Add(
-                    new Border
-                    {
-                        Background = ThemeService.Brush(ThemeService.BgBase),
-                        BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
-                        BorderThickness = new Thickness(1),
-                        CornerRadius = new CornerRadius(6),
-                        Padding = new Thickness(8, 6),
-                        Child = anchorsStack,
-                    }
-                );
-            }
-
-            if (!string.IsNullOrWhiteSpace(studio.EditingPageTextPreview))
-            {
-                modalStack.Children.Add(
-                    new TextBox
-                    {
-                        Text = studio.EditingPageTextPreview,
-                        IsReadOnly = true,
-                        AcceptsReturn = true,
-                        TextWrapping = TextWrapping.Wrap,
-                        MaxHeight = 110,
-                        FontSize = 11,
-                    }
-                );
-            }
-
-            var richGrid = new Grid
-            {
-                ColumnDefinitions = ColumnDefinitions.Parse("*,*"),
-                ColumnSpacing = 8,
-            };
-            var mathBox = new TextBox
-            {
-                Text = draft.MathLatex ?? string.Empty,
-                Watermark = "Optional Math LaTeX...",
-                FontSize = 12,
-            };
-            mathBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                    draft.MathLatex = string.IsNullOrWhiteSpace(mathBox.Text)
-                        ? null
-                        : mathBox.Text.Trim();
-            };
-            richGrid.Children.Add(mathBox);
-
-            var diagBox = new TextBox
-            {
-                Text = draft.Diagram ?? string.Empty,
-                Watermark = "Optional Diagram (A -> B -> C, flowchart LR/TD, or sequenceDiagram)...",
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.NoWrap,
-                MinHeight = 54,
-                FontSize = 11.5,
-                FontFamily = new FontFamily("Consolas, JetBrains Mono, monospace"),
-            };
-            diagBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                    draft.Diagram = string.IsNullOrWhiteSpace(diagBox.Text)
-                        ? null
-                        : diagBox.Text.Trim();
-            };
-            Grid.SetColumn(diagBox, 1);
-            richGrid.Children.Add(diagBox);
-            modalStack.Children.Add(richGrid);
-
-            var imgActionRow = new WrapPanel { Orientation = Orientation.Horizontal };
-            var browseImgBtn = UiBuilder.GhostButton(
-                "Browse Question Image...",
-                MaterialIconKind.ImagePlusOutline,
-                async () =>
-                {
-                    var top = TopLevel.GetTopLevel(modalStack);
-                    if (top?.StorageProvider is null)
-                        return;
-                    var files = await top.StorageProvider.OpenFilePickerAsync(
-                        new Avalonia.Platform.Storage.FilePickerOpenOptions
-                        {
-                            Title = "Select Diagram or Figure Image",
-                            AllowMultiple = false,
-                            FileTypeFilter =
-                            [
-                                new Avalonia.Platform.Storage.FilePickerFileType("Images")
-                                {
-                                    Patterns = ["*.png", "*.jpg", "*.jpeg", "*.webp"],
-                                },
-                            ],
-                        }
-                    );
-                    var path =
-                        files.Count > 0
-                            ? Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(files[0])
-                            : null;
-                    if (!string.IsNullOrWhiteSpace(path))
-                        studio.SetEditingQuestionImage(path);
-                }
-            );
-            browseImgBtn.Margin = new Thickness(0, 0, 6, 4);
-            imgActionRow.Children.Add(browseImgBtn);
-
-            var resolvedDraftImg = studio.ResolveQuestionImageFullPath(draft.ImagePath);
-            if (!string.IsNullOrWhiteSpace(resolvedDraftImg))
-            {
-                var removeImgBtn = UiBuilder.GhostButton(
-                    "Remove Image",
-                    MaterialIconKind.ImageRemoveOutline,
-                    () => studio.SetEditingQuestionImage(null)
-                );
-                removeImgBtn.Margin = new Thickness(0, 0, 6, 4);
-                imgActionRow.Children.Add(removeImgBtn);
-            }
-            modalStack.Children.Add(imgActionRow);
-
-            if (!string.IsNullOrWhiteSpace(resolvedDraftImg))
-            {
-                modalStack.Children.Add(
-                    QuizRichContentRenderer.BuildQuestionImageCard(
-                        resolvedDraftImg,
-                        () => studio.OpenImageZoom(draft.ImagePath)
-                    )
-                );
-            }
-
-            var codeEditBox = new TextBox
-            {
-                Text = draft.CodeSnippet ?? string.Empty,
-                Watermark = "Optional Code Snippet block...",
-                AcceptsReturn = true,
-                TextWrapping = TextWrapping.NoWrap,
-                MinHeight = 52,
-                FontSize = 12,
-                FontFamily = new FontFamily("Consolas, JetBrains Mono, monospace"),
-            };
-            codeEditBox.PropertyChanged += (_, e) =>
-            {
-                if (e.Property == TextBox.TextProperty)
-                    draft.CodeSnippet = string.IsNullOrWhiteSpace(codeEditBox.Text)
-                        ? null
-                        : codeEditBox.Text;
-            };
-            modalStack.Children.Add(codeEditBox);
-        }
-
-        var modalCard = new Border
-        {
-            Background = ThemeService.Brush(ThemeService.BgSurface),
-            BorderBrush = ThemeService.Brush(ThemeService.AccentPrimary),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(16, 14),
-            MaxWidth = 780,
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Center,
-            Child = new ScrollViewer
-            {
-                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
-                Content = modalStack,
-            },
-        };
-
-        return new Border
-        {
-            Background = ThemeService.Brush(ThemeService.BgBackdrop),
-            Padding = new Thickness(16),
-            Child = modalCard,
-        };
     }
 
     private static Control BuildDedicatedPdfSnipperView(
@@ -2475,33 +1772,88 @@ public static partial class QuizStudioViewBuilder
         header.Children.Add(closeBtn);
         modalStack.Children.Add(header);
 
+        var qualityReport = studio.GetCachedOrganizerQualityReport();
+        var qualityFlagged = qualityReport.FlaggedQuestionIds;
+
+        // Multi-Select Quick Actions Bar
+        var quickSelectRow = new WrapPanel { Orientation = Orientation.Horizontal };
+        var selectIssuesBtn = UiBuilder.GhostButton(
+            $"Select Quality Issues ({qualityFlagged.Count})",
+            MaterialIconKind.AlertOutline,
+            studio.SelectQualityIssuesForBulkAiFix,
+            isActive: qualityFlagged.Count > 0
+                && qualityFlagged.IsSubsetOf(studio.DeckAiFixSelectedIds)
+        );
+        selectIssuesBtn.IsEnabled = qualityFlagged.Count > 0;
+        selectIssuesBtn.Margin = new Thickness(0, 0, 6, 4);
+        quickSelectRow.Children.Add(selectIssuesBtn);
+
+        var selectAllBtn = UiBuilder.GhostButton(
+            $"Select All ({deck.Questions.Count})",
+            MaterialIconKind.CheckboxMultipleMarkedOutline,
+            studio.SelectAllQuestionsForBulkAiFix
+        );
+        selectAllBtn.Margin = new Thickness(0, 0, 6, 4);
+        quickSelectRow.Children.Add(selectAllBtn);
+
+        if (studio.DeckAiFixSelectedIds.Count > 0)
+        {
+            var clearSelBtn = UiBuilder.GhostButton(
+                "Clear Selection",
+                MaterialIconKind.Close,
+                studio.ClearBulkAiFixSelection
+            );
+            clearSelBtn.Margin = new Thickness(0, 0, 6, 4);
+            quickSelectRow.Children.Add(clearSelBtn);
+        }
+        modalStack.Children.Add(quickSelectRow);
+
         modalStack.Children.Add(
             new TextBlock
             {
-                Text = $"Select flagged questions ({studio.DeckAiFixSelectedIds.Count} selected; unflagged defaults to first 15) and describe repairs or new questions to add:",
-                FontSize = 12,
+                Text =
+                    studio.DeckAiFixSelectedIds.Count > 0
+                        ? $"Targeting {studio.DeckAiFixSelectedIds.Count} selected question(s) (click any # pill to toggle; amber alert icon = quality critic issue):"
+                        : "Select specific questions below to repair (or leave empty to target the first 15 questions / add new ones):",
+                FontSize = 11.5,
                 Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                 TextWrapping = TextWrapping.Wrap,
             }
         );
 
-        // Quick Target Picker
+        // Full Scrollable Multi-Select Question Grid (all questions in deck)
         var targetWrap = new WrapPanel { Orientation = Orientation.Horizontal };
-        foreach (var q in deck.Questions.Take(30))
+        for (int idx = 0; idx < deck.Questions.Count; idx++)
         {
-            var captured = q;
-            int idx = deck.Questions.IndexOf(q);
-            bool isPicked = studio.DeckAiFixSelectedIds.Contains(q.Id);
+            var captured = deck.Questions[idx];
+            bool isPicked = studio.DeckAiFixSelectedIds.Contains(captured.Id);
+            bool hasIssue = qualityFlagged.Contains(captured.Id);
             var pillBtn = UiBuilder.GhostButton(
                 $"#{idx + 1}",
-                isPicked ? MaterialIconKind.Check : null,
+                isPicked
+                    ? MaterialIconKind.Check
+                    : (hasIssue ? MaterialIconKind.AlertOutline : null),
                 () => studio.ToggleDeckAiFixTarget(captured.Id),
                 isActive: isPicked
             );
             pillBtn.Margin = new Thickness(0, 0, 4, 4);
             targetWrap.Children.Add(pillBtn);
         }
-        modalStack.Children.Add(targetWrap);
+        modalStack.Children.Add(
+            new Border
+            {
+                Background = ThemeService.Brush(ThemeService.BgBase),
+                BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 6),
+                MaxHeight = 140,
+                Child = UiBuilder.PersistentScrollViewer(
+                    $"deck-ai-fix-targets:{deck.Id}",
+                    targetWrap
+                ),
+            }
+        );
 
         var instrBox = new TextBox
         {
@@ -2575,6 +1927,33 @@ public static partial class QuizStudioViewBuilder
                     studio.DeckAiFixJsonInput = pasteBox.Text ?? string.Empty;
             };
             modalStack.Children.Add(pasteBox);
+
+            if (!string.IsNullOrWhiteSpace(studio.DeckAiFixFeedback))
+            {
+                modalStack.Children.Add(
+                    new Border
+                    {
+                        Background = studio.IsDeckAiFixError
+                            ? ThemeService.Brush(ThemeService.PriorityP1Bg)
+                            : ThemeService.Brush(ThemeService.SuccessBg),
+                        BorderBrush = studio.IsDeckAiFixError
+                            ? ThemeService.Brush(ThemeService.PriorityP1Fg)
+                            : ThemeService.Brush(ThemeService.SuccessFg),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(5),
+                        Padding = new Thickness(10, 6),
+                        Child = new TextBlock
+                        {
+                            Text = studio.DeckAiFixFeedback,
+                            FontSize = 11.5,
+                            Foreground = studio.IsDeckAiFixError
+                                ? ThemeService.Brush(ThemeService.PriorityP1Fg)
+                                : ThemeService.Brush(ThemeService.SuccessFg),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                    }
+                );
+            }
 
             modalStack.Children.Add(
                 UiBuilder.PrimaryButton(
@@ -2985,6 +2364,40 @@ public static partial class QuizStudioViewBuilder
                 ansWrap.Children.Add(aliasPill);
             }
             targetStack.Children.Add(ansWrap);
+        }
+
+        if (!string.IsNullOrWhiteSpace(q.Hint))
+        {
+            targetStack.Children.Add(
+                new TextBlock
+                {
+                    Text = $"Hint: {q.Hint}",
+                    FontSize = 11.5,
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    TextWrapping = TextWrapping.Wrap,
+                }
+            );
+        }
+
+        if (!string.IsNullOrWhiteSpace(q.Explanation))
+        {
+            targetStack.Children.Add(
+                new Border
+                {
+                    Background = ThemeService.Brush(ThemeService.BgBase),
+                    BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(9, 6),
+                    Child = BuildContrastiveExplanationView(q.Explanation, fontSize: 11.8),
+                }
+            );
+        }
+
+        var criticIssues = studio.GetCachedOrganizerQualityReport().GetIssuesFor(q.Id);
+        if (criticIssues.Count > 0)
+        {
+            targetStack.Children.Add(BuildOrganizerCriticCallout(studio, q, criticIssues));
         }
     }
 

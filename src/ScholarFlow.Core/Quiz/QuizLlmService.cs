@@ -253,10 +253,16 @@ public sealed partial class QuizLlmService
         };
 
         var today = DateOnly.FromDateTime(DateTime.Today);
+        var seenStemKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < dto.Questions.Count; i++)
         {
             var qDto = dto.Questions[i];
             if (string.IsNullOrWhiteSpace(qDto.Prompt))
+                continue;
+
+            var cleanPrompt = qDto.Prompt.Trim();
+            var stemKey = CanonicalizeStemKey(cleanPrompt);
+            if (!string.IsNullOrEmpty(stemKey) && !seenStemKeys.Add(stemKey))
                 continue;
 
             var kind = Enum.TryParse<QuizQuestionKind>(qDto.Kind, ignoreCase: true, out var parsedKind)
@@ -267,13 +273,7 @@ public sealed partial class QuizLlmService
                 ? parsedCog
                 : CognitiveLevel.Comprehension;
 
-            var options = qDto.Options?.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList() ?? [];
-            if (kind == QuizQuestionKind.TrueFalse && options.Count == 0)
-                options = ["True", "False"];
-
-            var correctAnswer = (qDto.CorrectAnswer ?? string.Empty).Trim();
-            if (kind == QuizQuestionKind.Ordering && string.IsNullOrWhiteSpace(correctAnswer) && options.Count >= 2)
-                correctAnswer = string.Join(" -> ", options);
+            var (options, correctAnswer) = CanonicalizeOptionsAndAnswer(kind, qDto.Options, qDto.CorrectAnswer);
 
             var mathLatex = string.IsNullOrWhiteSpace(qDto.MathLatex) ? null : qDto.MathLatex.Trim();
             var codeSnippet = string.IsNullOrWhiteSpace(qDto.CodeSnippet) ? null : qDto.CodeSnippet.Trim();
@@ -292,16 +292,18 @@ public sealed partial class QuizLlmService
             var qRecord = new QuizQuestionRecord
             {
                 QuizId = session.Id,
-                OrderIndex = i,
+                OrderIndex = session.Questions.Count,
                 Kind = kind,
                 CognitiveLevel = cog,
                 Difficulty = Math.Clamp(qDto.Difficulty, 1, 5),
-                TopicTag = string.IsNullOrWhiteSpace(qDto.TopicTag) ? "general" : qDto.TopicTag.Trim().ToLowerInvariant().TrimStart('@', '#'),
-                Prompt = qDto.Prompt.Trim(),
+                TopicTag = CanonicalizeTopicTag(qDto.TopicTag),
+                Prompt = cleanPrompt,
                 Options = options,
                 CorrectAnswer = correctAnswer,
-                AcceptedAliases = qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()).ToList() ?? [],
+                AcceptedAliases = qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [],
                 Explanation = (qDto.Explanation ?? string.Empty).Trim(),
+                Hint = string.IsNullOrWhiteSpace(qDto.Hint) ? null : qDto.Hint.Trim(),
+                Archetype = CanonicalizeArchetype(qDto.Archetype),
                 CodeSnippet = codeSnippet,
                 CodeLanguage = codeLanguage,
                 MathLatex = mathLatex,
@@ -389,6 +391,128 @@ public sealed partial class QuizLlmService
         }
 
         return session;
+    }
+
+    internal static (List<string> Options, string CorrectAnswer) CanonicalizeOptionsAndAnswer(
+        QuizQuestionKind kind,
+        IReadOnlyList<string>? rawOptions,
+        string? rawCorrectAnswer
+    )
+    {
+        var options = rawOptions?
+            .Where(o => !string.IsNullOrWhiteSpace(o))
+            .Select(StripLeadingOptionMarker)
+            .Where(o => o.Length > 0)
+            .ToList() ?? [];
+
+        var correct = StripLeadingOptionMarker(rawCorrectAnswer ?? string.Empty);
+
+        if (kind == QuizQuestionKind.TrueFalse)
+        {
+            options = ["True", "False"];
+            if (correct.StartsWith("t", StringComparison.OrdinalIgnoreCase))
+                correct = "True";
+            else if (correct.StartsWith("f", StringComparison.OrdinalIgnoreCase))
+                correct = "False";
+            return (options, correct);
+        }
+
+        if (kind == QuizQuestionKind.Ordering)
+        {
+            if (string.IsNullOrWhiteSpace(correct) && options.Count >= 2)
+                correct = string.Join(" -> ", options);
+            return (options, correct);
+        }
+
+        if (kind is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational && options.Count > 0)
+        {
+            // Resolve letter-only answers like "A", "B)", "Option C" directly to the matching option text
+            var trimmedRaw = (rawCorrectAnswer ?? string.Empty).Trim();
+            if (TryResolveOptionLetterIndex(trimmedRaw, options.Count, out int letterIdx))
+            {
+                correct = options[letterIdx];
+            }
+            else
+            {
+                var exactMatch = options.FirstOrDefault(o =>
+                    string.Equals(o, correct, StringComparison.OrdinalIgnoreCase)
+                );
+                if (exactMatch is not null)
+                    correct = exactMatch;
+            }
+        }
+
+        return (options, correct);
+    }
+
+    private static string StripLeadingOptionMarker(string raw)
+    {
+        var t = raw.Trim();
+        if (t.Length >= 3 && char.IsLetter(t[0]) && (t[1] is ')' or '.' or ':') && char.IsWhiteSpace(t[2]))
+            return t[3..].Trim();
+        if (t.Length >= 4 && t[0] == '(' && char.IsLetter(t[1]) && t[2] == ')' && char.IsWhiteSpace(t[3]))
+            return t[4..].Trim();
+        return t;
+    }
+
+    private static bool TryResolveOptionLetterIndex(string raw, int optionCount, out int index)
+    {
+        index = -1;
+        if (string.IsNullOrWhiteSpace(raw))
+            return false;
+
+        var t = raw.Trim();
+        if (t.StartsWith("Option ", StringComparison.OrdinalIgnoreCase))
+            t = t[7..].Trim();
+        t = t.Trim('(', ')', '.', ':', ' ');
+        if (t.Length == 1 && char.IsLetter(t[0]))
+        {
+            int idx = char.ToUpperInvariant(t[0]) - 'A';
+            if (idx >= 0 && idx < optionCount)
+            {
+                index = idx;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static string CanonicalizeStemKey(string prompt)
+    {
+        var sb = new StringBuilder(prompt.Length);
+        bool prevSpace = false;
+        foreach (char c in prompt)
+        {
+            if (char.IsLetterOrDigit(c))
+            {
+                sb.Append(char.ToLowerInvariant(c));
+                prevSpace = false;
+            }
+            else if (!prevSpace && sb.Length > 0)
+            {
+                sb.Append(' ');
+                prevSpace = true;
+            }
+        }
+        return sb.ToString().Trim();
+    }
+
+    private static string CanonicalizeTopicTag(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return "general";
+        var cleaned = raw.Trim().ToLowerInvariant().TrimStart('@', '#');
+        return string.IsNullOrWhiteSpace(cleaned) ? "general" : cleaned;
+    }
+
+    private static string? CanonicalizeArchetype(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+            return null;
+        var clean = raw.Trim();
+        if (Enum.TryParse<QuestionArchetype>(clean.Replace("-", "").Replace(" ", ""), ignoreCase: true, out var parsed))
+            return parsed.ToString();
+        return clean;
     }
 
 }

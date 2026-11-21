@@ -64,13 +64,7 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
-    public void ApplyCodeAwareMix()
-    {
-        KindAllocations = QuizGenerationRequest.GetCodeAwareAllocations(AllocationMode, QuestionCount);
-        IsCodeAwareMixActive = true;
-        RefreshLivePromptPreviewIfActive();
-        _mainVm.RequestUiRefresh();
-    }
+    public void ApplyCodeAwareMix() => SetPreset(QuizPresetMode.CodeLab);
 
     public void ClearFileSources()
     {
@@ -93,19 +87,39 @@ public sealed partial class QuizStudioViewModel
         bool hasCodeNow = HasCodeFileSelected;
         if (!hadCodeBefore && hasCodeNow && SelectedPreset != QuizPresetMode.Custom)
         {
+            SelectedPreset = QuizPresetMode.CodeLab;
             KindAllocations = QuizGenerationRequest.GetCodeAwareAllocations(AllocationMode, QuestionCount);
+            CognitiveAllocations = QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(
+                QuizPresetMode.CodeLab
+            );
+            CognitiveMix = CognitiveMixPreset.ExamApplication;
             IsCodeAwareMixActive = true;
         }
-        else if (hadCodeBefore && !hasCodeNow && IsCodeAwareMixActive && SelectedPreset != QuizPresetMode.Custom)
+        else if (
+            hadCodeBefore
+            && !hasCodeNow
+            && (IsCodeAwareMixActive || SelectedPreset == QuizPresetMode.CodeLab)
+        )
         {
-            KindAllocations = QuizGenerationRequest.GetDefaultAllocationsForPreset(SelectedPreset, AllocationMode);
+            SelectedPreset = QuizPresetMode.ExamSimulator;
+            KindAllocations = QuizGenerationRequest.GetDefaultAllocationsForPreset(
+                SelectedPreset,
+                AllocationMode
+            );
             if (AllocationMode == QuestionAllocationMode.ExactCounts)
                 KindAllocations = BuildCurrentRequest().ResolveExactKindCounts(QuestionCount);
+            CognitiveAllocations = QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(
+                SelectedPreset
+            );
+            CognitiveMix = CognitiveMixPreset.Balanced;
             IsCodeAwareMixActive = false;
         }
     }
 
     private string? _studyFilesCourseFolder;
+    private readonly Dictionary<string, IReadOnlyList<StudySourceDescriptor>> _studyFilesCache =
+        new(StringComparer.OrdinalIgnoreCase);
+    public bool IsLoadingStudyFiles { get; private set; }
 
     private void RebuildStudyFilesForCourse(bool force = false)
     {
@@ -114,24 +128,59 @@ public sealed partial class QuizStudioViewModel
         if (!courseChanged && !force)
             return;
 
-        if (courseChanged)
-        {
-            bool hadCode = HasCodeFileSelected;
-            _selectedFileSourcePaths.Clear();
-            IncludePdfWithFiles = false;
-            SyncCodeAwareMixAfterFileChange(hadCode);
-        }
-
         _studyFilesCourseFolder = folder;
 
         if (folder is null || string.IsNullOrWhiteSpace(_mainVm.BasinRoot))
         {
             StudyFiles = [];
+            IsLoadingStudyFiles = false;
             return;
         }
 
-        StudyFiles = FileSourceQuizSupport.DiscoverCourseStudyFiles(Path.Combine(_mainVm.BasinRoot, folder));
-        _selectedFileSourcePaths.RemoveWhere(p => !StudyFiles.Any(f => f.FilePath.Equals(p, StringComparison.OrdinalIgnoreCase)));
+        if (!force && _studyFilesCache.TryGetValue(folder, out var cached))
+        {
+            StudyFiles = cached;
+            IsLoadingStudyFiles = false;
+            _selectedFileSourcePaths.RemoveWhere(p =>
+                !StudyFiles.Any(f => f.FilePath.Equals(p, StringComparison.OrdinalIgnoreCase))
+            );
+            return;
+        }
+
+        var courseDir = Path.Combine(_mainVm.BasinRoot, folder);
+        StudyFiles = [];
+        IsLoadingStudyFiles = true;
+        _ = LoadStudyFilesAsync(folder, courseDir);
+    }
+
+    private async Task LoadStudyFilesAsync(string folder, string courseDir)
+    {
+        try
+        {
+            var discovered = await Task.Run(() => FileSourceQuizSupport.DiscoverCourseStudyFiles(courseDir));
+            _studyFilesCache[folder] = discovered;
+
+            if (string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase))
+            {
+                StudyFiles = discovered;
+                _selectedFileSourcePaths.RemoveWhere(p =>
+                    !StudyFiles.Any(f => f.FilePath.Equals(p, StringComparison.OrdinalIgnoreCase))
+                );
+            }
+        }
+        catch
+        {
+            if (string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase))
+                StudyFiles = [];
+        }
+        finally
+        {
+            if (string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase))
+            {
+                IsLoadingStudyFiles = false;
+                Avalonia.Threading.Dispatcher.UIThread.Post(_mainVm.RequestUiRefresh);
+            }
+        }
     }
 
     private IReadOnlyList<string> GetSelectedFileSourcesInOrder() =>

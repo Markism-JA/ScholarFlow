@@ -85,6 +85,16 @@ public static partial class QuizStudioViewBuilder
                 ThemeService.Brush(ThemeService.PriorityP3Bg)
             )
         );
+        if (!string.IsNullOrWhiteSpace(q.Archetype))
+        {
+            metaBadges.Children.Add(
+                UiBuilder.PillBadge(
+                    QuizBlueprintBuilder.FormatArchetypeBadge(q.Archetype),
+                    ThemeService.Brush(ThemeService.PriorityP2Fg),
+                    ThemeService.Brush(ThemeService.PriorityP2Bg)
+                )
+            );
+        }
         metaBadges.Children.Add(
             UiBuilder.PillBadge(
                 $"@{q.TopicTag}",
@@ -181,6 +191,10 @@ public static partial class QuizStudioViewBuilder
                     () => studio.OpenImageZoom(q.ImagePath)
                 )
             );
+
+        var hintAndConfidenceBar = BuildRunnerHintAndConfidenceBar(studio, q);
+        if (hintAndConfidenceBar is not null)
+            qCardStack.Children.Add(hintAndConfidenceBar);
 
         if (
             q.Kind
@@ -606,17 +620,31 @@ public static partial class QuizStudioViewBuilder
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(q.Explanation))
+            if (!string.IsNullOrWhiteSpace(studio.LastConfidenceFeedback))
             {
                 feedbackStack.Children.Add(
-                    new TextBlock
+                    new Border
                     {
-                        Text = q.Explanation,
-                        FontSize = 13,
-                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                        TextWrapping = TextWrapping.Wrap,
+                        Background = ThemeService.Brush(ThemeService.AccentSoftBg),
+                        BorderBrush = ThemeService.Brush(ThemeService.AccentPrimary),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(5),
+                        Padding = new Thickness(10, 5),
+                        Child = new TextBlock
+                        {
+                            Text = studio.LastConfidenceFeedback,
+                            FontSize = 11.5,
+                            FontWeight = FontWeight.Medium,
+                            Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
                     }
                 );
+            }
+
+            if (!string.IsNullOrWhiteSpace(q.Explanation))
+            {
+                feedbackStack.Children.Add(BuildContrastiveExplanationView(q.Explanation));
             }
 
             var evidenceStack = new StackPanel
@@ -911,6 +939,11 @@ public static partial class QuizStudioViewBuilder
                         : ThemeService.Brush(ThemeService.PriorityP1Fg),
                 }
             );
+
+            if (!string.IsNullOrWhiteSpace(q.Explanation))
+            {
+                qStack.Children.Add(BuildContrastiveExplanationView(q.Explanation, fontSize: 12));
+            }
 
             if (!string.IsNullOrWhiteSpace(q.VerbatimQuote))
             {
