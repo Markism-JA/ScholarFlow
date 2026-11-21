@@ -40,6 +40,7 @@ public static class CourseWorkspaceViewBuilder
             RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
             MaxWidth = 860,
             HorizontalAlignment = HorizontalAlignment.Stretch,
+            ClipToBounds = true,
             Margin = new Thickness(24, 16, 24, 12),
         };
 
@@ -377,29 +378,32 @@ public static class CourseWorkspaceViewBuilder
         }
         int totalOther = totalFiles - totalPdfs;
 
-        // 1. Top Organizer Toolbar
-        var toolbar = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
-            ColumnSpacing = 8,
-        };
-
-        var leftControls = new WrapPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
+        // 1. Top Organizer Toolbar (2-row responsive layout so search bar & action pills never overflow on narrow windows)
+        var toolbarStack = new StackPanel { Spacing = 6 };
 
         ListBox? filesListBox = null;
         Action? refreshMaterialsList = null;
+
+        var searchRow = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 6,
+        };
+
+        var searchInputGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 4,
+            MinWidth = 140,
+        };
 
         var searchBox = new TextBox
         {
             Text = vm.MaterialsSearchQuery,
             Watermark = "Search files & folders...",
             FontSize = 12,
-            Width = 220,
-            Margin = new Thickness(0, 0, 6, 4),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Center,
         };
         var clearSearchBtn = UiBuilder.IconButton(
             MaterialIconKind.Close,
@@ -412,7 +416,6 @@ public static class CourseWorkspaceViewBuilder
             },
             13
         );
-        clearSearchBtn.Margin = new Thickness(0, 0, 6, 4);
         clearSearchBtn.IsVisible = !string.IsNullOrWhiteSpace(vm.MaterialsSearchQuery);
 
         searchBox.TextChanged += (_, _) =>
@@ -430,8 +433,17 @@ public static class CourseWorkspaceViewBuilder
                 searchBox.Text = string.Empty;
             }
         };
-        leftControls.Children.Add(searchBox);
-        leftControls.Children.Add(clearSearchBtn);
+        searchInputGrid.Children.Add(searchBox);
+        Grid.SetColumn(clearSearchBtn, 1);
+        searchInputGrid.Children.Add(clearSearchBtn);
+
+        searchRow.Children.Add(searchInputGrid);
+
+        var filterPills = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
         void AddFilterPill(string key, string label)
         {
@@ -445,17 +457,19 @@ public static class CourseWorkspaceViewBuilder
                     StringComparison.OrdinalIgnoreCase
                 )
             );
-            pill.Margin = new Thickness(0, 0, 4, 4);
-            leftControls.Children.Add(pill);
+            pill.Margin = new Thickness(0, 0, 4, 2);
+            filterPills.Children.Add(pill);
         }
 
         AddFilterPill("All", $"All ({totalFiles})");
         AddFilterPill("PDFs", $"PDFs ({totalPdfs})");
         AddFilterPill("Other", $"Other ({totalOther})");
 
-        toolbar.Children.Add(leftControls);
+        Grid.SetColumn(filterPills, 1);
+        searchRow.Children.Add(filterPills);
+        toolbarStack.Children.Add(searchRow);
 
-        var rightControls = new WrapPanel
+        var actionsWrap = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
@@ -478,8 +492,8 @@ public static class CourseWorkspaceViewBuilder
                 () => vm.SetMaterialsImportMode(capturedMode),
                 isActive: vm.MaterialsImportMode == capturedMode
             );
-            modeBtn.Margin = new Thickness(0, 0, 3, 4);
-            rightControls.Children.Add(modeBtn);
+            modeBtn.Margin = new Thickness(0, 0, 4, 4);
+            actionsWrap.Children.Add(modeBtn);
         }
 
         var newFolderBtn = UiBuilder.GhostButton(
@@ -489,7 +503,7 @@ public static class CourseWorkspaceViewBuilder
             isActive: vm.IsNewMaterialFolderBarOpen
         );
         newFolderBtn.Margin = new Thickness(0, 0, 4, 4);
-        rightControls.Children.Add(newFolderBtn);
+        actionsWrap.Children.Add(newFolderBtn);
 
         var importAnyBtn = UiBuilder.GhostButton(
             "Import Files",
@@ -497,7 +511,7 @@ public static class CourseWorkspaceViewBuilder
             async () => await PickAndImportFilesAsync(outerGrid, vm, course, coursePath)
         );
         importAnyBtn.Margin = new Thickness(0, 0, 4, 4);
-        rightControls.Children.Add(importAnyBtn);
+        actionsWrap.Children.Add(importAnyBtn);
 
         var allCollapsibleKeys = allDirs.ToList();
         if (looseRootFiles.Count > 0)
@@ -515,7 +529,7 @@ public static class CourseWorkspaceViewBuilder
                 () => vm.SetAllMaterialFoldersCollapsed(allCollapsibleKeys, !allCollapsed)
             );
             collapseBtn.Margin = new Thickness(0, 0, 4, 4);
-            rightControls.Children.Add(collapseBtn);
+            actionsWrap.Children.Add(collapseBtn);
         }
 
         var openFolderBtn = UiBuilder.IconButton(
@@ -524,11 +538,10 @@ public static class CourseWorkspaceViewBuilder
             15
         );
         openFolderBtn.Margin = new Thickness(0, 0, 0, 4);
-        rightControls.Children.Add(openFolderBtn);
+        actionsWrap.Children.Add(openFolderBtn);
 
-        Grid.SetColumn(rightControls, 1);
-        toolbar.Children.Add(rightControls);
-        outerGrid.Children.Add(toolbar);
+        toolbarStack.Children.Add(actionsWrap);
+        outerGrid.Children.Add(toolbarStack);
 
         // 2. Inline "New Folder" Strip (when toggled open)
         if (vm.IsNewMaterialFolderBarOpen)
