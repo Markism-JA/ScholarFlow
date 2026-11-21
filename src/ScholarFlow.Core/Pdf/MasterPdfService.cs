@@ -626,8 +626,8 @@ public sealed partial class MasterPdfService
         var titleFont = new XFont("Sans", 11, XFontStyle.Bold);
         var metaFont = new XFont("Sans", 8.5, XFontStyle.Regular);
         var headingFont = new XFont("Sans", 11, XFontStyle.Bold);
-        var bodyFont = new XFont("Sans", isCode ? 8.5 : 9.5, XFontStyle.Regular);
-        var lineNumFont = new XFont("Sans", 7.5, XFontStyle.Regular);
+        var bodyFont = new XFont(isCode ? "Mono" : "Sans", isCode ? 8.5 : 9.5, XFontStyle.Regular);
+        var lineNumFont = new XFont("Mono", 7.5, XFontStyle.Regular);
 
         const double marginLeft = 36;
         const double marginRight = 36;
@@ -1463,7 +1463,16 @@ public sealed partial class MasterPdfService
     {
         if (Interlocked.Exchange(ref _fontResolverInitialized, 1) == 0)
         {
-            GlobalFontSettings.FontResolver ??= new SystemFontResolver();
+            try
+            {
+                // Assign directly without reading GlobalFontSettings.FontResolver getter first,
+                // because PdfSharpCore's getter lazily instantiates its buggy default FontResolver!
+                GlobalFontSettings.FontResolver = new SystemFontResolver();
+            }
+            catch
+            {
+                // Ignore if already locked by PdfSharpCore
+            }
         }
     }
 
@@ -1471,76 +1480,140 @@ public sealed partial class MasterPdfService
     {
         public string DefaultFontName => "Sans";
 
-        private static readonly string[] RegularCandidates = BuildRegularCandidates();
-        private static readonly string[] BoldCandidates = BuildBoldCandidates();
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+            string,
+            byte[]
+        > FontBytesCache = new(StringComparer.OrdinalIgnoreCase);
 
-        private static string[] BuildRegularCandidates()
+        private static string WinFont(string file) =>
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "Fonts",
+                file
+            );
+
+        private static IEnumerable<string> GetCandidatesForFace(string faceName)
         {
-            var list = new List<string>();
+            bool isMono = faceName.StartsWith("Mono", StringComparison.OrdinalIgnoreCase);
+            bool isSerif = faceName.StartsWith("Serif", StringComparison.OrdinalIgnoreCase);
+            bool isBold = faceName.Contains("Bold", StringComparison.OrdinalIgnoreCase);
+            bool isItalic = faceName.Contains("Italic", StringComparison.OrdinalIgnoreCase);
+
+            if (isMono)
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    yield return WinFont(isBold && isItalic ? "consolaz.ttf" : isBold ? "consolab.ttf" : isItalic ? "consolai.ttf" : "consola.ttf");
+                    yield return WinFont(isBold ? "courbd.ttf" : "cour.ttf");
+                }
+                if (isBold && isItalic)
+                {
+                    yield return "/usr/share/fonts/liberation/LiberationMono-BoldItalic.ttf";
+                    yield return "/usr/share/fonts/TTF/DejaVuSansMono-BoldOblique.ttf";
+                }
+                if (isBold)
+                {
+                    yield return "/usr/share/fonts/liberation/LiberationMono-Bold.ttf";
+                    yield return "/usr/share/fonts/TTF/DejaVuSansMono-Bold.ttf";
+                    yield return "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf";
+                }
+                if (isItalic)
+                {
+                    yield return "/usr/share/fonts/liberation/LiberationMono-Italic.ttf";
+                    yield return "/usr/share/fonts/TTF/DejaVuSansMono-Oblique.ttf";
+                }
+                yield return "/usr/share/fonts/TTF/JetBrainsMono-Regular.ttf";
+                yield return "/usr/share/fonts/liberation/LiberationMono-Regular.ttf";
+                yield return "/usr/share/fonts/TTF/DejaVuSansMono.ttf";
+                yield return "/usr/share/fonts/noto/NotoSansMono-Regular.ttf";
+                yield return "/usr/share/fonts/Adwaita/AdwaitaMono-Regular.ttf";
+                yield return "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf";
+            }
+
+            if (isSerif)
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    yield return WinFont(isBold && isItalic ? "timesbi.ttf" : isBold ? "timesbd.ttf" : isItalic ? "timesi.ttf" : "times.ttf");
+                    yield return WinFont(isBold ? "georgiab.ttf" : "georgia.ttf");
+                }
+                if (isBold && isItalic)
+                {
+                    yield return "/usr/share/fonts/noto/NotoSerif-BoldItalic.ttf";
+                    yield return "/usr/share/fonts/liberation/LiberationSerif-BoldItalic.ttf";
+                    yield return "/usr/share/fonts/TTF/DejaVuSerif-BoldItalic.ttf";
+                }
+                if (isBold)
+                {
+                    yield return "/usr/share/fonts/noto/NotoSerif-Bold.ttf";
+                    yield return "/usr/share/fonts/liberation/LiberationSerif-Bold.ttf";
+                    yield return "/usr/share/fonts/TTF/DejaVuSerif-Bold.ttf";
+                    yield return "/usr/share/fonts/truetype/dejavu/DejaVuSerif-Bold.ttf";
+                }
+                if (isItalic)
+                {
+                    yield return "/usr/share/fonts/noto/NotoSerif-Italic.ttf";
+                    yield return "/usr/share/fonts/liberation/LiberationSerif-Italic.ttf";
+                    yield return "/usr/share/fonts/TTF/DejaVuSerif-Italic.ttf";
+                }
+                yield return "/usr/share/fonts/noto/NotoSerif-Regular.ttf";
+                yield return "/usr/share/fonts/liberation/LiberationSerif-Regular.ttf";
+                yield return "/usr/share/fonts/TTF/DejaVuSerif.ttf";
+                yield return "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf";
+            }
+
+            // Sans (default & fallback)
             if (OperatingSystem.IsWindows())
             {
-                var winFonts = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-                    "Fonts"
-                );
-                list.Add(Path.Combine(winFonts, "segoeui.ttf"));
-                list.Add(Path.Combine(winFonts, "arial.ttf"));
-                list.Add(Path.Combine(winFonts, "calibri.ttf"));
-                list.Add(Path.Combine(winFonts, "tahoma.ttf"));
+                yield return WinFont(isBold && isItalic ? "segoeuiz.ttf" : isBold ? "segoeuib.ttf" : isItalic ? "segoeuii.ttf" : "segoeui.ttf");
+                yield return WinFont(isBold && isItalic ? "arialbi.ttf" : isBold ? "arialbd.ttf" : isItalic ? "ariali.ttf" : "arial.ttf");
+                yield return WinFont(isBold ? "calibrib.ttf" : "calibri.ttf");
             }
-            list.AddRange([
-                "/usr/share/fonts/noto/NotoSans-Regular.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans.ttf",
-                "/usr/share/fonts/dejavu/DejaVuSans.ttf",
-                "/usr/share/fonts/liberation/LiberationSans-Regular.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            ]);
-            return [.. list];
-        }
-
-        private static string[] BuildBoldCandidates()
-        {
-            var list = new List<string>();
-            if (OperatingSystem.IsWindows())
+            if (isBold && isItalic)
             {
-                var winFonts = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-                    "Fonts"
-                );
-                list.Add(Path.Combine(winFonts, "segoeuib.ttf"));
-                list.Add(Path.Combine(winFonts, "arialbd.ttf"));
-                list.Add(Path.Combine(winFonts, "calibrib.ttf"));
-                list.Add(Path.Combine(winFonts, "tahomabd.ttf"));
+                yield return "/usr/share/fonts/noto/NotoSans-BoldItalic.ttf";
+                yield return "/usr/share/fonts/liberation/LiberationSans-BoldItalic.ttf";
+                yield return "/usr/share/fonts/TTF/DejaVuSans-BoldOblique.ttf";
             }
-            list.AddRange([
-                "/usr/share/fonts/noto/NotoSans-Bold.ttf",
-                "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf",
-                "/usr/share/fonts/liberation/LiberationSans-Bold.ttf",
-                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-            ]);
-            return [.. list];
+            if (isBold)
+            {
+                yield return "/usr/share/fonts/noto/NotoSans-Bold.ttf";
+                yield return "/usr/share/fonts/liberation/LiberationSans-Bold.ttf";
+                yield return "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf";
+                yield return "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf";
+                yield return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+            }
+            if (isItalic)
+            {
+                yield return "/usr/share/fonts/noto/NotoSans-Italic.ttf";
+                yield return "/usr/share/fonts/liberation/LiberationSans-Italic.ttf";
+                yield return "/usr/share/fonts/TTF/DejaVuSans-Oblique.ttf";
+            }
+            yield return "/usr/share/fonts/noto/NotoSans-Regular.ttf";
+            yield return "/usr/share/fonts/liberation/LiberationSans-Regular.ttf";
+            yield return "/usr/share/fonts/TTF/DejaVuSans.ttf";
+            yield return "/usr/share/fonts/dejavu/DejaVuSans.ttf";
+            yield return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
         }
 
         public byte[]? GetFont(string faceName)
         {
-            var candidates = faceName.Contains("Bold", StringComparison.OrdinalIgnoreCase)
-                ? BoldCandidates.Concat(RegularCandidates)
-                : RegularCandidates;
+            if (FontBytesCache.TryGetValue(faceName, out var cached))
+                return cached;
 
-            var found = candidates.FirstOrDefault(File.Exists);
-            if (found is not null)
-                return File.ReadAllBytes(found);
-
-            // Fallback: scan system fonts directory for any .ttf
-            var fontDirs = OperatingSystem.IsWindows()
-                ? new[]
+            foreach (var candidate in GetCandidatesForFace(faceName))
+            {
+                if (File.Exists(candidate))
                 {
-                    Path.Combine(
-                        Environment.GetFolderPath(Environment.SpecialFolder.Windows),
-                        "Fonts"
-                    ),
+                    var bytes = File.ReadAllBytes(candidate);
+                    FontBytesCache[faceName] = bytes;
+                    return bytes;
                 }
+            }
+
+            // Fallback: scan system fonts directory for a clean Regular .ttf
+            var fontDirs = OperatingSystem.IsWindows()
+                ? new[] { WinFont("") }
                 : ["/usr/share/fonts", "/usr/local/share/fonts"];
 
             foreach (var dir in fontDirs)
@@ -1550,22 +1623,47 @@ public sealed partial class MasterPdfService
 
                 var anyTtf =
                     Directory
-                        .EnumerateFiles(dir, "*.ttf", SearchOption.AllDirectories)
-                        .FirstOrDefault(f =>
-                            f.Contains("Regular", StringComparison.OrdinalIgnoreCase)
-                        )
+                        .EnumerateFiles(dir, "*Sans-Regular.ttf", SearchOption.AllDirectories)
+                        .FirstOrDefault()
+                    ?? Directory
+                        .EnumerateFiles(dir, "*-Regular.ttf", SearchOption.AllDirectories)
+                        .FirstOrDefault()
                     ?? Directory
                         .EnumerateFiles(dir, "*.ttf", SearchOption.AllDirectories)
                         .FirstOrDefault();
 
                 if (anyTtf is not null)
-                    return File.ReadAllBytes(anyTtf);
+                {
+                    var bytes = File.ReadAllBytes(anyTtf);
+                    FontBytesCache[faceName] = bytes;
+                    return bytes;
+                }
             }
 
             return null;
         }
 
-        public FontResolverInfo? ResolveTypeface(string familyName, bool isBold, bool isItalic) =>
-            new(isBold ? "Sans-Bold" : "Sans-Regular");
+        public FontResolverInfo? ResolveTypeface(string familyName, bool isBold, bool isItalic)
+        {
+            var fam = (familyName ?? "Sans").Trim();
+            string prefix =
+                fam.Contains("Mono", StringComparison.OrdinalIgnoreCase)
+                || fam.Contains("Courier", StringComparison.OrdinalIgnoreCase)
+                || fam.Contains("Consolas", StringComparison.OrdinalIgnoreCase)
+                    ? "Mono"
+                : fam.Contains("Serif", StringComparison.OrdinalIgnoreCase)
+                || fam.Contains("Times", StringComparison.OrdinalIgnoreCase)
+                || fam.Contains("Georgia", StringComparison.OrdinalIgnoreCase)
+                    ? "Serif"
+                : "Sans";
+
+            string suffix =
+                isBold && isItalic ? "BoldItalic"
+                : isBold ? "Bold"
+                : isItalic ? "Italic"
+                : "Regular";
+
+            return new FontResolverInfo($"{prefix}-{suffix}");
+        }
     }
 }

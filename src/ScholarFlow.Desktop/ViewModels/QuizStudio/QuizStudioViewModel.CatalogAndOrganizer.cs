@@ -1392,10 +1392,17 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
-    public async Task ExportQuizToPdfFileAsync(QuizSessionRecord quiz, string filePath)
+    public async Task ExportQuizToPdfFileAsync(
+        QuizSessionRecord quiz,
+        string filePath,
+        QuizPdfExportOptions? options = null
+    )
     {
-        await Task.Run(() => QuizExportService.ExportDeckToPrintablePdf(quiz, filePath));
-        StatusMessage = $"Exported printable PDF to {Path.GetFileName(filePath)}.";
+        await Task.Run(() => QuizExportService.ExportDeckToPrintablePdf(quiz, filePath, options));
+        var modeLabel = options?.Mode == QuizPdfExportMode.StudyGuideInline
+            ? "Study Guide PDF"
+            : (options?.IncludeAnswerKey == false ? "Questions-Only PDF" : "Printable Exam PDF");
+        StatusMessage = $"Exported {modeLabel} to {Path.GetFileName(filePath)}.";
         IsStatusError = false;
         _mainVm.RequestUiRefresh();
     }

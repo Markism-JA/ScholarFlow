@@ -475,4 +475,160 @@ public sealed class QuizSuperEngineTests
             )
         );
     }
+
+    [Fact]
+    public void PrintablePdfExport_RendersFullAssessmentBreadthHintsContrastiveFeedbackAndLineCitations()
+    {
+        var deck = new QuizSessionRecord
+        {
+            Id = "print-test-1",
+            CourseTitle = "Operating Systems",
+            Term = "Midterms",
+            Title = "OS Full-Breadth Assessment",
+            Questions =
+            [
+                new QuizQuestionRecord
+                {
+                    Id = "q-mcq",
+                    Kind = QuizQuestionKind.MultipleChoice,
+                    CognitiveLevel = CognitiveLevel.Analysis,
+                    Difficulty = 4,
+                    Archetype = "SpotTheFlaw",
+                    TopicTag = "deadlock",
+                    Prompt = "Which condition is broken by imposing a global lock ordering?",
+                    CodeSnippet = "lock(A);\nlock(B);\n// critical section\nunlock(B);\nunlock(A);",
+                    CodeLanguage = "c",
+                    Options = ["Mutual exclusion", "Hold and wait", "No preemption", "Circular wait"],
+                    CorrectAnswer = "Circular wait",
+                    Hint = "Think about whether a cycle can form in the resource-allocation graph.",
+                    Explanation =
+                        "Why Correct: Strict total ordering prevents any cycle of lock waits. Why Distractors Fail: Locks are still exclusive and held while requesting the next lock. Core Principle: Breaking circular wait guarantees deadlock freedom.",
+                    SourcePdfPath = "/tmp/locks.c",
+                    SourceStartLine = 12,
+                    SourceEndLine = 18,
+                    SectionTitle = "acquire_ordered",
+                    VerbatimQuote = "lock(A); lock(B);",
+                },
+                new QuizQuestionRecord
+                {
+                    Id = "q-ord",
+                    Kind = QuizQuestionKind.Ordering,
+                    CognitiveLevel = CognitiveLevel.Application,
+                    Difficulty = 3,
+                    TopicTag = "paging",
+                    Prompt = "Order the hardware steps during a TLB miss.",
+                    Options = ["Lookup TLB", "Walk page table", "Update TLB entry", "Access physical frame"],
+                    CorrectAnswer = "Lookup TLB -> Walk page table -> Update TLB entry -> Access physical frame",
+                    MathLatex = @"EMAT = \alpha(t_{TLB} + t_m) + (1 - \alpha)(t_{TLB} + 2t_m)",
+                    Diagram = "[VA] --> [TLB?] --miss--> [Page Table] --> [PA]",
+                    Explanation = "Why Correct: Page table walk populates the TLB before physical memory access.",
+                    SourcePdfPath = "/tmp/OS_Master.pdf",
+                    SourcePage = 42,
+                    SectionTitle = "Virtual Memory",
+                    VerbatimQuote = "On a TLB miss, the MMU walks the page table.",
+                },
+            ],
+        };
+
+        // 1. Verify deterministic Ordering scramble does not leak exact answer order
+        var scrambled = QuizPdfPrintRenderer.ScrambleOrderingStepsDeterministically(
+            deck.Questions[1].Options,
+            deck.Questions[1].Id
+        );
+        Assert.Equal(4, scrambled.Count);
+        Assert.False(scrambled.SequenceEqual(deck.Questions[1].Options));
+
+        // 2. Verify code line-range vs PDF page evidence formatting
+        var codeCitation = QuizPdfPrintRenderer.FormatSourceCitation(deck.Questions[0]);
+        Assert.Contains("locks.c", codeCitation);
+        Assert.Contains("L12–L18", codeCitation);
+        Assert.DoesNotContain("p. 1", codeCitation);
+
+        var pdfCitation = QuizPdfPrintRenderer.FormatSourceCitation(deck.Questions[1]);
+        Assert.Contains("OS_Master.pdf", pdfCitation);
+        Assert.Contains("p. 42", pdfCitation);
+
+        // 2b. Verify PdfDiagramGraphRenderer parses inline and Mermaid graphs into vector nodes & labeled edges
+        Assert.True(
+            PdfDiagramGraphRenderer.TryParseGraph(
+                deck.Questions[1].Diagram,
+                out var parsedFlow
+            )
+        );
+        Assert.Equal(4, parsedFlow.Nodes.Count);
+        Assert.Equal(3, parsedFlow.Edges.Count);
+        Assert.Contains(parsedFlow.Edges, e => e.Label == "miss");
+
+        Assert.True(
+            PdfDiagramGraphRenderer.TryParseGraph(
+                "graph LR\n  A[Fetch] --> B{Branch?}\n  B -->|Yes| C(Target)",
+                out var mermaidGraph
+            )
+        );
+        Assert.Equal(3, mermaidGraph.Nodes.Count);
+        Assert.Contains(mermaidGraph.Nodes, n => n.Label == "Branch?" && n.Shape == DiagramNodeShape.Diamond);
+        Assert.Contains(mermaidGraph.Nodes, n => n.Label == "Target" && n.Shape == DiagramNodeShape.RoundedPill);
+        Assert.Contains(mermaidGraph.Edges, e => e.Label == "Yes");
+
+        // 2c. Verify sequenceDiagram is parsed as a Sequence Diagram (not flattened into a flowchart)
+        var seqSpec = """
+            sequenceDiagram
+              participant C as Client
+              participant S as Server
+              C ->> S: SYN (seq=x)
+              S -->> C: SYN-ACK (seq=y, ack=x+1)
+              C ->> S: ACK (ack=y+1)
+            """;
+        Assert.True(PdfDiagramGraphRenderer.TryParseSequenceDiagram(seqSpec, out var parsedSeq));
+        Assert.False(PdfDiagramGraphRenderer.TryParseGraph(seqSpec, out _));
+        Assert.Equal(2, parsedSeq.Participants.Count);
+        Assert.Equal("Client", parsedSeq.Participants[0].Label);
+        Assert.Equal("Server", parsedSeq.Participants[1].Label);
+        Assert.Equal(3, parsedSeq.Steps.Count);
+        Assert.True(parsedSeq.Steps[1].IsDashed);
+
+        // 3. Verify Exam Worksheet PDF (Questions + Hints + Answer Key) and Study Guide Inline PDF compile cleanly
+        var tempDir = Path.Combine(Path.GetTempPath(), "ScholarFlow_PrintTest_" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var examPath = Path.Combine(tempDir, "exam.pdf");
+            var guidePath = Path.Combine(tempDir, "guide.pdf");
+
+            QuizExportService.ExportDeckToPrintablePdf(deck, examPath, QuizPdfExportOptions.ExamDefault);
+            QuizExportService.ExportDeckToPrintablePdf(deck, guidePath, QuizPdfExportOptions.StudyGuide);
+
+            Assert.True(File.Exists(examPath));
+            Assert.True(File.Exists(guidePath));
+
+            using var examPdf = UglyToad.PdfPig.PdfDocument.Open(examPath);
+            // Questions + Progressive Hints + Answer Key = at least 3 pages
+            Assert.True(examPdf.NumberOfPages >= 3);
+            var fullExamText = string.Join("\n", Enumerable.Range(1, examPdf.NumberOfPages).Select(p => examPdf.GetPage(p).Text));
+            Assert.Contains("ASSESSMENT BLUEPRINT", fullExamText);
+            Assert.Contains("QUICK-GRADING KEY", fullExamText);
+            Assert.Contains("Figure 2.1", fullExamText);
+            Assert.Contains("Progressive Hints", fullExamText);
+            Assert.Contains("WHY CORRECT:", fullExamText);
+            Assert.Contains("CORE PRINCIPLE:", fullExamText);
+            Assert.Contains("L12–L18", fullExamText);
+
+            using var guidePdf = UglyToad.PdfPig.PdfDocument.Open(guidePath);
+            Assert.True(guidePdf.NumberOfPages >= 1);
+            var guideText = string.Join("\n", Enumerable.Range(1, guidePdf.NumberOfPages).Select(p => guidePdf.GetPage(p).Text));
+            Assert.Contains("Annotated Study Guide", guideText);
+            Assert.Contains("WHY DISTRACTORS FAIL:", guideText);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+            catch
+            {
+                // Ignore cleanup lock
+            }
+        }
+    }
 }
