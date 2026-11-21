@@ -166,31 +166,18 @@ public static class InspectorPaneBuilder
         };
         stack.Children.Add(titleBox);
 
-        // Native Interactive CalendarDatePicker + Quick Date Presets
+        // Themed Interactive Month Date Picker + Quick Date Presets
         stack.Children.Add(UiBuilder.SectionHeader("Due Date"));
         var dateRow = new WrapPanel { Orientation = Orientation.Horizontal };
 
-        var datePicker = new CalendarDatePicker
-        {
-            SelectedDate = task.DueDate.HasValue
-                ? task.DueDate.Value.ToDateTime(TimeOnly.MinValue)
-                : null,
-            Watermark = "Select date...",
-            Width = 145,
-            Margin = new Thickness(0, 0, 6, 4),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        bool suppressDateEvent = false;
-        datePicker.SelectedDateChanged += async (_, _) =>
-        {
-            if (suppressDateEvent)
-                return;
-            var picked = datePicker.SelectedDate.HasValue
-                ? DateOnly.FromDateTime(datePicker.SelectedDate.Value)
-                : (DateOnly?)null;
-            await vm.SetTaskDueDateAsync(task, picked);
-        };
-        dateRow.Children.Add(datePicker);
+        var datePickerBtn = DateTimePickerWidgets.BuildDatePickerButton(
+            task.DueDate,
+            async picked => await vm.SetTaskDueDateAsync(task, picked),
+            placeholder: "Select date...",
+            minWidth: 145
+        );
+        datePickerBtn.Margin = new Thickness(0, 0, 6, 4);
+        dateRow.Children.Add(datePickerBtn);
 
         var today = DateOnly.FromDateTime(DateTime.Today);
         void AddQuickDateBtn(string label, DateOnly? targetDate)
@@ -198,13 +185,7 @@ public static class InspectorPaneBuilder
             var btn = UiBuilder.GhostButton(
                 label,
                 null,
-                async () =>
-                {
-                    suppressDateEvent = true;
-                    datePicker.SelectedDate = targetDate?.ToDateTime(TimeOnly.MinValue);
-                    suppressDateEvent = false;
-                    await vm.SetTaskDueDateAsync(task, targetDate);
-                },
+                async () => await vm.SetTaskDueDateAsync(task, targetDate),
                 isActive: task.DueDate == targetDate && targetDate.HasValue
             );
             btn.Margin = new Thickness(0, 0, 4, 4);
@@ -219,83 +200,24 @@ public static class InspectorPaneBuilder
 
         stack.Children.Add(dateRow);
 
-        // Due Time Editor + Quick Presets
+        // Themed Interactive Clock Time Picker + Quick Presets
         stack.Children.Add(UiBuilder.SectionHeader("Due Time"));
         var timeRow = new WrapPanel { Orientation = Orientation.Horizontal };
-        var timeBox = new TextBox
-        {
-            Text = task.DueTime?.ToString("h:mm tt") ?? string.Empty,
-            Watermark = "12:00 AM / 23:59",
-            Width = 135,
-            Margin = new Thickness(0, 0, 6, 4),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        bool suppressTimeEvent = false;
-        async Task ApplyTimeInputAsync()
-        {
-            if (suppressTimeEvent)
-                return;
-            suppressTimeEvent = true;
-            try
-            {
-                var raw = timeBox.Text?.Trim();
-                if (string.IsNullOrWhiteSpace(raw))
-                {
-                    await vm.SetTaskDueTimeAsync(task, null);
-                    return;
-                }
-                if (
-                    TimeOnly.TryParse(
-                        raw,
-                        System.Globalization.CultureInfo.CurrentCulture,
-                        out var parsed
-                    )
-                    || TimeOnly.TryParse(
-                        raw,
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        out parsed
-                    )
-                )
-                {
-                    await vm.SetTaskDueTimeAsync(task, parsed);
-                }
-            }
-            finally
-            {
-                suppressTimeEvent = false;
-            }
-        }
-
-        timeBox.KeyDown += async (_, e) =>
-        {
-            if (e.Key == Key.Enter)
-            {
-                e.Handled = true;
-                await ApplyTimeInputAsync();
-            }
-        };
-        timeBox.LostFocus += async (_, _) => await ApplyTimeInputAsync();
-        timeRow.Children.Add(timeBox);
+        var timePickerBtn = DateTimePickerWidgets.BuildTimePickerButton(
+            task.DueTime,
+            async picked => await vm.SetTaskDueTimeAsync(task, picked),
+            placeholder: "Pick time...",
+            minWidth: 135
+        );
+        timePickerBtn.Margin = new Thickness(0, 0, 6, 4);
+        timeRow.Children.Add(timePickerBtn);
 
         void AddQuickTimeBtn(string label, TimeOnly? targetTime)
         {
             var btn = UiBuilder.GhostButton(
                 label,
                 null,
-                async () =>
-                {
-                    suppressTimeEvent = true;
-                    try
-                    {
-                        timeBox.Text = targetTime?.ToString("h:mm tt") ?? string.Empty;
-                        await vm.SetTaskDueTimeAsync(task, targetTime);
-                    }
-                    finally
-                    {
-                        suppressTimeEvent = false;
-                    }
-                },
+                async () => await vm.SetTaskDueTimeAsync(task, targetTime),
                 isActive: task.DueTime == targetTime && targetTime.HasValue
             );
             btn.Margin = new Thickness(0, 0, 4, 4);
@@ -941,8 +863,20 @@ public static class InspectorPaneBuilder
 
     private static Grid BuildFileActionRow(MainWindowViewModel vm, TaskItem task, string relFile)
     {
-        var isPdf = relFile.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+        var (kind, _) = ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(relFile);
+        var isPdf = kind == ScholarFlow.Core.Knowledge.StudySourceKind.Pdf;
+        var isInAppViewable =
+            isPdf || ScholarFlow.Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(relFile);
         var fileName = Path.GetFileName(relFile);
+
+        var fileIcon = kind switch
+        {
+            ScholarFlow.Core.Knowledge.StudySourceKind.Pdf => MaterialIconKind.FilePdfBox,
+            ScholarFlow.Core.Knowledge.StudySourceKind.Code => MaterialIconKind.CodeBraces,
+            ScholarFlow.Core.Knowledge.StudySourceKind.Markdown => MaterialIconKind.LanguageMarkdownOutline,
+            ScholarFlow.Core.Knowledge.StudySourceKind.Image => MaterialIconKind.FileImageOutline,
+            _ => MaterialIconKind.FileDocumentOutline,
+        };
 
         var row = new Grid
         {
@@ -951,9 +885,9 @@ public static class InspectorPaneBuilder
         };
         row.Children.Add(
             UiBuilder.Icon(
-                isPdf ? MaterialIconKind.FilePdfBox : MaterialIconKind.FileDocumentOutline,
+                fileIcon,
                 14,
-                isPdf
+                isInAppViewable
                     ? ThemeService.Brush(ThemeService.AccentPrimary)
                     : ThemeService.Brush(ThemeService.TextSecondary)
             )
@@ -971,10 +905,10 @@ public static class InspectorPaneBuilder
             }
         );
 
-        if (isPdf)
+        if (isInAppViewable)
         {
             var viewBtn = UiBuilder.GhostButton(
-                "View PDF",
+                isPdf ? "View PDF" : "View",
                 MaterialIconKind.EyeOutline,
                 () => vm.OpenTaskFile(task, relFile),
                 isActive: true

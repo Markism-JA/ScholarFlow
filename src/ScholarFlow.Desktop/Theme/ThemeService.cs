@@ -84,6 +84,32 @@ public static class ThemeService
             SetBrush(res, "TextControlBorderBrushFocused", "#E0564B");
             SetBrush(res, "TextControlForeground", "#EAECEF");
             SetBrush(res, "TextControlPlaceholderForeground", "#686F7C");
+
+            // FluentTheme Flyout & CalendarDatePicker / Calendar Month popup brushes
+            SetBrush(res, "FlyoutPresenterBackground", "#191B1F");
+            SetBrush(res, "FlyoutBorderThemeBrush", "#343844");
+            SetBrush(res, "CalendarDatePickerBackground", "#1D2027");
+            SetBrush(res, "CalendarDatePickerBackgroundPointerOver", "#232730");
+            SetBrush(res, "CalendarDatePickerBackgroundPressed", "#181B21");
+            SetBrush(res, "CalendarDatePickerBorderBrush", "#2E333F");
+            SetBrush(res, "CalendarDatePickerBorderBrushPointerOver", "#3E4554");
+            SetBrush(res, "CalendarDatePickerBorderBrushFocused", "#E0564B");
+            SetBrush(res, "CalendarDatePickerForeground", "#EAECEF");
+            SetBrush(res, "CalendarDatePickerCalendarGlyphForeground", "#949BA7");
+            SetBrush(res, "CalendarViewBackground", "#191B1F");
+            SetBrush(res, "CalendarViewBorderBrush", "#343844");
+            SetBrush(res, "CalendarViewCalendarItemBackground", "#1D2027");
+            SetBrush(res, "CalendarViewCalendarItemForeground", "#EAECEF");
+            SetBrush(res, "CalendarViewCalendarItemHoverBackground", "#272A32");
+            SetBrush(res, "CalendarViewCalendarItemPressedBackground", "#2B1E20");
+            SetBrush(res, "CalendarViewHeaderNavigationButtonForeground", "#EAECEF");
+            SetBrush(res, "CalendarViewWeekDayNameForeground", "#949BA7");
+            SetBrush(res, "CalendarViewOutOfScopeBackground", "#141518");
+            SetBrush(res, "CalendarViewOutOfScopeForeground", "#686F7C");
+            SetBrush(res, "CalendarViewTodayForeground", "#FFFFFF");
+            SetBrush(res, "CalendarViewTodayBackground", "#E0564B");
+            SetBrush(res, "CalendarViewSelectedBorderBrush", "#E0564B");
+            SetBrush(res, "CalendarViewHoverBorderBrush", "#3E4554");
         }
         else
         {
@@ -120,6 +146,32 @@ public static class ThemeService
             SetBrush(res, "TextControlBorderBrushFocused", "#DC4C3E");
             SetBrush(res, "TextControlForeground", "#1E2024");
             SetBrush(res, "TextControlPlaceholderForeground", "#8E939D");
+
+            // FluentTheme Flyout & CalendarDatePicker / Calendar Month popup brushes
+            SetBrush(res, "FlyoutPresenterBackground", "#FAF9F7");
+            SetBrush(res, "FlyoutBorderThemeBrush", "#CBC8C0");
+            SetBrush(res, "CalendarDatePickerBackground", "#F7F6F3");
+            SetBrush(res, "CalendarDatePickerBackgroundPointerOver", "#F1EFEA");
+            SetBrush(res, "CalendarDatePickerBackgroundPressed", "#FFFFFF");
+            SetBrush(res, "CalendarDatePickerBorderBrush", "#D6D4CE");
+            SetBrush(res, "CalendarDatePickerBorderBrushPointerOver", "#B8B5AE");
+            SetBrush(res, "CalendarDatePickerBorderBrushFocused", "#DC4C3E");
+            SetBrush(res, "CalendarDatePickerForeground", "#1E2024");
+            SetBrush(res, "CalendarDatePickerCalendarGlyphForeground", "#626770");
+            SetBrush(res, "CalendarViewBackground", "#FAF9F7");
+            SetBrush(res, "CalendarViewBorderBrush", "#CBC8C0");
+            SetBrush(res, "CalendarViewCalendarItemBackground", "#FFFFFF");
+            SetBrush(res, "CalendarViewCalendarItemForeground", "#1E2024");
+            SetBrush(res, "CalendarViewCalendarItemHoverBackground", "#EAE8E4");
+            SetBrush(res, "CalendarViewCalendarItemPressedBackground", "#FFEEE8");
+            SetBrush(res, "CalendarViewHeaderNavigationButtonForeground", "#1E2024");
+            SetBrush(res, "CalendarViewWeekDayNameForeground", "#626770");
+            SetBrush(res, "CalendarViewOutOfScopeBackground", "#F2F1EE");
+            SetBrush(res, "CalendarViewOutOfScopeForeground", "#8E939D");
+            SetBrush(res, "CalendarViewTodayForeground", "#FFFFFF");
+            SetBrush(res, "CalendarViewTodayBackground", "#DC4C3E");
+            SetBrush(res, "CalendarViewSelectedBorderBrush", "#DC4C3E");
+            SetBrush(res, "CalendarViewHoverBorderBrush", "#B8B5AE");
         }
 
         ThemeChanged?.Invoke(null, mode);

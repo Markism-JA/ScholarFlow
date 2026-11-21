@@ -66,23 +66,26 @@ public sealed partial class MainWindow
         }
 
         var dateRegex = @"\b(today|tomorrow|tmrw|next\s+week|\+\d+d|\d{4}-\d{2}-\d{2})\b";
-        var quickDatePicker = new CalendarDatePicker
-        {
-            Watermark = "Pick date...",
-            Width = 135,
-            Margin = new Thickness(0, 0, 5, 5),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        quickDatePicker.SelectedDateChanged += (_, _) =>
-        {
-            if (quickDatePicker.SelectedDate.HasValue)
+        var quickDatePicker = DateTimePickerWidgets.BuildDatePickerButton(
+            null,
+            picked =>
             {
-                var iso = quickDatePicker.SelectedDate.Value.ToString("yyyy-MM-dd");
-                _vm.InsertQuickAddToken(iso, dateRegex);
+                if (picked.HasValue)
+                {
+                    _vm.InsertQuickAddToken(picked.Value.ToString("yyyy-MM-dd"), dateRegex);
+                }
+                else
+                {
+                    _vm.InsertQuickAddToken(string.Empty, dateRegex);
+                }
                 _quickAddBox.Focus();
                 _quickAddBox.CaretIndex = _quickAddBox.Text?.Length ?? 0;
-            }
-        };
+                return Task.CompletedTask;
+            },
+            placeholder: "Pick date...",
+            minWidth: 132
+        );
+        quickDatePicker.Margin = new Thickness(0, 0, 5, 5);
         selectorsWrap.Children.Add(quickDatePicker);
 
         AddTokenBtn("Today", MaterialIconKind.CalendarToday, "today", dateRegex);
@@ -91,6 +94,31 @@ public sealed partial class MainWindow
 
         var timeRegex =
             @"\b(?:at\s+)?(?:(?:[01]?\d|2[0-3]):[0-5]\d(?:\s?[ap]m)?|(?:1[0-2]|[1-9])\s?[ap]m)\b";
+        var quickTimePicker = DateTimePickerWidgets.BuildTimePickerButton(
+            null,
+            picked =>
+            {
+                if (picked.HasValue)
+                {
+                    var token = picked.Value
+                        .ToString("h:mmtt", System.Globalization.CultureInfo.InvariantCulture)
+                        .ToLowerInvariant();
+                    _vm.InsertQuickAddToken(token, timeRegex);
+                }
+                else
+                {
+                    _vm.InsertQuickAddToken(string.Empty, timeRegex);
+                }
+                _quickAddBox.Focus();
+                _quickAddBox.CaretIndex = _quickAddBox.Text?.Length ?? 0;
+                return Task.CompletedTask;
+            },
+            placeholder: "Pick time...",
+            minWidth: 126
+        );
+        quickTimePicker.Margin = new Thickness(0, 0, 5, 5);
+        selectorsWrap.Children.Add(quickTimePicker);
+
         AddTokenBtn("12:00 AM", MaterialIconKind.ClockOutline, "12:00am", timeRegex);
         AddTokenBtn("12:00 PM", MaterialIconKind.ClockOutline, "12:00pm", timeRegex);
         AddTokenBtn("5:00 PM", MaterialIconKind.ClockOutline, "5:00pm", timeRegex);
