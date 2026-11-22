@@ -25,205 +25,12 @@ public static partial class QuizRichContentRenderer
         "Cambria Math, STIX Two Math, Latin Modern Math, Georgia, serif"
     );
 
-    [GeneratedRegex(@"\\frac\{([^{}]+)\}\{([^{}]+)\}")]
-    private static partial Regex FracInlineRegex();
-
-    [GeneratedRegex(@"\\sqrt\{([^{}]+)\}")]
-    private static partial Regex SqrtInlineRegex();
-
-    [GeneratedRegex(@"\\text\{([^{}]+)\}")]
-    private static partial Regex TextCommandRegex();
-
-    [GeneratedRegex(@"\\mathbf\{([^{}]+)\}")]
-    private static partial Regex MathbfCommandRegex();
-
-    [GeneratedRegex(@"\^\{([^{}]+)\}")]
-    private static partial Regex BracedSuperscriptRegex();
-
-    [GeneratedRegex(@"\^([0-9ni])")]
-    private static partial Regex SingleSuperscriptRegex();
-
-    [GeneratedRegex(@"_\{([^{}]+)\}")]
-    private static partial Regex BracedSubscriptRegex();
-
-    [GeneratedRegex(@"_([0-9ijknm])")]
-    private static partial Regex SingleSubscriptRegex();
-
-    [GeneratedRegex(@"^(?<pre>.*?)\\frac\{(?<num>[^{}]+)\}\{(?<den>[^{}]+)\}(?<post>.*)$")]
-    private static partial Regex StandaloneFractionRegex();
-
-    private static readonly (string Latex, string Symbol)[] LatexReplacements =
-    [
-        (@"\leq", "≤"),
-        (@"\le", "≤"),
-        (@"\geq", "≥"),
-        (@"\ge", "≥"),
-        (@"\neq", "≠"),
-        (@"\ne", "≠"),
-        (@"\approx", "≈"),
-        (@"\equiv", "≡"),
-        (@"\pm", "±"),
-        (@"\times", "×"),
-        (@"\cdot", "·"),
-        (@"\div", "÷"),
-        (@"\infty", "∞"),
-        (@"\Rightarrow", "⇒"),
-        (@"\Leftrightarrow", "⇔"),
-        (@"\rightarrow", "→"),
-        (@"\to", "→"),
-        (@"\leftarrow", "←"),
-        (@"\forall", "∀"),
-        (@"\exists", "∃"),
-        (@"\in", "∈"),
-        (@"\notin", "∉"),
-        (@"\subseteq", "⊆"),
-        (@"\subset", "⊂"),
-        (@"\cup", "∪"),
-        (@"\cap", "∩"),
-        (@"\emptyset", "∅"),
-        (@"\sum", "∑"),
-        (@"\prod", "∏"),
-        (@"\int", "∫"),
-        (@"\partial", "∂"),
-        (@"\nabla", "∇"),
-        (@"\Delta", "Δ"),
-        (@"\Theta", "Θ"),
-        (@"\Lambda", "Λ"),
-        (@"\Sigma", "Σ"),
-        (@"\Omega", "Ω"),
-        (@"\alpha", "α"),
-        (@"\beta", "β"),
-        (@"\gamma", "γ"),
-        (@"\delta", "δ"),
-        (@"\epsilon", "ε"),
-        (@"\theta", "θ"),
-        (@"\lambda", "λ"),
-        (@"\mu", "μ"),
-        (@"\pi", "π"),
-        (@"\sigma", "σ"),
-        (@"\tau", "τ"),
-        (@"\phi", "φ"),
-        (@"\omega", "ω"),
-        (@"\log", "log"),
-        (@"\ln", "ln"),
-        (@"\sin", "sin"),
-        (@"\cos", "cos"),
-        (@"\tan", "tan"),
-        (@"\lim", "lim"),
-        (@"\max", "max"),
-        (@"\min", "min"),
-    ];
-
-    private static readonly Dictionary<char, char> SuperscriptMap = new()
-    {
-        ['0'] = '⁰',
-        ['1'] = '¹',
-        ['2'] = '²',
-        ['3'] = '³',
-        ['4'] = '⁴',
-        ['5'] = '⁵',
-        ['6'] = '⁶',
-        ['7'] = '⁷',
-        ['8'] = '⁸',
-        ['9'] = '⁹',
-        ['+'] = '⁺',
-        ['-'] = '⁻',
-        ['='] = '⁼',
-        ['('] = '⁽',
-        [')'] = '⁾',
-        ['n'] = 'ⁿ',
-        ['i'] = 'ⁱ',
-        ['x'] = 'ˣ',
-        ['y'] = 'ʸ',
-        ['k'] = 'ᵏ',
-        ['m'] = 'ᵐ',
-    };
-
-    private static readonly Dictionary<char, char> SubscriptMap = new()
-    {
-        ['0'] = '₀',
-        ['1'] = '₁',
-        ['2'] = '₂',
-        ['3'] = '₃',
-        ['4'] = '₄',
-        ['5'] = '₅',
-        ['6'] = '₆',
-        ['7'] = '₇',
-        ['8'] = '₈',
-        ['9'] = '₉',
-        ['+'] = '₊',
-        ['-'] = '₋',
-        ['='] = '₌',
-        ['('] = '₍',
-        [')'] = '₎',
-        ['a'] = 'ₐ',
-        ['e'] = 'ₑ',
-        ['i'] = 'ᵢ',
-        ['j'] = 'ⱼ',
-        ['k'] = 'ₖ',
-        ['m'] = 'ₘ',
-        ['n'] = 'ₙ',
-        ['o'] = 'ₒ',
-        ['p'] = 'ₚ',
-        ['r'] = 'ᵣ',
-        ['s'] = 'ₛ',
-        ['t'] = 'ₜ',
-        ['u'] = 'ᵤ',
-        ['v'] = 'ᵥ',
-        ['x'] = 'ₓ',
-    };
-
     /// <summary>
-    /// Formats inline LaTeX math tokens ($...$, \frac, \sqrt, superscripts, Greek symbols) into readable mathematical Unicode.
+    /// Formats inline LaTeX math tokens ($...$, \frac, \sqrt, superscripts, AMS/Greek symbols) into readable mathematical Unicode.
+    /// Delegates to the shared token-safe <see cref="LatexMathFormatter"/> in Core.
     /// </summary>
-    public static string FormatInlineMath(string? raw)
-    {
-        if (string.IsNullOrWhiteSpace(raw))
-            return string.Empty;
-
-        var s = raw.Trim();
-        if (!s.Contains('\\') && !s.Contains('$') && !s.Contains('^') && !s.Contains('_'))
-            return s;
-
-        s = s.Replace("$$", "").Replace("$", "");
-        s = FracInlineRegex().Replace(s, "($1) / ($2)");
-        s = SqrtInlineRegex().Replace(s, "√($1)");
-        s = TextCommandRegex().Replace(s, "$1");
-        s = MathbfCommandRegex().Replace(s, "$1");
-
-        foreach (var (latex, sym) in LatexReplacements)
-            s = s.Replace(latex, sym, StringComparison.Ordinal);
-
-        // Superscripts ^{...} or ^x
-        s = BracedSuperscriptRegex()
-            .Replace(s, m => TryConvertScript(m.Groups[1].Value, SuperscriptMap, '^'));
-        s = SingleSuperscriptRegex()
-            .Replace(s, m => TryConvertScript(m.Groups[1].Value, SuperscriptMap, '^'));
-
-        // Subscripts _{...} or _x
-        s = BracedSubscriptRegex()
-            .Replace(s, m => TryConvertScript(m.Groups[1].Value, SubscriptMap, '_'));
-        s = SingleSubscriptRegex()
-            .Replace(s, m => TryConvertScript(m.Groups[1].Value, SubscriptMap, '_'));
-
-        s = s.Replace(@"\left", "").Replace(@"\right", "").Replace("{", "").Replace("}", "");
-        return s.Trim();
-    }
-
-    private static string TryConvertScript(
-        string content,
-        Dictionary<char, char> map,
-        char fallbackPrefix
-    )
-    {
-        var chars = new char[content.Length];
-        for (int i = 0; i < content.Length; i++)
-        {
-            if (!map.TryGetValue(content[i], out chars[i]))
-                return $"{fallbackPrefix}({content})";
-        }
-        return new string(chars);
-    }
+    public static string FormatInlineMath(string? raw) =>
+        LatexMathFormatter.FormatInlineMath(raw);
 
     public static Control BuildCodeSnippetCard(string codeSnippet, string? language)
     {
@@ -339,97 +146,33 @@ public static partial class QuizRichContentRenderer
         stack.Children.Add(topRow);
 
         Control equationVisual;
-        var clean = rawLatex.Trim().Replace("$$", "").Replace("$", "");
-        var fracMatch = StandaloneFractionRegex().Match(clean);
-        if (fracMatch.Success)
+        var textColor = (ThemeService.Brush(ThemeService.TextPrimary) as ISolidColorBrush)?.Color
+            ?? Colors.White;
+        uint argbColor =
+            ((uint)textColor.A << 24)
+            | ((uint)textColor.R << 16)
+            | ((uint)textColor.G << 8)
+            | textColor.B;
+
+        var texBmp = LatexBitmapRenderer.TryRenderAvaloniaBitmap(rawLatex, 17f, argbColor);
+        if (texBmp is not null)
         {
-            // Render stacked visual fraction (pre + [num / horizontal bar / den] + post)
-            var horiz = new StackPanel
+            // Bitmap is rendered at 2x HiDPI scale; display at 0.5x logical size for crisp typography
+            equationVisual = new Image
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 10,
+                Source = texBmp,
+                Width = texBmp.PixelSize.Width * 0.5,
+                Height = texBmp.PixelSize.Height * 0.5,
+                Stretch = Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-
-            var pre = FormatInlineMath(fracMatch.Groups["pre"].Value);
-            if (!string.IsNullOrWhiteSpace(pre))
-            {
-                horiz.Children.Add(
-                    new TextBlock
-                    {
-                        Text = pre,
-                        FontFamily = MathFont,
-                        FontSize = 18,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                        VerticalAlignment = VerticalAlignment.Center,
-                    }
-                );
-            }
-
-            var fracStack = new StackPanel
-            {
-                Spacing = 3,
-                HorizontalAlignment = HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
-            fracStack.Children.Add(
-                new TextBlock
-                {
-                    Text = FormatInlineMath(fracMatch.Groups["num"].Value),
-                    FontFamily = MathFont,
-                    FontSize = 16,
-                    FontWeight = FontWeight.SemiBold,
-                    Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                }
-            );
-            fracStack.Children.Add(
-                new Border
-                {
-                    Height = 1.5,
-                    MinWidth = 48,
-                    Background = ThemeService.Brush(ThemeService.TextPrimary),
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                }
-            );
-            fracStack.Children.Add(
-                new TextBlock
-                {
-                    Text = FormatInlineMath(fracMatch.Groups["den"].Value),
-                    FontFamily = MathFont,
-                    FontSize = 16,
-                    FontWeight = FontWeight.SemiBold,
-                    Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                }
-            );
-            horiz.Children.Add(fracStack);
-
-            var post = FormatInlineMath(fracMatch.Groups["post"].Value);
-            if (!string.IsNullOrWhiteSpace(post))
-            {
-                horiz.Children.Add(
-                    new TextBlock
-                    {
-                        Text = post,
-                        FontFamily = MathFont,
-                        FontSize = 18,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                        VerticalAlignment = VerticalAlignment.Center,
-                    }
-                );
-            }
-
-            equationVisual = horiz;
         }
         else
         {
             equationVisual = new TextBlock
             {
-                Text = FormatInlineMath(clean),
+                Text = FormatInlineMath(rawLatex),
                 FontFamily = MathFont,
                 FontSize = 18,
                 FontWeight = FontWeight.SemiBold,
@@ -446,8 +189,21 @@ public static partial class QuizRichContentRenderer
                 BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
-                Padding = new Thickness(16, 12),
-                Child = equationVisual,
+                Padding = new Thickness(14, 10),
+                Child = new ScrollViewer
+                {
+                    HorizontalScrollBarVisibility = Avalonia
+                        .Controls
+                        .Primitives
+                        .ScrollBarVisibility
+                        .Auto,
+                    VerticalScrollBarVisibility = Avalonia
+                        .Controls
+                        .Primitives
+                        .ScrollBarVisibility
+                        .Disabled,
+                    Content = equationVisual,
+                },
             }
         );
 

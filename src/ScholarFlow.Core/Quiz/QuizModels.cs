@@ -455,12 +455,21 @@ public sealed class QuizQuestionRecord
 
         if (Kind is QuizQuestionKind.FillInTheBlank or QuizQuestionKind.Identification)
         {
+            if (LatexMathFormatter.AreMathAnswersEquivalent(userAnswer, CorrectAnswer))
+                return true;
+
             if (IsFuzzyTextMatch(userAnswer, CorrectAnswer))
                 return true;
 
             foreach (var alias in AcceptedAliases)
             {
-                if (!string.IsNullOrWhiteSpace(alias) && IsFuzzyTextMatch(userAnswer, alias))
+                if (
+                    !string.IsNullOrWhiteSpace(alias)
+                    && (
+                        LatexMathFormatter.AreMathAnswersEquivalent(userAnswer, alias)
+                        || IsFuzzyTextMatch(userAnswer, alias)
+                    )
+                )
                     return true;
             }
         }

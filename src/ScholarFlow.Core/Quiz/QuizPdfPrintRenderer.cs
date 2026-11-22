@@ -884,17 +884,70 @@ public static partial class QuizPdfPrintRenderer
                 );
             }
 
-            // Rich Content: Mathematical Formula
+            // Rich Content: Mathematical Formula (prefer crisp CSharpMath TeX PNG, fallback to token-safe Unicode)
             if (!string.IsNullOrWhiteSpace(q.MathLatex))
             {
-                DrawCodeOrFormulaListing(
-                    null,
-                    BeautifyLatexForPrint(q.MathLatex),
-                    FormulaBg,
-                    monoFont,
-                    indent: 18,
-                    showLineNumbers: false
+                var texPng = LatexMathFormatter.CustomLatexPngRenderer?.Invoke(
+                    q.MathLatex,
+                    14f,
+                    0xFF0F172A
                 );
+                if (texPng is { Length: > 0 })
+                {
+                    try
+                    {
+                        using var xTex = XImage.FromStream(() =>
+                            new MemoryStream(texPng, writable: false)
+                        );
+                        double maxW = ContentWidth() - 36;
+                        // Rendered at 2x HiDPI: convert pixels to ~0.42pt for crisp print density
+                        double drawW = xTex.PixelWidth * 0.42;
+                        double drawH = xTex.PixelHeight * 0.42;
+                        if (drawW > maxW)
+                        {
+                            double scale = maxW / drawW;
+                            drawW *= scale;
+                            drawH *= scale;
+                        }
+                        if (drawH > 95)
+                        {
+                            double scale = 95.0 / drawH;
+                            drawW *= scale;
+                            drawH *= scale;
+                        }
+                        double boxH = drawH + 10;
+                        EnsureSpace(boxH + 6);
+                        double boxX = MarginX + 18;
+                        double boxW = ContentWidth() - 18;
+                        gfx.DrawRectangle(FormulaBg, boxX, y, boxW, boxH);
+                        gfx.DrawRectangle(HairlinePen, boxX, y, boxW, boxH);
+                        double imgX = boxX + Math.Max(8, (boxW - drawW) / 2.0);
+                        gfx.DrawImage(xTex, imgX, y + 5, drawW, drawH);
+                        y += boxH + 6;
+                    }
+                    catch
+                    {
+                        DrawCodeOrFormulaListing(
+                            null,
+                            BeautifyLatexForPrint(q.MathLatex),
+                            FormulaBg,
+                            monoFont,
+                            indent: 18,
+                            showLineNumbers: false
+                        );
+                    }
+                }
+                else
+                {
+                    DrawCodeOrFormulaListing(
+                        null,
+                        BeautifyLatexForPrint(q.MathLatex),
+                        FormulaBg,
+                        monoFont,
+                        indent: 18,
+                        showLineNumbers: false
+                    );
+                }
             }
 
             // Rich Content: Actual Vector Graph / Flowchart Diagram
@@ -1384,22 +1437,7 @@ public static partial class QuizPdfPrintRenderer
         };
 
     private static string BeautifyLatexForPrint(string latex) =>
-        latex
-            .Replace(@"\rightarrow", " -> ")
-            .Replace(@"\leftarrow", " <- ")
-            .Replace(@"\Rightarrow", " => ")
-            .Replace(@"\le", " <= ")
-            .Replace(@"\ge", " >= ")
-            .Replace(@"\neq", " != ")
-            .Replace(@"\approx", " ~= ")
-            .Replace(@"\times", " x ")
-            .Replace(@"\cdot", " * ")
-            .Replace(@"\alpha", "alpha")
-            .Replace(@"\beta", "beta")
-            .Replace(@"\Delta", "Delta")
-            .Replace(@"\sum", "SUM")
-            .Replace("$", string.Empty)
-            .Trim();
+        LatexMathFormatter.FormatInlineMath(latex);
 
     [GeneratedRegex(
         @"(?<label>Why\s+Correct|Why\s+Distractors\s+Fail|Core\s+Principle)\s*:",

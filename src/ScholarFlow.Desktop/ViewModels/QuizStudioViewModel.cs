@@ -58,6 +58,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
 {
     static QuizStudioViewModel()
     {
+        LatexMathFormatter.CustomLatexPngRenderer = UI.LatexBitmapRenderer.TryRenderPngBytes;
+
         PdfQuizGrounder.CustomPageRegionRasterizer = (
             pdfPath,
             oneBasedPage,

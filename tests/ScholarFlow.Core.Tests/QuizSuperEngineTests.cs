@@ -965,4 +965,75 @@ public sealed class QuizSuperEngineTests
             }
         }
     }
+
+    [Fact]
+    public void LatexMathFormatter_FormatsAmsSymbolsWithoutPrefixCollisionsAndGradesNumericEquivalence()
+    {
+        // 1. User-reported divisibility proof with \text and \implies
+        var proofLatex = @"b = ha \text{ and } a = kb \implies b = (hk)b \implies hk = 1";
+        var formatted = LatexMathFormatter.FormatInlineMath(proofLatex);
+        Assert.Equal("b = ha and a = kb ⇒ b = (hk)b ⇒ hk = 1", formatted);
+
+        // 2. Prefix-collision regression checks (\in must NOT corrupt \int; \le must NOT corrupt \leftarrow or \left)
+        var collisionLatex = @"\int_0^1 x^2 \, dx \leftarrow \le \in \mathbb{Z} \iff a \mid b \pmod{m}";
+        var formattedCollision = LatexMathFormatter.FormatInlineMath(collisionLatex);
+        Assert.Contains("∫₀¹", formattedCollision);
+        Assert.Contains("x²", formattedCollision);
+        Assert.Contains("←", formattedCollision);
+        Assert.Contains("≤", formattedCollision);
+        Assert.Contains("∈", formattedCollision);
+        Assert.Contains("ℤ", formattedCollision);
+        Assert.Contains("⇔", formattedCollision);
+        Assert.Contains("∣", formattedCollision);
+        Assert.Contains("(mod m)", formattedCollision);
+        Assert.DoesNotContain("∈t", formattedCollision);
+        Assert.DoesNotContain("≤ft", formattedCollision);
+
+        // 3. Direct calculated answer equivalence in QuizQuestionRecord.EvaluateAnswer
+        var calcQ = new QuizQuestionRecord
+        {
+            Kind = QuizQuestionKind.Identification,
+            Prompt = "Evaluate the definite integral of x from 0 to 1.",
+            CorrectAnswer = "1/2",
+        };
+        Assert.True(calcQ.EvaluateAnswer("0.5"));
+        Assert.True(calcQ.EvaluateAnswer(".5"));
+        Assert.True(calcQ.EvaluateAnswer("1 / 2"));
+        Assert.True(calcQ.EvaluateAnswer("0.50"));
+        Assert.False(calcQ.EvaluateAnswer("0.25"));
+
+        var exprQ = new QuizQuestionRecord
+        {
+            Kind = QuizQuestionKind.FillInTheBlank,
+            Prompt = "If b = ha and a = kb, then _____.",
+            CorrectAnswer = "hk = 1",
+        };
+        Assert.True(exprQ.EvaluateAnswer("hk=1"));
+        Assert.True(exprQ.EvaluateAnswer("hk = 1"));
+
+        // 4. QuizQualityCritic flags raw LaTeX in free-text Identification/FillInTheBlank answers, but allows plain scalars
+        var rawLatexTextQ = new QuizQuestionRecord
+        {
+            Kind = QuizQuestionKind.Identification,
+            Prompt = "Write the quadratic formula.",
+            CorrectAnswer = @"\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}",
+            Explanation = "Why correct: Standard quadratic formula. Why distractors fail: N/A. Core principle: Completing the square.",
+            VerbatimQuote = "The quadratic formula solves ax^2 + bx + c = 0.",
+            HighlightRects = [new NormalizedHighlightRect(0.1, 0.1, 0.5, 0.05)],
+        };
+        var badReport = QuizQualityCritic.Audit([rawLatexTextQ]);
+        Assert.Contains(badReport.Issues, i => i.Code == "COMPLEX_LATEX_TEXT_ANSWER");
+
+        var scalarQ = new QuizQuestionRecord
+        {
+            Kind = QuizQuestionKind.Identification,
+            Prompt = "What is the value of hk?",
+            CorrectAnswer = "1",
+            Explanation = "Why correct: Canceling nonzero b gives hk = 1. Why distractors fail: N/A. Core principle: Divisibility.",
+            VerbatimQuote = "Divisibility in both directions yields hk = 1.",
+            HighlightRects = [new NormalizedHighlightRect(0.1, 0.1, 0.5, 0.05)],
+        };
+        var okReport = QuizQualityCritic.Audit([scalarQ]);
+        Assert.DoesNotContain(okReport.Issues, i => i.Code == "COMPLEX_LATEX_TEXT_ANSWER");
+    }
 }

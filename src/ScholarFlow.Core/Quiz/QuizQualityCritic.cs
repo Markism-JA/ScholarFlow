@@ -276,7 +276,7 @@ public static class QuizQualityCritic
             }
         }
 
-        // 2. Empty CorrectAnswer
+        // 2. Empty CorrectAnswer or raw LaTeX in a free-text Identification / FillInTheBlank answer
         if (string.IsNullOrWhiteSpace(q.CorrectAnswer))
         {
             issues.Add(
@@ -285,6 +285,20 @@ public static class QuizQualityCritic
                     "EMPTY_ANSWER",
                     "CorrectAnswer is empty.",
                     QualityIssueSeverity.Error
+                )
+            );
+        }
+        else if (
+            q.Kind is QuizQuestionKind.Identification or QuizQuestionKind.FillInTheBlank
+            && LatexMathFormatter.ContainsComplexLatexMarkup(q.CorrectAnswer)
+        )
+        {
+            issues.Add(
+                new QuestionQualityIssue(
+                    q.Id,
+                    "COMPLEX_LATEX_TEXT_ANSWER",
+                    "Free-text Identification/FillInTheBlank answer contains raw LaTeX markup; convert to MultipleChoice or use a plain scalar/canonical term.",
+                    QualityIssueSeverity.Warning
                 )
             );
         }

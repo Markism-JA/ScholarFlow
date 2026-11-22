@@ -12,10 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource
-      Include="..\..\assets\scholarflow.ico"
-      LogicalName="ScholarFlow.Assets.scholarflow.ico"
-    />
+    <EmbeddedResource Include="..\..\assets\scholarflow.ico" LogicalName="ScholarFlow.Assets.scholarflow.ico" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +27,7 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+    <PackageReference Include="CSharpMath.SkiaSharp" Version="0.5.1" />
     <PackageReference Include="Material.Icons.Avalonia" Version="2.4.1" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="11.0.0" />
