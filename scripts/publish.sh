@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT_DIR="$(cd -P "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$ROOT_DIR/src/ScholarFlow.Desktop/ScholarFlow.Desktop.csproj"
 DIST_DIR="$ROOT_DIR/dist"
 VERSION="${1:-v1.0.0}"
@@ -38,6 +38,32 @@ dotnet publish "$PROJECT" \
 
 cp -f "$ROOT_DIR/scripts/install-windows.ps1" "$DIST_DIR/win-x64/install.ps1"
 cp -f "$ROOT_DIR/scripts/uninstall-windows.ps1" "$DIST_DIR/win-x64/uninstall.ps1"
+
+echo "==> Verifying critical managed & native libraries inside single-file bundles..."
+verify_bundle() {
+  local bin="$1"
+  shift
+  for tok in "$@"; do
+    if ! grep -a -q "$tok" "$bin"; then
+      echo "ERROR: Missing '$tok' in published bundle: $bin" >&2
+      exit 1
+    fi
+  done
+}
+
+verify_bundle "$DIST_DIR/linux-x64/ScholarFlow" \
+  Mermaider.dll Svg.Skia.dll ExCSS.dll ShimSkiaSharp.dll Svg.Model.dll \
+  CSharpMath.SkiaSharp.dll AngleSharp.dll Microsoft.Playwright.dll \
+  ScholarFlow.Core.dll ScholarFlow.Elms.dll ScholarFlow.Elms.Sti.dll \
+  libSkiaSharp.so libHarfBuzzSharp.so libpdfium.so libe_sqlite3.so
+
+verify_bundle "$DIST_DIR/win-x64/ScholarFlow.exe" \
+  Mermaider.dll Svg.Skia.dll ExCSS.dll ShimSkiaSharp.dll Svg.Model.dll \
+  CSharpMath.SkiaSharp.dll AngleSharp.dll Microsoft.Playwright.dll \
+  ScholarFlow.Core.dll ScholarFlow.Elms.dll ScholarFlow.Elms.Sti.dll \
+  libSkiaSharp.dll libHarfBuzzSharp.dll pdfium.dll e_sqlite3.dll
+
+echo "==> All required managed & native dependencies verified!"
 
 echo "==> Copying target-specific Playwright drivers..."
 PW_NUGET_DIR="$(find "${NUGET_PACKAGES:-$HOME/.nuget/packages}/microsoft.playwright" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | sort -V | tail -n1)"
