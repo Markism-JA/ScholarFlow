@@ -258,6 +258,14 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public string StatusMessage { get; private set; } =
         "Select a course & PDF to generate an evidence-grounded assessment.";
     public bool IsStatusError { get; private set; }
+    public string? LastErrorCopyText { get; private set; }
+    public string? LastErrorFixPrompt { get; private set; }
+
+    internal void ClearErrorDetails()
+    {
+        LastErrorCopyText = null;
+        LastErrorFixPrompt = null;
+    }
 
     public IReadOnlyList<QuizSessionRecord> SavedQuizzes { get; private set; } = [];
     public IReadOnlyList<QuizQuestionRecord> AllDueReviewQuestions { get; private set; } = [];
@@ -589,5 +597,6 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         IsLoadingPreviewPage = false;
         StatusMessage = "Select a course & PDF to generate an evidence-grounded assessment.";
         IsStatusError = false;
+        ClearErrorDetails();
     }
 }

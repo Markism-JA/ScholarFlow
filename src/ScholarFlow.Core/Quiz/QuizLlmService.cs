@@ -21,6 +21,12 @@ public sealed partial class QuizLlmService
         AllowTrailingCommas = true,
     };
 
+    /// <summary>
+    /// Populated when the most recent generation or JSON import succeeded via local self-healing,
+    /// partial salvage, or compact syntax-repair (null on a clean strict parse).
+    /// </summary>
+    public string? LastRecoveryNotice { get; private set; }
+
     public string BuildPromptForManualCopy(
         QuizGenerationRequest request,
         out IReadOnlyList<GroundedPdfPage> extractedPages
@@ -142,6 +148,7 @@ public sealed partial class QuizLlmService
         CancellationToken ct = default
     )
     {
+        LastRecoveryNotice = null;
         if (request.HasFileSources)
             return await GenerateFromFileSourcesAsync(request, ct);
 
@@ -219,6 +226,7 @@ public sealed partial class QuizLlmService
             int batchCount = Math.Max(1, packedBatches.Count);
             var allQuestions = new List<GeneratedQuestionDto>();
             var allConcepts = new List<string>();
+            var recoveryNotices = new List<string>();
             string? firstTitle = null;
             string? firstTerm = null;
 
@@ -263,12 +271,24 @@ public sealed partial class QuizLlmService
                     ct
                 );
 
-                var batchDto = ParseQuizResponseJson(rawResponse);
+                var batchRecovery = await ParseOrSurgicallyRepairApiResponseAsync(
+                    rawResponse,
+                    request.ProviderBaseUrl,
+                    effectiveKey,
+                    request.ModelName,
+                    ct
+                );
+                var batchDto = batchRecovery.Dto!;
+                if (!string.IsNullOrWhiteSpace(batchRecovery.WarningSummary))
+                    recoveryNotices.Add(batchRecovery.WarningSummary);
                 firstTitle ??= batchDto.QuizTitle;
                 firstTerm ??= batchDto.CourseTerm;
                 allConcepts.AddRange(batchDto.KeyConceptsCovered);
                 allQuestions.AddRange(batchDto.Questions);
             }
+
+            if (recoveryNotices.Count > 0)
+                LastRecoveryNotice = string.Join(" ", recoveryNotices.Distinct());
 
             dto = new QuizGenerationResponseDto
             {
@@ -289,13 +309,24 @@ public sealed partial class QuizLlmService
         CancellationToken ct = default
     )
     {
+        LastRecoveryNotice = null;
         if (string.IsNullOrWhiteSpace(rawJson))
             throw new ArgumentException("JSON input cannot be empty.", nameof(rawJson));
 
-        var dto = await Task.Run(() => ParseQuizResponseJson(rawJson), ct);
+        var recovery = await Task.Run(() => ParseQuizResponseJsonWithRecovery(rawJson), ct);
+        if (recovery.Dto is null || recovery.Dto.Questions.Count == 0)
+        {
+            throw new QuizJsonParseException(
+                recovery.ErrorMessage ?? "Could not parse any questions from the JSON payload.",
+                recovery.ErrorExcerpt ?? string.Empty,
+                recovery.TargetedFixPrompt ?? string.Empty
+            );
+        }
+
+        LastRecoveryNotice = recovery.WarningSummary;
         return await BuildGroundAndPersistSessionAsync(
             request,
-            dto,
+            recovery.Dto,
             "Imported Web AI JSON",
             [],
             ct

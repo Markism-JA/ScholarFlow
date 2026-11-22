@@ -295,7 +295,7 @@ public static partial class QuizStudioViewBuilder
         {
             var statusRowGrid = new Grid
             {
-                ColumnDefinitions = ColumnDefinitions.Parse("Auto,*"),
+                ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
                 ColumnSpacing = 8,
             };
             statusRowGrid.Children.Add(
@@ -310,7 +310,7 @@ public static partial class QuizStudioViewBuilder
                 )
             );
             statusRowGrid.Children.Add(
-                new TextBlock
+                new SelectableTextBlock
                 {
                     Text = studio.StatusMessage,
                     FontSize = 12,
@@ -322,6 +322,67 @@ public static partial class QuizStudioViewBuilder
                     [Grid.ColumnProperty] = 1,
                 }
             );
+
+            if (studio.IsStatusError)
+            {
+                var errorActions = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    [Grid.ColumnProperty] = 2,
+                };
+
+                var copyErrText = studio.LastErrorCopyText ?? studio.StatusMessage;
+                Button? copyErrBtn = null;
+                copyErrBtn = UiBuilder.GhostButton(
+                    "Copy Error",
+                    MaterialIconKind.ContentCopy,
+                    async () =>
+                    {
+                        var top = TopLevel.GetTopLevel(copyErrBtn);
+                        if (top?.Clipboard is not null)
+                            await top.Clipboard.SetTextAsync(copyErrText);
+                        if (copyErrBtn?.Content is StackPanel sp && sp.Children.Count > 1 && sp.Children[1] is TextBlock tb)
+                        {
+                            tb.Text = "Copied";
+                            await Task.Delay(1500);
+                            tb.Text = "Copy Error";
+                        }
+                    }
+                );
+                ToolTip.SetTip(copyErrBtn, "Copy full error message & broken JSON excerpt to clipboard");
+                errorActions.Children.Add(copyErrBtn);
+
+                if (!string.IsNullOrWhiteSpace(studio.LastErrorFixPrompt))
+                {
+                    var fixPromptText = studio.LastErrorFixPrompt;
+                    Button? copyFixBtn = null;
+                    copyFixBtn = UiBuilder.GhostButton(
+                        "Copy Fix Prompt",
+                        MaterialIconKind.AutoFix,
+                        async () =>
+                        {
+                            var top = TopLevel.GetTopLevel(copyFixBtn);
+                            if (top?.Clipboard is not null)
+                                await top.Clipboard.SetTextAsync(fixPromptText);
+                            if (copyFixBtn?.Content is StackPanel sp && sp.Children.Count > 1 && sp.Children[1] is TextBlock tb)
+                            {
+                                tb.Text = "Copied!";
+                                await Task.Delay(1500);
+                                tb.Text = "Copy Fix Prompt";
+                            }
+                        }
+                    );
+                    ToolTip.SetTip(
+                        copyFixBtn,
+                        "Copy a compact, low-token repair prompt quoting ONLY the broken JSON excerpt (avoids regenerating the full quiz)"
+                    );
+                    errorActions.Children.Add(copyFixBtn);
+                }
+
+                statusRowGrid.Children.Add(errorActions);
+            }
 
             var statusContainer = new StackPanel { Spacing = 6 };
             statusContainer.Children.Add(statusRowGrid);

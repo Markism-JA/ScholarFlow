@@ -325,6 +325,7 @@ public static partial class QuizStudioViewBuilder
 
         var jsonInputBox = new TextBox
         {
+            Text = studio.ManualJsonInput,
             Watermark =
                 "Paste the JSON response from any AI chat (ChatGPT, Claude, Gemini, DeepSeek...) here...",
             AcceptsReturn = true,
@@ -332,6 +333,11 @@ public static partial class QuizStudioViewBuilder
             MaxHeight = 220,
             FontSize = 11.5,
             TextWrapping = TextWrapping.Wrap,
+        };
+        jsonInputBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == TextBox.TextProperty)
+                studio.ManualJsonInput = jsonInputBox.Text ?? string.Empty;
         };
         Grid.SetColumn(jsonInputBox, 2);
         split.Children.Add(jsonInputBox);

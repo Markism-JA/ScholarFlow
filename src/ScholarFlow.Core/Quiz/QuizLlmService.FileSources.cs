@@ -439,7 +439,15 @@ public sealed partial class QuizLlmService
             imageUris
         );
 
-        var dto = ParseQuizResponseJson(raw);
+        var recovery = await ParseOrSurgicallyRepairApiResponseAsync(
+            raw,
+            request.ProviderBaseUrl,
+            effectiveKey,
+            request.ModelName,
+            ct
+        );
+        LastRecoveryNotice = recovery.WarningSummary;
+        var dto = recovery.Dto!;
         dto.Questions = [.. dto.Questions.Take(desiredCount)];
         return await BuildGroundAndPersistSessionAsync(
             request,

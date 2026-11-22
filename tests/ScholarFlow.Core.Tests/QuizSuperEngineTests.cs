@@ -1045,4 +1045,76 @@ public sealed class QuizSuperEngineTests
         Assert.True(LatexMathFormatter.ShouldRenderOptionAsTeX(@"\frac{a+b}{2}"));
         Assert.False(LatexMathFormatter.ShouldRenderOptionAsTeX("Divisibility is transitive"));
     }
+
+    [Fact]
+    public void QuizJsonRecovery_SanitizesLatexSalvagesTruncatedAndBuildsTargetedFixPrompt()
+    {
+        // 1. Layer 2: Unescaped LaTeX backslashes (\implies, \frac, \text, \mathbb, \beta, \neq) self-heal with 0 tokens
+        var unescapedLatexJson = """
+            {
+              "quizTitle": "Number Theory Drill",
+              "questions": [
+                {
+                  "kind": "MultipleChoice",
+                  "prompt": "If a | b and b | a for a, b \in \mathbb{Z}, what follows?",
+                  "mathLatex": "b = ha \text{ and } a = kb \implies \frac{1}{2} \neq \beta",
+                  "options": ["hk = 1", "hk = 0", "a = 0", "b = 0"],
+                  "correctAnswer": "hk = 1",
+                  "explanation": "Why correct: Substituting gives b = (hk)b \implies hk = 1."
+                }
+              ]
+            }
+            """;
+
+        var sanitizedRes = QuizJsonRecovery.ParseWithRecovery(unescapedLatexJson);
+        Assert.NotNull(sanitizedRes.Dto);
+        Assert.True(sanitizedRes.WasSanitized);
+        Assert.False(sanitizedRes.WasPartiallySalvaged);
+        Assert.Single(sanitizedRes.Dto!.Questions);
+        Assert.Contains(@"\implies", sanitizedRes.Dto.Questions[0].MathLatex);
+        Assert.Contains(@"\frac{1}{2}", sanitizedRes.Dto.Questions[0].MathLatex);
+        Assert.Contains(@"\text{ and }", sanitizedRes.Dto.Questions[0].MathLatex);
+        Assert.Contains(@"\neq", sanitizedRes.Dto.Questions[0].MathLatex);
+        Assert.Contains(@"\beta", sanitizedRes.Dto.Questions[0].MathLatex);
+        Assert.Contains(@"\mathbb{Z}", sanitizedRes.Dto.Questions[0].Prompt);
+
+        // 2. Layer 3: Truncated deck (item 3 cut off by max_tokens) salvages items 1 & 2 instead of discarding all
+        var truncatedJson = """
+            {
+              "quizTitle": "Long 100-Item Exam",
+              "questions": [
+                {
+                  "kind": "TrueFalse",
+                  "prompt": "Every integer divides 0.",
+                  "options": ["True", "False"],
+                  "correctAnswer": "True",
+                  "explanation": "0 = 0 * a."
+                },
+                {
+                  "kind": "Identification",
+                  "prompt": "What is gcd(12, 18)?",
+                  "correctAnswer": "6",
+                  "explanation": "Largest common divisor is 6."
+                },
+                {
+                  "kind": "MultipleChoice",
+                  "prompt": "This third item was cut off mid-generation
+            """;
+
+        var salvageRes = QuizJsonRecovery.ParseWithRecovery(truncatedJson);
+        Assert.NotNull(salvageRes.Dto);
+        Assert.True(salvageRes.WasPartiallySalvaged);
+        Assert.Equal(1, salvageRes.DroppedItemCount);
+        Assert.Equal(2, salvageRes.Dto!.Questions.Count);
+        Assert.Equal("Long 100-Item Exam", salvageRes.Dto.QuizTitle);
+
+        // 3. Unrecoverable JSON throws QuizJsonParseException with compact excerpt + surgical fix prompt
+        var totallyBroken = """{ "quizTitle": "Broken", "questions": [ { "prompt": "oops" BAD_TOKEN ] }""";
+        var ex = Assert.Throws<QuizJsonParseException>(() =>
+            QuizLlmService.ParseQuizResponseJson(totallyBroken)
+        );
+        Assert.False(string.IsNullOrWhiteSpace(ex.ErrorExcerpt));
+        Assert.Contains("without regenerating the entire quiz", ex.TargetedFixPrompt);
+        Assert.Contains(@"\\frac", ex.TargetedFixPrompt);
+    }
 }

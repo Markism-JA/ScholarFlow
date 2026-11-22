@@ -956,6 +956,7 @@ public sealed partial class QuizStudioViewModel
 
         IsGenerating = true;
         IsStatusError = false;
+        ClearErrorDetails();
         StatusMessage = req.UseOfflineHeuristicFallback
             ? $"Analyzing {(req.HasFileSources ? $"{req.SourceFilePaths.Count} file(s)" : Path.GetFileName(req.SourcePdfPath))} and grounding statements..."
             : $"Requesting {req.QuestionCount} grounded questions from {req.ModelName}...";
@@ -970,13 +971,27 @@ public sealed partial class QuizStudioViewModel
             AppendTargetQuizTitle = null;
             UpsertSavedQuizInMemory(session);
             StartQuizSession(session);
+            var recoveryTag = string.IsNullOrWhiteSpace(_llmService.LastRecoveryNotice)
+                ? string.Empty
+                : $" · {_llmService.LastRecoveryNotice}";
             StatusMessage = qualityReport.HasIssues
-                ? $"Generated '{session.Title}' ({session.Questions.Count} items · Critic: {qualityReport.SummaryText} — review in Organizer)."
-                : $"Generated '{session.Title}' ({session.Questions.Count} grounded questions · All quality checks passed).";
+                ? $"Generated '{session.Title}' ({session.Questions.Count} items{recoveryTag} · Critic: {qualityReport.SummaryText} — review in Organizer)."
+                : $"Generated '{session.Title}' ({session.Questions.Count} grounded questions{recoveryTag} · All quality checks passed).";
+        }
+        catch (QuizJsonParseException jex)
+        {
+            StatusMessage = $"AI JSON parse error: {jex.Message}";
+            LastErrorCopyText = string.IsNullOrWhiteSpace(jex.ErrorExcerpt)
+                ? $"AI JSON parse error: {jex.Message}"
+                : $"AI JSON parse error: {jex.Message}\n\n{jex.ErrorExcerpt}";
+            LastErrorFixPrompt = jex.TargetedFixPrompt;
+            IsStatusError = true;
         }
         catch (Exception ex)
         {
             StatusMessage = $"Generation failed: {ex.Message}";
+            LastErrorCopyText = $"Generation failed: {ex.Message}";
+            LastErrorFixPrompt = null;
             IsStatusError = true;
         }
         finally
@@ -988,9 +1003,12 @@ public sealed partial class QuizStudioViewModel
 
     public async Task ImportPastedJsonQuizAsync(string rawJson)
     {
+        ManualJsonInput = rawJson ?? string.Empty;
         if (string.IsNullOrWhiteSpace(rawJson))
         {
             StatusMessage = "Paste the JSON output from any AI chat before importing.";
+            LastErrorCopyText = StatusMessage;
+            LastErrorFixPrompt = null;
             IsStatusError = true;
             _mainVm.RequestUiRefresh();
             return;
@@ -999,6 +1017,7 @@ public sealed partial class QuizStudioViewModel
         var req = BuildCurrentRequest();
         IsGenerating = true;
         IsStatusError = false;
+        ClearErrorDetails();
         StatusMessage = "Parsing JSON and grounding quotes to PDF pages...";
         _mainVm.RequestUiRefresh();
         await Task.Yield();
@@ -1013,14 +1032,28 @@ public sealed partial class QuizStudioViewModel
             ManualJsonInput = string.Empty;
             UpsertSavedQuizInMemory(session);
             StartQuizSession(session);
+            var recoveryTag = string.IsNullOrWhiteSpace(_llmService.LastRecoveryNotice)
+                ? string.Empty
+                : $" · {_llmService.LastRecoveryNotice}";
             StatusMessage = qualityReport.HasIssues
-                ? $"Imported {session.Questions.Count} questions · Critic: {qualityReport.SummaryText} — review in Organizer."
-                : $"Imported and grounded {session.Questions.Count} questions from Web AI JSON · All quality checks passed.";
+                ? $"Imported {session.Questions.Count} questions{recoveryTag} · Critic: {qualityReport.SummaryText} — review in Organizer."
+                : $"Imported and grounded {session.Questions.Count} questions from Web AI JSON{recoveryTag} · All quality checks passed.";
             IsStatusError = false;
+        }
+        catch (QuizJsonParseException jex)
+        {
+            StatusMessage = $"JSON Import error: {jex.Message}";
+            LastErrorCopyText = string.IsNullOrWhiteSpace(jex.ErrorExcerpt)
+                ? $"JSON Import error: {jex.Message}"
+                : $"JSON Import error: {jex.Message}\n\n{jex.ErrorExcerpt}";
+            LastErrorFixPrompt = jex.TargetedFixPrompt;
+            IsStatusError = true;
         }
         catch (Exception ex)
         {
             StatusMessage = $"JSON Import error: {ex.Message}";
+            LastErrorCopyText = $"JSON Import error: {ex.Message}";
+            LastErrorFixPrompt = null;
             IsStatusError = true;
         }
         finally

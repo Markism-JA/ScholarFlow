@@ -114,38 +114,82 @@ public sealed partial class QuizLlmService
         return $"{u}/v1/chat/completions";
     }
 
+    public static QuizJsonRecoveryResult ParseQuizResponseJsonWithRecovery(string rawText) =>
+        QuizJsonRecovery.ParseWithRecovery(rawText);
+
     public static QuizGenerationResponseDto ParseQuizResponseJson(string rawText)
     {
-        var cleaned = ExtractJsonObjectSubstring(rawText);
-        var dto = JsonSerializer.Deserialize<QuizGenerationResponseDto>(cleaned, JsonOpts);
-        if (dto is null || dto.Questions.Count == 0)
-            throw new InvalidOperationException(
-                "Could not parse any questions from the JSON payload."
-            );
-        return dto;
+        var recovery = QuizJsonRecovery.ParseWithRecovery(rawText);
+        if (recovery.Dto is not null && recovery.Dto.Questions.Count > 0)
+            return recovery.Dto;
+
+        throw new QuizJsonParseException(
+            recovery.ErrorMessage ?? "Could not parse any questions from the JSON payload.",
+            recovery.ErrorExcerpt ?? string.Empty,
+            recovery.TargetedFixPrompt ?? string.Empty
+        );
     }
 
-    private static string ExtractJsonObjectSubstring(string raw)
+    /// <summary>
+    /// Parses an AI API response using 3-layer zero-token local recovery (direct -> LaTeX/control-char sanitizer ->
+    /// per-question brace-balanced salvage). Only if 0 items can be salvaged locally does it perform at most ONE
+    /// compact syntax-repair API call without re-sending the source PDF/files.
+    /// </summary>
+    private static async Task<QuizJsonRecoveryResult> ParseOrSurgicallyRepairApiResponseAsync(
+        string rawResponse,
+        string endpointUrl,
+        string? apiKey,
+        string modelName,
+        CancellationToken ct
+    )
     {
-        var text = (raw ?? string.Empty).Trim();
+        var recovery = QuizJsonRecovery.ParseWithRecovery(rawResponse);
+        if (recovery.Dto is not null && recovery.Dto.Questions.Count > 0)
+            return recovery;
 
-        // Strip markdown ```json ... ``` fences if present
-        if (text.StartsWith("```", StringComparison.Ordinal))
+        const string repairSystemPrompt =
+            "You are a strict JSON syntax repair utility. Fix ONLY the JSON syntax or escaping errors in the provided quiz JSON payload and return ONLY valid JSON preserving the original questions. Do not add commentary.";
+
+        var boundedRaw = rawResponse.Length > 24_000 ? rawResponse[..24_000] : rawResponse;
+        var repairUserPrompt = $"""
+            {recovery.TargetedFixPrompt}
+
+            Malformed JSON payload to repair:
+            ```json
+            {boundedRaw}
+            ```
+            """;
+
+        try
         {
-            int firstNewline = text.IndexOf('\n');
-            if (firstNewline > 0)
-                text = text[(firstNewline + 1)..];
-            int lastFence = text.LastIndexOf("```", StringComparison.Ordinal);
-            if (lastFence >= 0)
-                text = text[..lastFence];
-            text = text.Trim();
+            var repairedRaw = await CallOpenAiCompatibleChatAsync(
+                endpointUrl,
+                apiKey,
+                modelName,
+                repairSystemPrompt,
+                repairUserPrompt,
+                ct
+            );
+            var repaired = QuizJsonRecovery.ParseWithRecovery(repairedRaw);
+            if (repaired.Dto is not null && repaired.Dto.Questions.Count > 0)
+            {
+                return repaired with
+                {
+                    WarningSummary =
+                        repaired.WarningSummary
+                        ?? "Recovered malformed AI response with 1 compact syntax-repair pass (source content not re-sent).",
+                };
+            }
+        }
+        catch
+        {
+            // Fall through and throw the original structured parse exception with excerpt + targeted fix prompt.
         }
 
-        int startBrace = text.IndexOf('{');
-        int endBrace = text.LastIndexOf('}');
-        if (startBrace >= 0 && endBrace > startBrace)
-            return text[startBrace..(endBrace + 1)];
-
-        return text;
+        throw new QuizJsonParseException(
+            recovery.ErrorMessage ?? "Could not parse any questions from the AI response.",
+            recovery.ErrorExcerpt ?? string.Empty,
+            recovery.TargetedFixPrompt ?? string.Empty
+        );
     }
 }
