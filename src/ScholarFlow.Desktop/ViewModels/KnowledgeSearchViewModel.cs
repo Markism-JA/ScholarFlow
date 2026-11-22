@@ -16,6 +16,7 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
 
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _indexCts;
+    private CancellationTokenSource? _groundHighlightCts;
     private KnowledgeWeakSpotProfile _weakProfile = KnowledgeWeakSpotProfile.Empty;
 
     public string QueryText { get; private set; } = string.Empty;
@@ -47,10 +48,17 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
     /// </summary>
     public event EventHandler? ResultsUpdated;
 
+    /// <summary>
+    /// Fires on the UI thread whenever only the highlighted SelectedResultIndex changes (e.g. Up/Down keys),
+    /// so the view can swap highlight visuals in-place and scroll the item into view without resetting scroll.
+    /// </summary>
+    public event EventHandler? SelectionChanged;
+
     public void ResetForBasinSwitch()
     {
         _searchCts?.Cancel();
         _indexCts?.Cancel();
+        _groundHighlightCts?.Cancel();
         QueryText = string.Empty;
         SelectedSourceFilter = null;
         SelectedCourseFilter = null;
@@ -280,8 +288,12 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
         if (Results.Count == 0)
             return;
 
-        SelectedResultIndex = Math.Clamp(SelectedResultIndex + delta, 0, Results.Count - 1);
-        NotifyResultsUpdated();
+        var next = Math.Clamp(SelectedResultIndex + delta, 0, Results.Count - 1);
+        if (next == SelectedResultIndex)
+            return;
+
+        SelectedResultIndex = next;
+        NotifySelectionChanged();
     }
 
     public void SelectResult(int index)
@@ -289,8 +301,11 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
         if (index < 0 || index >= Results.Count)
             return;
 
+        if (index == SelectedResultIndex)
+            return;
+
         SelectedResultIndex = index;
-        NotifyResultsUpdated();
+        NotifySelectionChanged();
     }
 
     public KnowledgeSearchResult? GetSelectedResult() =>
@@ -351,6 +366,8 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
         var target = item ?? GetSelectedResult();
         if (target is null)
             return;
+
+        _mainVm.CloseKnowledgeSearchModal();
 
         var matchedCourse =
             _mainVm.Courses.FirstOrDefault(c =>
@@ -427,30 +444,72 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
             return;
 
         int page = Math.Max(1, target.PageNumber);
+        var filePath = target.FilePath;
+        var snippet = target.PlainSnippet;
+        var heading = $"{target.Title} · {target.SectionTitle}";
         var quoteProbe = ExtractBestHighlightQuote(target);
-        IReadOnlyList<NormalizedHighlightRect> rects = [];
 
-        if (!string.IsNullOrWhiteSpace(quoteProbe))
-        {
-            var probeQuestion = new QuizQuestionRecord
-            {
-                SourcePdfPath = target.FilePath,
-                SourcePage = page,
-                VerbatimQuote = quoteProbe,
-            };
-            PdfQuizGrounder.GroundQuestionsToPdf(target.FilePath, [probeQuestion]);
-            if (probeQuestion.HighlightRects.Count > 0 && probeQuestion.SourcePage == page)
-            {
-                rects = probeQuestion.HighlightRects;
-            }
-        }
+        // Open the PDF Reader immediately (0 ms UI lag) with the snippet banner,
+        // then ground exact word bounding-box highlights asynchronously in the background.
+        _mainVm.OpenPdfFromKnowledgeSearch(filePath, page, [], snippet, heading);
 
-        _mainVm.OpenPdfFromKnowledgeSearch(
-            target.FilePath,
-            page,
-            rects,
-            target.PlainSnippet,
-            $"{target.Title} · {target.SectionTitle}"
+        if (string.IsNullOrWhiteSpace(quoteProbe))
+            return;
+
+        _groundHighlightCts?.Cancel();
+        var cts = new CancellationTokenSource();
+        _groundHighlightCts = cts;
+        var ct = cts.Token;
+
+        _ = Task.Run(
+            () =>
+            {
+                try
+                {
+                    if (ct.IsCancellationRequested)
+                        return;
+
+                    var probeQuestion = new QuizQuestionRecord
+                    {
+                        SourcePdfPath = filePath,
+                        SourcePage = page,
+                        VerbatimQuote = quoteProbe,
+                    };
+                    PdfQuizGrounder.GroundQuestionsToPdf(filePath, [probeQuestion]);
+
+                    if (
+                        ct.IsCancellationRequested
+                        || probeQuestion.HighlightRects.Count == 0
+                        || probeQuestion.SourcePage != page
+                    )
+                        return;
+
+                    var rects = probeQuestion.HighlightRects;
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (ct.IsCancellationRequested)
+                            return;
+
+                        if (
+                            _mainVm.ActiveMode == WorkspaceTabMode.PdfReader
+                            && string.Equals(
+                                _mainVm.PdfReader.CurrentFilePath,
+                                filePath,
+                                StringComparison.OrdinalIgnoreCase
+                            )
+                            && _mainVm.PdfReader.CurrentPage == page
+                        )
+                        {
+                            _mainVm.PdfReader.SetEvidenceHighlight(page, rects, snippet, heading);
+                        }
+                    });
+                }
+                catch
+                {
+                    // Best-effort highlight grounding; PDF page is already open.
+                }
+            },
+            ct
         );
     }
 
@@ -494,11 +553,21 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
             Dispatcher.UIThread.Post(() => ResultsUpdated?.Invoke(this, EventArgs.Empty));
     }
 
+    private void NotifySelectionChanged()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+            SelectionChanged?.Invoke(this, EventArgs.Empty);
+        else
+            Dispatcher.UIThread.Post(() => SelectionChanged?.Invoke(this, EventArgs.Empty));
+    }
+
     public void Dispose()
     {
         _searchCts?.Cancel();
         _searchCts?.Dispose();
         _indexCts?.Cancel();
         _indexCts?.Dispose();
+        _groundHighlightCts?.Cancel();
+        _groundHighlightCts?.Dispose();
     }
 }

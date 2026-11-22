@@ -25,6 +25,27 @@ public static class ShortcutDispatcher
         // Global Escape always untoggles/closes the top-most floating modal or inspector drawer
         if (e.Key == Key.Escape)
         {
+            // Floating overlays (Knowledge Hub, Quick Search, Quick Add, Settings, etc.) take top priority
+            // even when opened on top of PDF Reader, Source Viewer, or Quiz Studio.
+            if (
+                vm.IsPacketOrganizerModalOpen
+                || vm.IsAddCourseModalOpen
+                || vm.IsSettingsModalOpen
+                || (vm.IsOnboardingOpen && !string.IsNullOrWhiteSpace(vm.BasinRoot))
+                || vm.IsQuickAddModalOpen
+                || vm.IsKnowledgeSearchModalOpen
+                || vm.IsSearchModalOpen
+                || vm.IsShortcutsModalOpen
+                || vm.IsNotificationDrawerOpen
+            )
+            {
+                if (vm.CloseTopOverlayOrDrawer())
+                {
+                    e.Handled = true;
+                    window.Focus();
+                    return;
+                }
+            }
             if (vm.ActiveMode == WorkspaceTabMode.QuizStudio)
             {
                 if (vm.QuizStudio.ZoomedImagePath is not null)
@@ -156,7 +177,7 @@ public static class ShortcutDispatcher
             if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
             {
                 e.Handled = true;
-                vm.OpenKnowledgeSearch();
+                vm.ToggleKnowledgeSearchModal();
                 return;
             }
             if (e.Key is Key.K or Key.F)
@@ -258,7 +279,9 @@ public static class ShortcutDispatcher
         {
             case Key.J or Key.Down:
                 e.Handled = true;
-                if (vm.IsSearchModalOpen)
+                if (vm.IsKnowledgeSearchModalOpen)
+                    vm.KnowledgeSearch.MoveSelection(+1);
+                else if (vm.IsSearchModalOpen)
                     vm.MoveSearchSelection(+1);
                 else if (vm.ActiveMode == WorkspaceTabMode.KnowledgeSearch)
                     vm.KnowledgeSearch.MoveSelection(+1);
@@ -273,7 +296,9 @@ public static class ShortcutDispatcher
             case Key.K
             or Key.Up:
                 e.Handled = true;
-                if (vm.IsSearchModalOpen)
+                if (vm.IsKnowledgeSearchModalOpen)
+                    vm.KnowledgeSearch.MoveSelection(-1);
+                else if (vm.IsSearchModalOpen)
                     vm.MoveSearchSelection(-1);
                 else if (vm.ActiveMode == WorkspaceTabMode.KnowledgeSearch)
                     vm.KnowledgeSearch.MoveSelection(-1);
@@ -283,6 +308,24 @@ public static class ShortcutDispatcher
                     vm.QuizStudio.MoveOrganizerSelection(-1);
                 else
                     vm.MoveSelection(-1);
+                break;
+
+            case Key.PageDown when vm.IsKnowledgeSearchModalOpen:
+                e.Handled = true;
+                vm.KnowledgeSearch.MoveSelection(+5);
+                break;
+
+            case Key.PageUp when vm.IsKnowledgeSearchModalOpen:
+                e.Handled = true;
+                vm.KnowledgeSearch.MoveSelection(-5);
+                break;
+
+            case Key.Enter when vm.IsKnowledgeSearchModalOpen:
+                e.Handled = true;
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                    await vm.KnowledgeSearch.QuizThisAsync();
+                else
+                    vm.KnowledgeSearch.JumpToSource();
                 break;
 
             case Key.PageDown

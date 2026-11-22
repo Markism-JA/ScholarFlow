@@ -370,6 +370,7 @@ public sealed partial class MainWindow : Window
             : _vm.IsAddCourseModalOpen ? "AddCourse"
             : _vm.IsSettingsModalOpen ? "Settings"
             : _vm.IsQuickAddModalOpen ? "QuickAdd"
+            : _vm.IsKnowledgeSearchModalOpen ? "KnowledgeSearch"
             : _vm.IsSearchModalOpen ? "Search"
             : _vm.IsNotificationDrawerOpen ? "Notifications"
             : _vm.IsShortcutsModalOpen ? "Shortcuts"
@@ -384,7 +385,7 @@ public sealed partial class MainWindow : Window
             return;
         }
 
-        // If QuickAdd or Search modal is already mounted, update its inner dynamic list in-place
+        // If QuickAdd, Search, or KnowledgeSearch modal is already mounted, update its inner dynamic list in-place
         if (targetKind == _mountedModalKind && _modalOverlayContainer.IsVisible)
         {
             if (targetKind == "QuickAdd")
@@ -395,6 +396,11 @@ public sealed partial class MainWindow : Window
             if (targetKind == "Search")
             {
                 RefreshSearchResultsList();
+                return;
+            }
+            if (targetKind == "KnowledgeSearch")
+            {
+                KnowledgeSearchViewBuilder.FocusQueryBox(selectAll: false);
                 return;
             }
         }
@@ -463,6 +469,22 @@ public sealed partial class MainWindow : Window
                 _quickAddBox.Focus();
                 _quickAddBox.CaretIndex = _quickAddBox.Text?.Length ?? 0;
             });
+            return;
+        }
+
+        if (_vm.IsKnowledgeSearchModalOpen)
+        {
+            backdrop.Child = KnowledgeSearchViewBuilder.BuildFloatingModal(
+                _vm,
+                () =>
+                {
+                    _vm.CloseKnowledgeSearchModal();
+                    Focus();
+                }
+            );
+            _modalOverlayContainer.Child = backdrop;
+            _modalOverlayContainer.IsVisible = true;
+            KnowledgeSearchViewBuilder.FocusQueryBox(selectAll: true);
             return;
         }
 

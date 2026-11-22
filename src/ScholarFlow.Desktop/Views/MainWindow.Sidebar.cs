@@ -153,7 +153,7 @@ public sealed partial class MainWindow
                 "Knowledge Hub",
                 MaterialIconKind.TextBoxSearchOutline,
                 0,
-                isActive: _vm.ActiveMode == WorkspaceTabMode.KnowledgeSearch,
+                isActive: _vm.IsKnowledgeSearchModalOpen,
                 () => _vm.OpenKnowledgeSearch(),
                 compact: compact,
                 subtitleTag: "Ctrl+Shift+F"

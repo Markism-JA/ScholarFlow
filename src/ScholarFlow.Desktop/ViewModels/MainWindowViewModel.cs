@@ -123,6 +123,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
     public bool IsInspectorOpen { get; private set; }
     public bool IsQuickAddModalOpen { get; private set; }
     public bool IsSearchModalOpen { get; private set; }
+    public bool IsKnowledgeSearchModalOpen { get; private set; }
     public bool IsShortcutsModalOpen { get; private set; }
     public bool IsSettingsModalOpen { get; private set; }
     public bool IsOnboardingOpen { get; private set; }
@@ -205,6 +206,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
 
         ActiveMode = WorkspaceTabMode.SourceViewer;
         IsSearchModalOpen = false;
+        IsKnowledgeSearchModalOpen = false;
         _ = SourceViewer.LoadFileAsync(
             filePath,
             highlightStartLine,

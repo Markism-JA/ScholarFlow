@@ -419,6 +419,14 @@ public sealed partial class MainWindow
             };
 
             _searchResultsStack.Children.Add(btn);
+            if (isSelected)
+            {
+                var selectedBtn = btn;
+                Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => selectedBtn.BringIntoView(),
+                    Avalonia.Threading.DispatcherPriority.Loaded
+                );
+            }
         }
     }
 

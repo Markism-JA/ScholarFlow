@@ -161,14 +161,34 @@ public sealed partial class MainWindowViewModel
 
     public void OpenKnowledgeSearch(string? initialQuery = null)
     {
-        ActiveMode = WorkspaceTabMode.KnowledgeSearch;
+        IsKnowledgeSearchModalOpen = true;
         IsSearchModalOpen = false;
+        IsQuickAddModalOpen = false;
+        IsShortcutsModalOpen = false;
+        IsNotificationDrawerOpen = false;
         if (!string.IsNullOrWhiteSpace(initialQuery))
             KnowledgeSearch.ApplyExampleQuery(initialQuery);
         else if (!KnowledgeSearch.HasCompletedInitialIndex && !KnowledgeSearch.IsIndexing)
             KnowledgeSearch.TriggerBackgroundIndex();
-        NotifyStateChanged();
+        NotifyStateChanged(UiChangeKind.OverlayOnly);
         Views.KnowledgeSearchViewBuilder.FocusQueryBox();
+    }
+
+    public void ToggleKnowledgeSearchModal()
+    {
+        if (IsKnowledgeSearchModalOpen)
+            CloseKnowledgeSearchModal();
+        else
+            OpenKnowledgeSearch();
+    }
+
+    public void CloseKnowledgeSearchModal()
+    {
+        if (!IsKnowledgeSearchModalOpen)
+            return;
+
+        IsKnowledgeSearchModalOpen = false;
+        NotifyStateChanged(UiChangeKind.OverlayOnly);
     }
 
     public void OpenPdfFromKnowledgeSearch(
@@ -179,7 +199,9 @@ public sealed partial class MainWindowViewModel
         string? sourceHeading
     )
     {
-        PdfReturnMode = WorkspaceTabMode.KnowledgeSearch;
+        IsKnowledgeSearchModalOpen = false;
+        if (ActiveMode != WorkspaceTabMode.PdfReader)
+            PdfReturnMode = ActiveMode;
         PdfReturnTask = null;
         PdfOpenedFromQuiz = false;
         if (
@@ -200,6 +222,7 @@ public sealed partial class MainWindowViewModel
         string questionId
     )
     {
+        IsKnowledgeSearchModalOpen = false;
         ActiveMode = WorkspaceTabMode.QuizStudio;
         QuizStudio.OpenQuizInOrganizer(quiz);
         if (!string.IsNullOrWhiteSpace(questionId))
@@ -317,6 +340,7 @@ public sealed partial class MainWindowViewModel
         if (IsQuickAddModalOpen)
         {
             IsSearchModalOpen = false;
+            IsKnowledgeSearchModalOpen = false;
             IsShortcutsModalOpen = false;
             IsNotificationDrawerOpen = false;
         }
@@ -327,6 +351,7 @@ public sealed partial class MainWindowViewModel
     {
         IsQuickAddModalOpen = true;
         IsSearchModalOpen = false;
+        IsKnowledgeSearchModalOpen = false;
         IsShortcutsModalOpen = false;
         IsNotificationDrawerOpen = false;
         NotifyStateChanged(UiChangeKind.OverlayOnly);
@@ -347,6 +372,7 @@ public sealed partial class MainWindowViewModel
         if (IsSearchModalOpen)
         {
             IsQuickAddModalOpen = false;
+            IsKnowledgeSearchModalOpen = false;
             IsShortcutsModalOpen = false;
             IsNotificationDrawerOpen = false;
             RecomputeSearchResults();
@@ -358,6 +384,7 @@ public sealed partial class MainWindowViewModel
     {
         IsSearchModalOpen = true;
         IsQuickAddModalOpen = false;
+        IsKnowledgeSearchModalOpen = false;
         IsShortcutsModalOpen = false;
         IsNotificationDrawerOpen = false;
         RecomputeSearchResults();
@@ -380,6 +407,7 @@ public sealed partial class MainWindowViewModel
         {
             IsQuickAddModalOpen = false;
             IsSearchModalOpen = false;
+            IsKnowledgeSearchModalOpen = false;
             IsNotificationDrawerOpen = false;
             IsSettingsModalOpen = false;
         }
@@ -415,6 +443,12 @@ public sealed partial class MainWindowViewModel
         if (IsQuickAddModalOpen)
         {
             IsQuickAddModalOpen = false;
+            NotifyStateChanged(UiChangeKind.OverlayOnly);
+            return true;
+        }
+        if (IsKnowledgeSearchModalOpen)
+        {
+            IsKnowledgeSearchModalOpen = false;
             NotifyStateChanged(UiChangeKind.OverlayOnly);
             return true;
         }

@@ -32,10 +32,15 @@ public static class KnowledgeSearchViewBuilder
     private static Border? _activeTelemetryHost;
     private static Border? _activeFilterBarHost;
     private static Border? _activeResultsHost;
+    private static ListBox? _activeResultsListBox;
+    private static List<IndexedResultRow> _activeIndexedItems = [];
+    private static readonly Dictionary<int, (Border Card, bool IsWeakSpot)> _renderedCardsByIndex = [];
+    private static int _lastRenderedSelectedIndex = -1;
+    private static Action? _activeOnClose;
     private static MainWindowViewModel? _boundVm;
     private static bool _suppressTextCallback;
 
-    public static void FocusQueryBox()
+    public static void FocusQueryBox(bool selectAll = false)
     {
         if (_activeQueryBox is null)
             return;
@@ -43,19 +48,52 @@ public static class KnowledgeSearchViewBuilder
         Dispatcher.UIThread.Post(() =>
         {
             _activeQueryBox.Focus();
-            _activeQueryBox.CaretIndex = _activeQueryBox.Text?.Length ?? 0;
+            if (selectAll)
+                _activeQueryBox.SelectAll();
+            else
+                _activeQueryBox.CaretIndex = _activeQueryBox.Text?.Length ?? 0;
         });
     }
 
-    public static Control Build(MainWindowViewModel vm)
+    public static Border BuildFloatingModal(MainWindowViewModel vm, Action onClose)
+    {
+        var content = Build(vm, onClose, isFloatingModal: true);
+        return new Border
+        {
+            Background = ThemeService.Brush(ThemeService.BgSurface),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            BoxShadow = BoxShadows.Parse("0 16 40 0 #66000000"),
+            MaxWidth = 780,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(24, 56, 24, 24),
+            Padding = new Thickness(14, 12),
+            ClipToBounds = true,
+            Child = content,
+        };
+    }
+
+    public static Control Build(
+        MainWindowViewModel vm,
+        Action? onClose = null,
+        bool isFloatingModal = false
+    )
     {
         var ks = vm.KnowledgeSearch;
+        _activeOnClose = onClose;
 
         if (!ReferenceEquals(_boundVm, vm))
         {
-            _boundVm?.KnowledgeSearch.ResultsUpdated -= OnKnowledgeSearchResultsUpdated;
+            if (_boundVm is not null)
+            {
+                _boundVm.KnowledgeSearch.ResultsUpdated -= OnKnowledgeSearchResultsUpdated;
+                _boundVm.KnowledgeSearch.SelectionChanged -= OnKnowledgeSearchSelectionChanged;
+            }
             _boundVm = vm;
             ks.ResultsUpdated += OnKnowledgeSearchResultsUpdated;
+            ks.SelectionChanged += OnKnowledgeSearchSelectionChanged;
         }
 
         if (!ks.HasCompletedInitialIndex && !ks.IsIndexing)
@@ -67,6 +105,11 @@ public static class KnowledgeSearchViewBuilder
             _ = ks.ExecuteSearchNowAsync();
         }
 
+        if (isFloatingModal)
+        {
+            return BuildSpotlightPaletteBody(vm, ks);
+        }
+
         var root = new Grid
         {
             RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,*"),
@@ -75,7 +118,7 @@ public static class KnowledgeSearchViewBuilder
         };
 
         // 1. Header Bar + Telemetry + Reindex Button
-        var headerBar = BuildHeaderBar(vm, ks, out var telemetryHost);
+        var headerBar = BuildHeaderBar(vm, ks, isFloatingModal: false, out var telemetryHost);
         _activeTelemetryHost = telemetryHost;
         root.Children.Add(headerBar);
 
@@ -98,6 +141,133 @@ public static class KnowledgeSearchViewBuilder
         root.Children.Add(resultsHost);
 
         return root;
+    }
+
+    private static StackPanel BuildSpotlightPaletteBody(
+        MainWindowViewModel vm,
+        KnowledgeSearchViewModel ks
+    )
+    {
+        var stack = new StackPanel { Spacing = 8 };
+
+        // 1. Spotlight Search Input Row (matches Quick Search: [Magnify] [TextBox] [Clear] [Esc])
+        var searchHeader = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
+        };
+
+        var icon = UiBuilder.Icon(
+            MaterialIconKind.TextBoxSearchOutline,
+            18,
+            ThemeService.Brush(ThemeService.AccentPrimary)
+        );
+        icon.Margin = new Thickness(4, 0, 8, 0);
+        searchHeader.Children.Add(icon);
+
+        var queryBox = CreateQueryTextBox(ks);
+        _activeQueryBox = queryBox;
+        Grid.SetColumn(queryBox, 1);
+        searchHeader.Children.Add(queryBox);
+
+        var clearBtn = UiBuilder.GhostButton(
+            "Clear",
+            MaterialIconKind.Close,
+            () =>
+            {
+                ks.ClearAllFilters();
+                FocusQueryBox();
+            }
+        );
+        clearBtn.Margin = new Thickness(6, 0, 0, 0);
+        Grid.SetColumn(clearBtn, 2);
+        searchHeader.Children.Add(clearBtn);
+
+        var escChip = UiBuilder.KbdChip("Esc");
+        escChip.Margin = new Thickness(8, 0, 0, 0);
+        escChip.Cursor = new Cursor(StandardCursorType.Hand);
+        escChip.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(escChip).Properties.IsLeftButtonPressed)
+            {
+                e.Handled = true;
+                _activeOnClose?.Invoke();
+            }
+        };
+        ToolTip.SetTip(escChip, "Close Knowledge Hub Search (Esc)");
+        Grid.SetColumn(escChip, 3);
+        searchHeader.Children.Add(escChip);
+
+        stack.Children.Add(searchHeader);
+
+        // 2. Compact Filter Chips (#course, @pdf, @code, @md, @text, @image, @quiz, @weak)
+        var filterBarHost = new Border { Child = BuildFilterChipsPanel(vm, ks) };
+        _activeFilterBarHost = filterBarHost;
+        stack.Children.Add(filterBarHost);
+
+        stack.Children.Add(UiBuilder.HairlineDivider());
+
+        // 3. Scrollable Virtualized Results Viewport (bounded MaxHeight like Quick Search)
+        var resultsHost = new Border { MaxHeight = 460, Child = BuildResultsPane(ks) };
+        _activeResultsHost = resultsHost;
+        stack.Children.Add(resultsHost);
+
+        stack.Children.Add(UiBuilder.HairlineDivider());
+
+        // 4. Quiet Footer Bar (keyboard hints on left, telemetry + Reindex on right)
+        var footerGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 10,
+        };
+
+        footerGrid.Children.Add(
+            new TextBlock
+            {
+                Text =
+                    "Up/Down to navigate · Enter to jump · Shift+Enter to quiz · #course @pdf @code @weak · Esc to close",
+                FontSize = 11,
+                Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            }
+        );
+
+        var rightFooter = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var telemetryHost = new Border
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = BuildTelemetryPills(ks),
+        };
+        _activeTelemetryHost = telemetryHost;
+        rightFooter.Children.Add(telemetryHost);
+
+        var reindexBtn = UiBuilder.GhostButton(
+            ks.IsIndexing ? "Indexing..." : "Reindex",
+            MaterialIconKind.DatabaseRefreshOutline,
+            () =>
+            {
+                ks.TriggerBackgroundIndex(forceReindex: true);
+                FocusQueryBox();
+            },
+            isActive: ks.IsIndexing
+        );
+        ToolTip.SetTip(
+            reindexBtn,
+            "Force a full SQLite FTS5 reindex of all PDFs, code files, notes, images, and quizzes"
+        );
+        rightFooter.Children.Add(reindexBtn);
+
+        Grid.SetColumn(rightFooter, 1);
+        footerGrid.Children.Add(rightFooter);
+        stack.Children.Add(footerGrid);
+
+        return stack;
     }
 
     private static void OnKnowledgeSearchResultsUpdated(object? sender, EventArgs e)
@@ -135,9 +305,71 @@ public static class KnowledgeSearchViewBuilder
         _activeResultsHost?.Child = BuildResultsPane(ks);
     }
 
+    private static void OnKnowledgeSearchSelectionChanged(object? sender, EventArgs e)
+    {
+        if (_boundVm is null || _activeResultsListBox is null)
+            return;
+
+        var ks = _boundVm.KnowledgeSearch;
+        int nextIdx = ks.SelectedResultIndex;
+        int prevIdx = _lastRenderedSelectedIndex;
+
+        if (prevIdx >= 0 && _renderedCardsByIndex.TryGetValue(prevIdx, out var prevEntry))
+            ApplyCardSelectionVisual(prevEntry.Card, isSelected: false, prevEntry.IsWeakSpot);
+
+        if (nextIdx >= 0 && _renderedCardsByIndex.TryGetValue(nextIdx, out var nextEntry))
+            ApplyCardSelectionVisual(nextEntry.Card, isSelected: true, nextEntry.IsWeakSpot);
+
+        _lastRenderedSelectedIndex = nextIdx;
+
+        if (nextIdx >= 0 && nextIdx < _activeIndexedItems.Count)
+        {
+            var lb = _activeResultsListBox;
+            var targetRow = _activeIndexedItems[nextIdx];
+            lb.ScrollIntoView(targetRow);
+
+            // Post once more on Loaded priority so virtualized items that just realized
+            // get both scrolled fully into view and visually highlighted.
+            Dispatcher.UIThread.Post(
+                () =>
+                {
+                    if (!ReferenceEquals(_activeResultsListBox, lb))
+                        return;
+
+                    lb.ScrollIntoView(targetRow);
+                    if (
+                        ks.SelectedResultIndex == nextIdx
+                        && _renderedCardsByIndex.TryGetValue(nextIdx, out var realized)
+                    )
+                    {
+                        ApplyCardSelectionVisual(
+                            realized.Card,
+                            isSelected: true,
+                            realized.IsWeakSpot
+                        );
+                    }
+                },
+                DispatcherPriority.Loaded
+            );
+        }
+    }
+
+    private static void ApplyCardSelectionVisual(Border card, bool isSelected, bool isWeakSpot)
+    {
+        card.Background = isSelected
+            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+            : Brushes.Transparent;
+        card.BorderBrush =
+            isSelected ? ThemeService.Brush(ThemeService.AccentPrimary)
+            : isWeakSpot ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+            : Brushes.Transparent;
+        card.BorderThickness = new Thickness(isSelected || isWeakSpot ? 2.5 : 0, 0, 0, 0);
+    }
+
     private static Grid BuildHeaderBar(
         MainWindowViewModel vm,
         KnowledgeSearchViewModel ks,
+        bool isFloatingModal,
         out Border telemetryHost
     )
     {
@@ -199,6 +431,17 @@ public static class KnowledgeSearchViewBuilder
         );
         rightBar.Children.Add(reindexBtn);
 
+        if (isFloatingModal)
+        {
+            var closeBtn = UiBuilder.GhostButton(
+                "Esc",
+                MaterialIconKind.Close,
+                () => _activeOnClose?.Invoke()
+            );
+            ToolTip.SetTip(closeBtn, "Close Knowledge Hub Search (Esc)");
+            rightBar.Children.Add(closeBtn);
+        }
+
         Grid.SetColumn(rightBar, 1);
         grid.Children.Add(rightBar);
         return grid;
@@ -248,6 +491,71 @@ public static class KnowledgeSearchViewBuilder
         return row;
     }
 
+    private static TextBox CreateQueryTextBox(KnowledgeSearchViewModel ks)
+    {
+        var queryBox = new TextBox
+        {
+            Text = ks.QueryText,
+            Watermark =
+                "Search PDF pages, code symbols, notes, or quizzes — e.g. #os @pdf \"page fault\" @weak",
+            FontSize = 14,
+            FontWeight = FontWeight.Medium,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        queryBox.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == TextBox.TextProperty && !_suppressTextCallback)
+            {
+                ks.UpdateQuery(queryBox.Text ?? string.Empty);
+            }
+        };
+
+        queryBox.KeyDown += async (_, e) =>
+        {
+            if (e.Key == Key.Down)
+            {
+                e.Handled = true;
+                ks.MoveSelection(+1);
+            }
+            else if (e.Key == Key.Up)
+            {
+                e.Handled = true;
+                ks.MoveSelection(-1);
+            }
+            else if (e.Key == Key.PageDown)
+            {
+                e.Handled = true;
+                ks.MoveSelection(+5);
+            }
+            else if (e.Key == Key.PageUp)
+            {
+                e.Handled = true;
+                ks.MoveSelection(-5);
+            }
+            else if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                    await ks.QuizThisAsync();
+                else
+                    ks.JumpToSource();
+            }
+            else if (e.Key == Key.Escape)
+            {
+                e.Handled = true;
+                if (_activeOnClose is not null)
+                    _activeOnClose();
+                else
+                    ks.ClearAllFilters();
+            }
+        };
+
+        return queryBox;
+    }
+
     private static Border BuildQueryBarCard(KnowledgeSearchViewModel ks, out TextBox queryBox)
     {
         var cardGrid = new Grid
@@ -270,61 +578,7 @@ public static class KnowledgeSearchViewBuilder
             )
         );
 
-        queryBox = new TextBox
-        {
-            Text = ks.QueryText,
-            Watermark =
-                "Search concepts, code symbols, PDF pages, or quiz cards — e.g. #os @pdf \"page fault\" or @code @weak",
-            FontSize = 14,
-            FontWeight = FontWeight.Medium,
-            Background = Brushes.Transparent,
-            BorderThickness = new Thickness(0),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        var capturedBox = queryBox;
-        queryBox.PropertyChanged += (_, e) =>
-        {
-            if (e.Property == TextBox.TextProperty && !_suppressTextCallback)
-            {
-                ks.UpdateQuery(capturedBox.Text ?? string.Empty);
-            }
-        };
-
-        queryBox.KeyDown += async (_, e) =>
-        {
-            if (e.Key == Key.Down)
-            {
-                e.Handled = true;
-                ks.MoveSelection(+1);
-            }
-            else if (e.Key == Key.Up)
-            {
-                e.Handled = true;
-                ks.MoveSelection(-1);
-            }
-            else if (e.Key == Key.Enter)
-            {
-                e.Handled = true;
-                if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-                    await ks.QuizThisAsync();
-                else
-                    ks.JumpToSource();
-            }
-            else if (
-                e.Key == Key.Escape
-                && (
-                    !string.IsNullOrEmpty(ks.QueryText)
-                    || ks.SelectedSourceFilter.HasValue
-                    || !string.IsNullOrEmpty(ks.SelectedCourseFilter)
-                    || ks.OnlyWeakSpots
-                )
-            )
-            {
-                e.Handled = true;
-                ks.ClearAllFilters();
-            }
-        };
+        queryBox = CreateQueryTextBox(ks);
 
         Grid.SetColumn(queryBox, 1);
         inputRow.Children.Add(queryBox);
@@ -400,51 +654,59 @@ public static class KnowledgeSearchViewBuilder
             var btn = UiBuilder.GhostButton(
                 label,
                 icon,
-                () => ks.SetSourceFilter(kind),
+                () =>
+                {
+                    ks.SetSourceFilter(kind);
+                    FocusQueryBox();
+                },
                 isActive: active
             );
-            btn.Margin = new Thickness(0, 0, 6, 4);
+            btn.Margin = new Thickness(0, 0, 4, 2);
             sourceWrap.Children.Add(btn);
         }
 
-        AddSourceChip("All Sources", MaterialIconKind.LayersOutline, null);
-        AddSourceChip("PDF (@pdf)", MaterialIconKind.FilePdfBox, KnowledgeSourceFilterKind.Pdf);
-        AddSourceChip("Code (@code)", MaterialIconKind.CodeBraces, KnowledgeSourceFilterKind.Code);
+        AddSourceChip("All", MaterialIconKind.LayersOutline, null);
+        AddSourceChip("PDF", MaterialIconKind.FilePdfBox, KnowledgeSourceFilterKind.Pdf);
+        AddSourceChip("Code", MaterialIconKind.CodeBraces, KnowledgeSourceFilterKind.Code);
         AddSourceChip(
-            "Notes (@md)",
+            "Notes",
             MaterialIconKind.LanguageMarkdownOutline,
             KnowledgeSourceFilterKind.Markdown
         );
         AddSourceChip(
-            "Text (@text)",
+            "Text",
             MaterialIconKind.FileDocumentOutline,
             KnowledgeSourceFilterKind.PlainText
         );
         AddSourceChip(
-            "Images (@image)",
+            "Images",
             MaterialIconKind.FileImageOutline,
             KnowledgeSourceFilterKind.Image
         );
         AddSourceChip(
-            "Quizzes (@quiz)",
+            "Quizzes",
             MaterialIconKind.HeadLightbulbOutline,
             KnowledgeSourceFilterKind.Quiz
         );
 
         bool weakActive = ks.OnlyWeakSpots || ks.ParsedQuery.OnlyWeakSpots;
         var weakLabel =
-            ks.WeakTopicCount > 0 ? $"Weak Spots ({ks.WeakTopicCount})" : "Weak Spots (@weak)";
+            ks.WeakTopicCount > 0 ? $"Weak Spots ({ks.WeakTopicCount})" : "Weak Spots";
         var weakBtn = UiBuilder.GhostButton(
             weakLabel,
             MaterialIconKind.AlertRhombusOutline,
-            ks.ToggleOnlyWeakSpots,
+            () =>
+            {
+                ks.ToggleOnlyWeakSpots();
+                FocusQueryBox();
+            },
             isActive: weakActive,
             customFg: weakActive ? ThemeService.Brush(ThemeService.PriorityP2Fg) : null
         );
-        weakBtn.Margin = new Thickness(4, 0, 0, 4);
+        weakBtn.Margin = new Thickness(4, 0, 0, 2);
         ToolTip.SetTip(
             weakBtn,
-            "Filter or boost concepts and questions you recently missed or lapsed in Active Recall"
+            "Filter or boost concepts and questions you recently missed or lapsed in Active Recall (@weak)"
         );
         sourceWrap.Children.Add(weakBtn);
 
@@ -461,10 +723,14 @@ public static class KnowledgeSearchViewBuilder
             var allCourseBtn = UiBuilder.GhostButton(
                 "All Courses",
                 MaterialIconKind.FolderMultipleOutline,
-                () => ks.SetCourseFilter(null),
+                () =>
+                {
+                    ks.SetCourseFilter(null);
+                    FocusQueryBox();
+                },
                 isActive: allCoursesActive
             );
-            allCourseBtn.Margin = new Thickness(0, 0, 6, 4);
+            allCourseBtn.Margin = new Thickness(0, 0, 4, 2);
             courseWrap.Children.Add(allCourseBtn);
 
             foreach (var course in vm.Courses)
@@ -487,12 +753,17 @@ public static class KnowledgeSearchViewBuilder
                     );
 
                 var cBtn = UiBuilder.GhostButton(
-                    $"#{alias} · {course.DisplayTitle}",
+                    $"#{alias}",
                     null,
-                    () => ks.SetCourseFilter(alias),
+                    () =>
+                    {
+                        ks.SetCourseFilter(alias);
+                        FocusQueryBox();
+                    },
                     isActive: active
                 );
-                cBtn.Margin = new Thickness(0, 0, 6, 4);
+                ToolTip.SetTip(cBtn, course.DisplayTitle);
+                cBtn.Margin = new Thickness(0, 0, 4, 2);
                 courseWrap.Children.Add(cBtn);
             }
 
@@ -504,6 +775,11 @@ public static class KnowledgeSearchViewBuilder
 
     private static Control BuildResultsPane(KnowledgeSearchViewModel ks)
     {
+        _activeResultsListBox = null;
+        _activeIndexedItems = [];
+        _renderedCardsByIndex.Clear();
+        _lastRenderedSelectedIndex = ks.SelectedResultIndex;
+
         if (ks.IsIndexing && !ks.HasCompletedInitialIndex && ks.Results.Count == 0)
         {
             return BuildIndexingSkeleton();
@@ -517,6 +793,7 @@ public static class KnowledgeSearchViewBuilder
         var indexedItems = ks
             .Results.Select((item, idx) => new IndexedResultRow(idx, item))
             .ToList();
+        _activeIndexedItems = indexedItems;
 
         var lb = new ListBox
         {
@@ -531,10 +808,13 @@ public static class KnowledgeSearchViewBuilder
                 {
                     if (row is null)
                         return new Border();
-                    return BuildResultRowCard(ks, row.Index, row.Item);
+                    var card = BuildResultRowCard(ks, row.Index, row.Item);
+                    _renderedCardsByIndex[row.Index] = (card, row.Item.IsWeakSpot);
+                    return card;
                 }
             ),
         };
+        _activeResultsListBox = lb;
 
         lb.Styles.Add(
             new Style(x => x.OfType<ListBoxItem>())
@@ -543,7 +823,7 @@ public static class KnowledgeSearchViewBuilder
                 {
                     new Setter(
                         Avalonia.Controls.Primitives.TemplatedControl.PaddingProperty,
-                        new Thickness(0, 0, 0, 8)
+                        new Thickness(0, 0, 0, 3)
                     ),
                     new Setter(Layoutable.MarginProperty, new Thickness(0)),
                     new Setter(
@@ -730,28 +1010,36 @@ public static class KnowledgeSearchViewBuilder
         outerGrid.Children.Add(actionsCol);
 
         var normalBg = isSelected
-            ? ThemeService.Brush(ThemeService.BgElevated)
-            : ThemeService.Brush(ThemeService.BgSurface);
+            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+            : Brushes.Transparent;
         var hoverBg = ThemeService.Brush(ThemeService.BgHover);
         var normalBorder =
             isSelected ? ThemeService.Brush(ThemeService.AccentPrimary)
             : item.IsWeakSpot ? ThemeService.Brush(ThemeService.PriorityP2Fg)
-            : ThemeService.Brush(ThemeService.BorderSubtle);
+            : Brushes.Transparent;
 
         var card = new Border
         {
             Background = normalBg,
             BorderBrush = normalBorder,
-            BorderThickness = new Thickness(isSelected || item.IsWeakSpot ? 3 : 1, 1, 1, 1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(12, 9),
+            BorderThickness = new Thickness(isSelected || item.IsWeakSpot ? 2.5 : 0, 0, 0, 0),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 7),
             Cursor = new Cursor(StandardCursorType.Hand),
-            Transitions = UiBuilder.CreateSmoothBrushTransitions(110),
+            Transitions = UiBuilder.CreateSmoothBrushTransitions(90),
             Child = outerGrid,
         };
 
-        card.PointerEntered += (_, _) => card.Background = hoverBg;
-        card.PointerExited += (_, _) => card.Background = normalBg;
+        card.PointerEntered += (_, _) =>
+        {
+            if (index != ks.SelectedResultIndex)
+                card.Background = hoverBg;
+        };
+        card.PointerExited += (_, _) =>
+            card.Background =
+                index == ks.SelectedResultIndex
+                    ? ThemeService.Brush(ThemeService.AccentSoftBg)
+                    : Brushes.Transparent;
         card.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(card).Properties.IsLeftButtonPressed)
@@ -1017,7 +1305,11 @@ public static class KnowledgeSearchViewBuilder
             var btn = UiBuilder.GhostButton(
                 label,
                 MaterialIconKind.Magnify,
-                () => ks.ApplyExampleQuery(captured)
+                () =>
+                {
+                    ks.ApplyExampleQuery(captured);
+                    FocusQueryBox();
+                }
             );
             btn.Margin = new Thickness(3);
             examplesWrap.Children.Add(btn);
@@ -1027,11 +1319,8 @@ public static class KnowledgeSearchViewBuilder
 
         return new Border
         {
-            Background = ThemeService.Brush(ThemeService.BgSurface),
-            BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(24),
+            Background = Brushes.Transparent,
+            Padding = new Thickness(16, 28),
             Child = center,
         };
     }
