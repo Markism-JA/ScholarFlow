@@ -156,7 +156,7 @@ public sealed partial class MainWindowViewModel
                 StringComparison.OrdinalIgnoreCase
             )
         )
-            PdfReader.LoadPdf(pdfFullPath);
+            PdfReader.LoadPdf(pdfFullPath, BasinRoot);
         PdfReader.SetEvidenceHighlight(pageNumber, highlights, verbatimQuote, questionPrompt);
         ActiveMode = WorkspaceTabMode.PdfReader;
         NotifyStateChanged();
@@ -214,7 +214,7 @@ public sealed partial class MainWindowViewModel
                 StringComparison.OrdinalIgnoreCase
             )
         )
-            PdfReader.LoadPdf(pdfFullPath);
+            PdfReader.LoadPdf(pdfFullPath, BasinRoot);
         PdfReader.SetEvidenceHighlight(pageNumber, highlights, verbatimQuote, sourceHeading);
         ActiveMode = WorkspaceTabMode.PdfReader;
         NotifyStateChanged();
@@ -246,7 +246,7 @@ public sealed partial class MainWindowViewModel
             PdfReturnMode = ActiveMode;
         PdfReturnTask = associatedTask;
         PdfOpenedFromQuiz = ActiveMode == WorkspaceTabMode.QuizStudio;
-        PdfReader.LoadPdf(pdfFullPath);
+        PdfReader.LoadPdf(pdfFullPath, BasinRoot);
         ActiveMode = WorkspaceTabMode.PdfReader;
         NotifyStateChanged();
     }

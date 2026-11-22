@@ -1169,4 +1169,79 @@ public sealed class QuizSuperEngineTests
             catch { }
         }
     }
+
+    [Fact]
+    public void PdfSmartSectionDetector_DetectsChaptersAndIgnoresRunningHeaders()
+    {
+        Assert.True(ScholarFlow.Core.Pdf.PdfSmartSectionDetector.IsWeakOrMissingOutline([], 10));
+        Assert.True(
+            ScholarFlow.Core.Pdf.PdfSmartSectionDetector.IsWeakOrMissingOutline(
+                [
+                    new PdfOutlineSectionInfo("Slide 1", null, 1, 1, 1),
+                    new PdfOutlineSectionInfo("Slide 2", null, 1, 2, 2),
+                    new PdfOutlineSectionInfo("Slide 3", null, 1, 3, 3),
+                ],
+                3
+            )
+        );
+
+        var tempDir = Path.Combine(Path.GetTempPath(), $"sf_smart_sec_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var pdfPath = Path.Combine(tempDir, "Unbookmarked_DiscreteMath.pdf");
+            ScholarFlow.Core.Pdf.MasterPdfService.EnsureFontResolver();
+            using (var doc = new PdfSharpCore.Pdf.PdfDocument())
+            {
+                var headingFont = new PdfSharpCore.Drawing.XFont("Sans", 18, PdfSharpCore.Drawing.XFontStyle.Bold);
+                var bodyFont = new PdfSharpCore.Drawing.XFont("Sans", 11);
+                var headerFont = new PdfSharpCore.Drawing.XFont("Sans", 9);
+
+                void AddPage(string? chapterHeading, string body)
+                {
+                    var pg = doc.AddPage();
+                    pg.Width = 612;
+                    pg.Height = 792;
+                    using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(pg);
+                    gfx.DrawString("Discrete Mathematics Notes", headerFont, PdfSharpCore.Drawing.XBrushes.Gray, new PdfSharpCore.Drawing.XPoint(54, 32));
+                    double y = 85;
+                    if (!string.IsNullOrWhiteSpace(chapterHeading))
+                    {
+                        gfx.DrawString(chapterHeading, headingFont, PdfSharpCore.Drawing.XBrushes.Black, new PdfSharpCore.Drawing.XPoint(54, y));
+                        y += 32;
+                    }
+                    gfx.DrawString(body, bodyFont, PdfSharpCore.Drawing.XBrushes.Black, new PdfSharpCore.Drawing.XPoint(54, y));
+                }
+
+                AddPage("Chapter 1: Foundations", "Logic and propositions form the basis of proofs.");
+                AddPage(null, "Truth tables verify tautologies and contradictions.");
+                AddPage("Chapter 2: Divisibility", "An integer a divides b when b = ka.");
+                AddPage(null, "Euclidean algorithm computes greatest common divisors.");
+                AddPage("Chapter 3: Prime Numbers", "Every integer greater than 1 factors uniquely into primes.");
+                AddPage(null, "Euclid proved there are infinitely many primes.");
+
+                doc.Save(pdfPath);
+            }
+
+            var detected = ScholarFlow.Core.Pdf.PdfSmartSectionDetector.DetectSections(pdfPath);
+            Assert.Equal(3, detected.Count);
+            Assert.Equal("Chapter 1: Foundations", detected[0].Title);
+            Assert.Equal(1, detected[0].StartPage);
+            Assert.Equal(2, detected[0].EndPage);
+            Assert.Equal("Chapter 2: Divisibility", detected[1].Title);
+            Assert.Equal(3, detected[1].StartPage);
+            Assert.Equal(4, detected[1].EndPage);
+            Assert.Equal("Chapter 3: Prime Numbers", detected[2].Title);
+            Assert.Equal(5, detected[2].StartPage);
+            Assert.Equal(6, detected[2].EndPage);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+            catch { }
+        }
+    }
 }

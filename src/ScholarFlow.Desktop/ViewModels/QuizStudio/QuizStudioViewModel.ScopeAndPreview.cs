@@ -681,6 +681,84 @@ public sealed partial class QuizStudioViewModel
         PreviewScopeIndex = Math.Max(0, MatchedScopePages.Count - 1);
     }
 
+    public bool IsCurrentPdfOutlineWeak =>
+        PdfTotalPages >= 2
+        && PdfSmartSectionDetector.IsWeakOrMissingOutline(OutlineSections, PdfTotalPages);
+
+    public async Task AutoDetectSmartSectionsAsync()
+    {
+        if (
+            IsDetectingSmartSections
+            || string.IsNullOrWhiteSpace(SelectedPdfPath)
+            || !File.Exists(SelectedPdfPath)
+            || string.IsNullOrWhiteSpace(_mainVm.BasinRoot)
+        )
+            return;
+
+        var pdfPath = SelectedPdfPath;
+        var basinRoot = _mainVm.BasinRoot;
+        IsDetectingSmartSections = true;
+        StatusMessage = "Scanning PDF headings & font sizes to auto-detect sections...";
+        IsStatusError = false;
+        _mainVm.RequestUiRefresh();
+
+        try
+        {
+            var detected = await Task.Run(() => PdfSmartSectionDetector.DetectSections(pdfPath));
+            if (detected.Count == 0)
+            {
+                StatusMessage =
+                    "No text headings detected (may be a scanned PDF) — use Page Studio to visually pick pages and save custom sections.";
+                IsStatusError = false;
+                return;
+            }
+
+            var existing = PdfCustomSectionStore.LoadSections(basinRoot, pdfPath);
+            int addedCount = 0;
+            foreach (var sec in detected)
+            {
+                bool alreadyExists = existing.Any(e =>
+                    e.StartPage == sec.StartPage
+                    && string.Equals(e.Title, sec.Title, StringComparison.OrdinalIgnoreCase)
+                );
+                if (!alreadyExists)
+                {
+                    PdfCustomSectionStore.AddSection(
+                        basinRoot,
+                        pdfPath,
+                        sec.Title,
+                        sec.StartPage,
+                        sec.EndPage,
+                        rangeExpression: sec.StartPage == sec.EndPage
+                            ? $"{sec.StartPage}"
+                            : $"{sec.StartPage}-{sec.EndPage}",
+                        term: "Auto"
+                    );
+                    addedCount++;
+                }
+            }
+
+            if (string.Equals(SelectedPdfPath, pdfPath, StringComparison.OrdinalIgnoreCase))
+                RefreshMergedOutlineForCurrentPdf();
+
+            StatusMessage =
+                addedCount > 0
+                    ? $"Auto-detected and saved {addedCount} reusable section(s) (also available in Full PDF Reader)."
+                    : $"Detected {detected.Count} section(s) — all are already saved.";
+            IsStatusError = false;
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"Smart section detection failed: {ex.Message}";
+            IsStatusError = true;
+        }
+        finally
+        {
+            IsDetectingSmartSections = false;
+            _mainVm.RequestUiRefresh();
+        }
+    }
+
     public void ToggleAddCustomSectionForm()
     {
         IsAddCustomSectionOpen = !IsAddCustomSectionOpen;

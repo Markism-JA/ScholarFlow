@@ -178,6 +178,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public int PageTocWindowIndex { get; private set; }
     public const int PageTocWindowSize = 80;
     public bool IsAddCustomSectionOpen { get; private set; }
+    public bool IsDetectingSmartSections { get; private set; }
     public string CustomSectionNameDraft { get; set; } = string.Empty;
     public IReadOnlyList<SavedPdfSection> CustomSavedSections { get; private set; } = [];
     public int QuestionCount { get; private set; } = 10;

@@ -48,6 +48,8 @@ public static partial class QuizStudioViewBuilder
                 Foreground = studio.IsCurrentPreviewPageInScope
                     ? ThemeService.Brush(ThemeService.AccentPrimary)
                     : ThemeService.Brush(ThemeService.PriorityP1Fg),
+                TextWrapping = TextWrapping.Wrap,
+                MaxLines = 2,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
@@ -456,8 +458,25 @@ public static partial class QuizStudioViewBuilder
             studio.ToggleAddCustomSectionForm,
             isActive: studio.IsAddCustomSectionOpen
         );
+        ToolTip.SetTip(saveSecBtn, "Save current page selection as a reusable custom chapter");
         saveSecBtn.Margin = new Thickness(0, 0, 5, 2);
         rightHeaderActions.Children.Add(saveSecBtn);
+
+        if (studio.IsCurrentPdfOutlineWeak)
+        {
+            var autoDetectBtn = UiBuilder.GhostButton(
+                studio.IsDetectingSmartSections ? "Scanning..." : "Auto-Detect",
+                MaterialIconKind.AutoFix,
+                async () => await studio.AutoDetectSmartSectionsAsync()
+            );
+            autoDetectBtn.IsEnabled = !studio.IsDetectingSmartSections;
+            ToolTip.SetTip(
+                autoDetectBtn,
+                "Scan PDF headings & font sizes to auto-build reusable chapters"
+            );
+            autoDetectBtn.Margin = new Thickness(0, 0, 5, 2);
+            rightHeaderActions.Children.Add(autoDetectBtn);
+        }
 
         var doneBtn = UiBuilder.PrimaryButton(
             "Done",
@@ -812,6 +831,7 @@ public static partial class QuizStudioViewBuilder
         var inspHeader = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 8,
             Margin = new Thickness(0, 0, 0, 8),
         };
         var inspInfo = new StackPanel { Spacing = 2 };
@@ -833,6 +853,8 @@ public static partial class QuizStudioViewBuilder
                 Foreground = curInScope
                     ? ThemeService.Brush(ThemeService.AccentPrimary)
                     : ThemeService.Brush(ThemeService.PriorityP1Fg),
+                TextWrapping = TextWrapping.Wrap,
+                MaxLines = 2,
                 TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
@@ -963,10 +985,15 @@ public static partial class QuizStudioViewBuilder
         );
         compactBackToGridBtn.IsVisible = false;
         compactBackToGridBtn.Margin = new Thickness(0, 0, 6, 0);
-        var inspTitleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var inspTitleRow = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*"),
+            ColumnSpacing = 4,
+        };
         var existingInspInfo = inspHeader.Children[0];
         inspHeader.Children.RemoveAt(0);
         inspTitleRow.Children.Add(compactBackToGridBtn);
+        Grid.SetColumn(existingInspInfo, 1);
         inspTitleRow.Children.Add(existingInspInfo);
         inspHeader.Children.Insert(0, inspTitleRow);
 

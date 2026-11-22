@@ -50,7 +50,7 @@ public sealed class PdfReaderViewModel : IDisposable
 
     public event EventHandler? Changed;
 
-    public void LoadPdf(string filePath)
+    public void LoadPdf(string filePath, string? basinRoot = null)
     {
         _loadCts?.Cancel();
         _loadCts?.Dispose();
@@ -82,10 +82,14 @@ public sealed class PdfReaderViewModel : IDisposable
         IsLoadingDocument = true;
         Changed?.Invoke(this, EventArgs.Empty);
 
-        _ = LoadPdfInBackgroundAsync(filePath, cts);
+        _ = LoadPdfInBackgroundAsync(filePath, basinRoot, cts);
     }
 
-    private async Task LoadPdfInBackgroundAsync(string filePath, CancellationTokenSource cts)
+    private async Task LoadPdfInBackgroundAsync(
+        string filePath,
+        string? basinRoot,
+        CancellationTokenSource cts
+    )
     {
         var token = cts.Token;
         try
@@ -99,6 +103,7 @@ public sealed class PdfReaderViewModel : IDisposable
                     using var doc = PdfDocument.Open(data);
                     int pages = doc.NumberOfPages;
                     var tree = ExtractBookmarkRoots(doc);
+                    MergeCustomSavedSectionsIntoBookmarks(tree, basinRoot, filePath, pages);
                     return (data, pages, tree);
                 },
                 token
@@ -446,6 +451,59 @@ public sealed class PdfReaderViewModel : IDisposable
         }
 
         return vmNode;
+    }
+
+    private static void MergeCustomSavedSectionsIntoBookmarks(
+        List<PdfBookmarkNode> roots,
+        string? basinRoot,
+        string pdfPath,
+        int totalPages
+    )
+    {
+        if (string.IsNullOrWhiteSpace(basinRoot) || totalPages <= 0)
+            return;
+
+        var customSections = Core.Pdf.PdfCustomSectionStore.LoadSections(basinRoot, pdfPath);
+        if (customSections.Count == 0)
+            return;
+
+        if (roots.Count == 0)
+        {
+            foreach (var sec in customSections)
+            {
+                roots.Add(
+                    new PdfBookmarkNode
+                    {
+                        Title = sec.Title,
+                        PageNumber = Math.Clamp(sec.StartPage, 1, totalPages),
+                        Level = 1,
+                        IsExpanded = true,
+                    }
+                );
+            }
+            return;
+        }
+
+        var group = new PdfBookmarkNode
+        {
+            Title = "Saved Sections",
+            PageNumber = Math.Clamp(customSections[0].StartPage, 1, totalPages),
+            Level = 1,
+            IsExpanded = true,
+        };
+        foreach (var sec in customSections)
+        {
+            group.Children.Add(
+                new PdfBookmarkNode
+                {
+                    Title = sec.Title,
+                    PageNumber = Math.Clamp(sec.StartPage, 1, totalPages),
+                    Level = 2,
+                    IsExpanded = true,
+                }
+            );
+        }
+        roots.Add(group);
     }
 
     private void ClearCache()

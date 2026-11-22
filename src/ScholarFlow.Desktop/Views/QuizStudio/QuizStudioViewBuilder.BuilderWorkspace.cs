@@ -60,20 +60,31 @@ public static partial class QuizStudioViewBuilder
                 )
             );
         }
-        if (handoutPdfs.Count > 0)
+        bool canTogglePdfList =
+            (masterPdfs.Count > 0 && handoutPdfs.Count > 0)
+            || (masterPdfs.Count == 0 && handoutPdfs.Count > 1);
+        if (canTogglePdfList)
         {
-            sourceRightActions.Children.Add(
-                UiBuilder.GhostButton(
-                    studio.ShowIndividualHandouts
-                        ? "Hide Handouts"
-                        : $"Handouts ({handoutPdfs.Count})",
-                    studio.ShowIndividualHandouts
-                        ? MaterialIconKind.ChevronUp
-                        : MaterialIconKind.ChevronDown,
-                    studio.ToggleShowIndividualHandouts,
-                    isActive: studio.ShowIndividualHandouts
-                )
+            var pdfToggleLabel = studio.ShowIndividualHandouts
+                ? "Hide PDFs"
+                : (
+                    masterPdfs.Count > 0
+                        ? $"Other PDFs ({handoutPdfs.Count})"
+                        : $"Browse PDFs ({handoutPdfs.Count})"
+                );
+            var pdfToggleBtn = UiBuilder.GhostButton(
+                pdfToggleLabel,
+                studio.ShowIndividualHandouts
+                    ? MaterialIconKind.ChevronUp
+                    : MaterialIconKind.ChevronDown,
+                studio.ToggleShowIndividualHandouts,
+                isActive: studio.ShowIndividualHandouts
             );
+            ToolTip.SetTip(
+                pdfToggleBtn,
+                "Show or hide individual PDF files (textbooks, lectures, handouts) in this course"
+            );
+            sourceRightActions.Children.Add(pdfToggleBtn);
         }
         Grid.SetColumn(sourceRightActions, 1);
         sourceHeader.Children.Add(sourceRightActions);
@@ -105,32 +116,44 @@ public static partial class QuizStudioViewBuilder
             pdfPills.Children.Add(btn);
         }
 
-        if (studio.ShowIndividualHandouts || masterPdfs.Count == 0)
-        {
-            foreach (var (label, fullPath, _) in handoutPdfs)
-            {
-                var captured = fullPath;
-                bool active =
-                    (!studio.IsFileSourceMode || studio.IsMixedSourceMode)
-                    && string.Equals(
+        // When collapsed, still show the currently selected individual PDF so the user always sees what's active
+        var visibleIndividualPdfs = studio.ShowIndividualHandouts
+            ? handoutPdfs
+            : handoutPdfs
+                .Where(p =>
+                    string.Equals(
+                        p.FullPath,
                         studio.SelectedPdfPath,
-                        captured,
                         StringComparison.OrdinalIgnoreCase
-                    );
-                var btn = UiBuilder.GhostButton(
-                    label,
-                    MaterialIconKind.FilePdfBox,
-                    () =>
-                    {
-                        if (studio.IsFileSourceMode && !studio.IsMixedSourceMode)
-                            studio.ClearFileSources();
-                        studio.SelectPdfScope(captured);
-                    },
-                    isActive: active
+                    )
+                )
+                .ToList();
+        if (masterPdfs.Count == 0 && visibleIndividualPdfs.Count == 0 && handoutPdfs.Count > 0)
+            visibleIndividualPdfs = [handoutPdfs[0]];
+
+        foreach (var (label, fullPath, _) in visibleIndividualPdfs)
+        {
+            var captured = fullPath;
+            bool active =
+                (!studio.IsFileSourceMode || studio.IsMixedSourceMode)
+                && string.Equals(
+                    studio.SelectedPdfPath,
+                    captured,
+                    StringComparison.OrdinalIgnoreCase
                 );
-                btn.Margin = new Thickness(0, 0, 5, 4);
-                pdfPills.Children.Add(btn);
-            }
+            var btn = UiBuilder.GhostButton(
+                label,
+                MaterialIconKind.FilePdfBox,
+                () =>
+                {
+                    if (studio.IsFileSourceMode && !studio.IsMixedSourceMode)
+                        studio.ClearFileSources();
+                    studio.SelectPdfScope(captured);
+                },
+                isActive: active
+            );
+            btn.Margin = new Thickness(0, 0, 5, 4);
+            pdfPills.Children.Add(btn);
         }
         if (pdfPills.Children.Count > 0)
             sourceAndScopeCard.Children.Add(pdfPills);
@@ -481,6 +504,35 @@ public static partial class QuizStudioViewBuilder
         }
         else if (studio.PdfTotalPages > 0)
         {
+            var noTocRow = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+                ColumnSpacing = 8,
+            };
+            noTocRow.Children.Add(
+                new TextBlock
+                {
+                    Text =
+                        "No embedded TOC in this PDF — auto-detect headings, toggle pages below, type ranges (e.g. 1-15, !4), or open Page Studio.",
+                    FontSize = 11.5,
+                    Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                    TextWrapping = TextWrapping.Wrap,
+                    VerticalAlignment = VerticalAlignment.Center,
+                }
+            );
+            var detectBtn = UiBuilder.GhostButton(
+                studio.IsDetectingSmartSections ? "Scanning..." : "Auto-Detect Sections",
+                MaterialIconKind.AutoFix,
+                async () => await studio.AutoDetectSmartSectionsAsync()
+            );
+            detectBtn.IsEnabled = !studio.IsDetectingSmartSections;
+            ToolTip.SetTip(
+                detectBtn,
+                "Scan PDF headings & font sizes to automatically build reusable chapters (also synced to Full PDF Reader)"
+            );
+            Grid.SetColumn(detectBtn, 1);
+            noTocRow.Children.Add(detectBtn);
+
             scopeCard.Children.Add(
                 new Border
                 {
@@ -489,14 +541,7 @@ public static partial class QuizStudioViewBuilder
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(9, 7),
-                    Child = new TextBlock
-                    {
-                        Text =
-                            "No embedded TOC in this PDF — toggle individual pages below, type ranges (e.g. 1-15, !4), open Page Studio, or Save Section to build reusable chapters.",
-                        FontSize = 11.5,
-                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                        TextWrapping = TextWrapping.Wrap,
-                    },
+                    Child = noTocRow,
                 }
             );
         }
