@@ -61,6 +61,12 @@ public sealed partial class QuizStudioViewModel
         SelectedPdfPath = pdfPath;
         StartPage = null;
         EndPage = null;
+        PageRangeExpression = string.Empty;
+        PageRangeError = null;
+        PreviewBrowseAllPages = false;
+        PreviewBrowsePageNumber = 1;
+        IsAddCustomSectionOpen = false;
+        CustomSectionNameDraft = string.Empty;
         SelectedSectionKeys.Clear();
         PreviewScopeIndex = 0;
         InspectSelectedPdfOutlineAndPreview();
@@ -84,9 +90,333 @@ public sealed partial class QuizStudioViewModel
         EndPage = end is > 0 ? end : null;
         if (StartPage.HasValue && EndPage.HasValue && EndPage.Value < StartPage.Value)
             EndPage = StartPage.Value;
+        PageRangeExpression =
+            StartPage.HasValue || EndPage.HasValue
+                ? $"{StartPage ?? 1}-{(EndPage.HasValue ? EndPage.Value.ToString() : string.Empty)}"
+                : string.Empty;
+        PageRangeError = null;
         PreviewScopeIndex = 0;
         RecomputeScopePreview();
         _mainVm.RequestUiRefresh();
+    }
+
+    public void ApplyPageRangeExpression(string? rawExpression)
+    {
+        var expr = (rawExpression ?? string.Empty).Trim();
+        PageRangeExpression = expr;
+        if (string.IsNullOrWhiteSpace(expr))
+        {
+            StartPage = null;
+            EndPage = null;
+            PageRangeError = null;
+            PreviewScopeIndex = 0;
+            RecomputeScopePreview();
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
+        int total = Math.Max(1, PdfTotalPages);
+        if (!PdfPageRangeParser.TryParse(expr, total, out var parsed, out var err))
+        {
+            PageRangeError = err;
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
+        PageRangeError = null;
+        if (parsed.Count == 1)
+        {
+            StartPage = parsed[0].StartPage;
+            EndPage = parsed[0].EndPage;
+        }
+        else
+        {
+            StartPage = null;
+            EndPage = null;
+        }
+
+        PreviewScopeIndex = 0;
+        RecomputeScopePreview();
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void SetPreviewBrowseMode(bool browseAll)
+    {
+        if (PreviewBrowseAllPages == browseAll)
+            return;
+
+        int curPage = CurrentPreviewPdfPage;
+        PreviewBrowseAllPages = browseAll;
+        if (browseAll)
+        {
+            PreviewBrowsePageNumber = Math.Clamp(curPage, 1, Math.Max(1, PdfTotalPages));
+        }
+        else if (MatchedScopePages.Count > 0)
+        {
+            int idx = 0;
+            for (int i = 0; i < MatchedScopePages.Count; i++)
+            {
+                if (MatchedScopePages[i].PageNumber >= curPage)
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            PreviewScopeIndex = idx;
+        }
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void JumpPreviewToPdfPage(int pageNumber)
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        int clamped = Math.Clamp(pageNumber, 1, PdfTotalPages);
+        if (!PreviewBrowseAllPages)
+        {
+            for (int i = 0; i < MatchedScopePages.Count; i++)
+            {
+                if (MatchedScopePages[i].PageNumber == clamped)
+                {
+                    PreviewScopeIndex = i;
+                    _mainVm.RequestUiRefresh();
+                    return;
+                }
+            }
+
+            // Page is outside current scope -> seamlessly switch to All Pages browse mode so user can inspect it
+            PreviewBrowseAllPages = true;
+        }
+
+        PreviewBrowsePageNumber = clamped;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void MarkCurrentPreviewPageAsStart()
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        int cur = CurrentPreviewPdfPage;
+        int currentEnd =
+            EndPage
+            ?? (
+                MatchedScopePages.Count > 0
+                    ? MatchedScopePages[^1].PageNumber
+                    : PdfTotalPages
+            );
+        if (currentEnd < cur)
+            currentEnd = PdfTotalPages;
+
+        SelectedSectionKeys.Clear();
+        StartPage = cur;
+        EndPage = currentEnd;
+        PageRangeExpression = $"{cur}-{currentEnd}";
+        PageRangeError = null;
+        RecomputeScopePreview();
+        SyncPreviewToPage(cur);
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void MarkCurrentPreviewPageAsEnd()
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        int cur = CurrentPreviewPdfPage;
+        int currentStart =
+            StartPage
+            ?? (MatchedScopePages.Count > 0 ? MatchedScopePages[0].PageNumber : 1);
+        if (currentStart > cur)
+            currentStart = 1;
+
+        SelectedSectionKeys.Clear();
+        StartPage = currentStart;
+        EndPage = cur;
+        PageRangeExpression = $"{currentStart}-{cur}";
+        PageRangeError = null;
+        RecomputeScopePreview();
+        SyncPreviewToPage(cur);
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void ToggleCurrentPreviewPageInScope()
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        int cur = CurrentPreviewPdfPage;
+        var currentPages = MatchedScopePages.Select(p => p.PageNumber).ToHashSet();
+        if (currentPages.Contains(cur))
+        {
+            if (currentPages.Count <= 1)
+            {
+                StatusMessage = "At least 1 page must remain in scope.";
+                IsStatusError = false;
+                _mainVm.RequestUiRefresh();
+                return;
+            }
+            currentPages.Remove(cur);
+        }
+        else
+        {
+            currentPages.Add(cur);
+        }
+
+        SelectedSectionKeys.Clear();
+        var ranges = PdfPageRangeParser.CompressToRanges(currentPages);
+        PageRangeExpression = PdfPageRangeParser.Format(ranges);
+        PageRangeError = null;
+        if (ranges.Count == 1)
+        {
+            StartPage = ranges[0].StartPage;
+            EndPage = ranges[0].EndPage;
+        }
+        else
+        {
+            StartPage = null;
+            EndPage = null;
+        }
+
+        RecomputeScopePreview();
+        if (PreviewBrowseAllPages)
+            PreviewBrowsePageNumber = cur;
+        _mainVm.RequestUiRefresh();
+    }
+
+    private void SyncPreviewToPage(int pageNumber)
+    {
+        if (PreviewBrowseAllPages)
+        {
+            PreviewBrowsePageNumber = Math.Clamp(pageNumber, 1, Math.Max(1, PdfTotalPages));
+            return;
+        }
+
+        for (int i = 0; i < MatchedScopePages.Count; i++)
+        {
+            if (MatchedScopePages[i].PageNumber >= pageNumber)
+            {
+                PreviewScopeIndex = i;
+                return;
+            }
+        }
+        PreviewScopeIndex = Math.Max(0, MatchedScopePages.Count - 1);
+    }
+
+    public void ToggleAddCustomSectionForm()
+    {
+        IsAddCustomSectionOpen = !IsAddCustomSectionOpen;
+        if (IsAddCustomSectionOpen && string.IsNullOrWhiteSpace(CustomSectionNameDraft))
+        {
+            if (MatchedScopePages.Count > 0)
+            {
+                int first = MatchedScopePages[0].PageNumber;
+                int last = MatchedScopePages[^1].PageNumber;
+                CustomSectionNameDraft = first == last ? $"Page {first}" : $"Pages {first}-{last}";
+            }
+        }
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void SaveCurrentScopeAsCustomSection(string? rawTitle)
+    {
+        if (
+            string.IsNullOrWhiteSpace(_mainVm.BasinRoot)
+            || string.IsNullOrWhiteSpace(SelectedPdfPath)
+            || MatchedScopePages.Count == 0
+        )
+            return;
+
+        var title = (rawTitle ?? CustomSectionNameDraft ?? string.Empty).Trim();
+        if (string.IsNullOrWhiteSpace(title))
+        {
+            StatusMessage = "Enter a section name before saving.";
+            IsStatusError = true;
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
+        int start = MatchedScopePages[0].PageNumber;
+        int end = MatchedScopePages[^1].PageNumber;
+        var expr = PdfPageRangeParser.Format(MatchedScopePages.Select(p => p.PageNumber));
+        PdfCustomSectionStore.AddSection(
+            _mainVm.BasinRoot,
+            SelectedPdfPath,
+            title,
+            start,
+            end,
+            rangeExpression: expr,
+            term: SelectedTerm
+        );
+
+        IsAddCustomSectionOpen = false;
+        CustomSectionNameDraft = string.Empty;
+        RefreshMergedOutlineForCurrentPdf();
+        StatusMessage = $"Saved custom section '{title}' ({expr}).";
+        IsStatusError = false;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void DeleteCustomSection(string sectionId)
+    {
+        if (
+            string.IsNullOrWhiteSpace(_mainVm.BasinRoot)
+            || string.IsNullOrWhiteSpace(SelectedPdfPath)
+        )
+            return;
+
+        if (PdfCustomSectionStore.DeleteSection(_mainVm.BasinRoot, SelectedPdfPath, sectionId))
+        {
+            RefreshMergedOutlineForCurrentPdf();
+            StatusMessage = "Deleted custom section.";
+            IsStatusError = false;
+            _mainVm.RequestUiRefresh();
+        }
+    }
+
+    public string? GetCustomSectionIdForOutlineSection(PdfOutlineSectionInfo sec)
+    {
+        var match = CustomSavedSections.FirstOrDefault(c =>
+            c.StartPage == sec.StartPage
+            && c.EndPage == sec.EndPage
+            && string.Equals(c.Title, sec.Title, StringComparison.OrdinalIgnoreCase)
+        );
+        return match?.Id;
+    }
+
+    private void RefreshMergedOutlineForCurrentPdf()
+    {
+        if (string.IsNullOrWhiteSpace(SelectedPdfPath))
+            return;
+
+        IReadOnlyList<PdfOutlineSectionInfo> embedded =
+            _outlineCache.TryGetValue(SelectedPdfPath, out var cached) ? cached.Sections : [];
+        CustomSavedSections = PdfCustomSectionStore.LoadSections(
+            _mainVm.BasinRoot,
+            SelectedPdfPath
+        );
+        var merged = MergeEmbeddedAndCustomSections(embedded, CustomSavedSections, PdfTotalPages);
+        OutlineSections = merged;
+        OutlineSectionRoots = BuildOutlineTree(merged);
+        RecomputeScopePreview();
+    }
+
+    private static List<PdfOutlineSectionInfo> MergeEmbeddedAndCustomSections(
+        IReadOnlyList<PdfOutlineSectionInfo> embedded,
+        IReadOnlyList<SavedPdfSection> custom,
+        int totalPages
+    )
+    {
+        var list = new List<PdfOutlineSectionInfo>(embedded);
+        int maxP = Math.Max(1, totalPages);
+        foreach (var c in custom)
+        {
+            int s = Math.Clamp(c.StartPage, 1, maxP);
+            int e = Math.Clamp(c.EndPage, s, maxP);
+            list.Add(new PdfOutlineSectionInfo(c.Title, c.Term ?? "Custom", 1, s, e));
+        }
+        return list;
     }
 
     public static string GetSectionKey(PdfOutlineSectionInfo s) =>
@@ -285,6 +615,16 @@ public sealed partial class QuizStudioViewModel
 
     public void PreviousPreviewPage()
     {
+        if (PreviewBrowseAllPages)
+        {
+            if (PreviewBrowsePageNumber > 1)
+            {
+                PreviewBrowsePageNumber--;
+                _mainVm.RequestUiRefresh();
+            }
+            return;
+        }
+
         if (PreviewScopeIndex > 0)
         {
             PreviewScopeIndex--;
@@ -294,6 +634,16 @@ public sealed partial class QuizStudioViewModel
 
     public void NextPreviewPage()
     {
+        if (PreviewBrowseAllPages)
+        {
+            if (PreviewBrowsePageNumber < PdfTotalPages)
+            {
+                PreviewBrowsePageNumber++;
+                _mainVm.RequestUiRefresh();
+            }
+            return;
+        }
+
         if (PreviewScopeIndex + 1 < MatchedScopePages.Count)
         {
             PreviewScopeIndex++;
@@ -306,6 +656,8 @@ public sealed partial class QuizStudioViewModel
         SelectedTerm = null;
         StartPage = null;
         EndPage = null;
+        PageRangeExpression = string.Empty;
+        PageRangeError = null;
         SelectedSectionKeys.Clear();
         PreviewScopeIndex = 0;
         RecomputeScopePreview();
@@ -385,10 +737,53 @@ public sealed partial class QuizStudioViewModel
 
     private List<PdfPageRange> GetSelectedPageRanges()
     {
+        List<PdfPageRange>? exprRanges = null;
+        if (
+            !string.IsNullOrWhiteSpace(PageRangeExpression)
+            && PdfPageRangeParser.TryParse(
+                PageRangeExpression,
+                Math.Max(1, PdfTotalPages),
+                out var parsedExpr,
+                out _
+            )
+            && parsedExpr.Count > 0
+        )
+        {
+            exprRanges = parsedExpr;
+        }
+
         if (SelectedSectionKeys.Count == 0)
-            return [];
+            return exprRanges ?? [];
 
         var raw = new List<PdfPageRange>();
+
+        void AddSectionRanges(PdfOutlineSectionInfo sec)
+        {
+            // If this outline node came from a custom saved section with an expressive range (e.g. "1-10, !4"), honor it
+            var custom = CustomSavedSections.FirstOrDefault(c =>
+                c.StartPage == sec.StartPage
+                && c.EndPage == sec.EndPage
+                && string.Equals(c.Title, sec.Title, StringComparison.OrdinalIgnoreCase)
+            );
+            if (
+                custom is not null
+                && !string.IsNullOrWhiteSpace(custom.RangeExpression)
+                && PdfPageRangeParser.TryParse(
+                    custom.RangeExpression,
+                    Math.Max(1, PdfTotalPages),
+                    out var customRanges,
+                    out _
+                )
+                && customRanges.Count > 0
+            )
+            {
+                raw.AddRange(customRanges);
+            }
+            else
+            {
+                raw.Add(new PdfPageRange(sec.StartPage, sec.EndPage));
+            }
+        }
 
         void CollectRanges(PdfOutlineTreeNode node)
         {
@@ -396,7 +791,7 @@ public sealed partial class QuizStudioViewModel
             if (node.Children.Count == 0)
             {
                 if (SelectedSectionKeys.Contains(key))
-                    raw.Add(new PdfPageRange(node.Section.StartPage, node.Section.EndPage));
+                    AddSectionRanges(node.Section);
                 return;
             }
 
@@ -420,12 +815,12 @@ public sealed partial class QuizStudioViewModel
         }
         else
         {
-            raw.AddRange(
-                OutlineSections
-                    .Where(s => SelectedSectionKeys.Contains(GetSectionKey(s)))
-                    .Select(s => new PdfPageRange(s.StartPage, s.EndPage))
-            );
+            foreach (var s in OutlineSections.Where(s => SelectedSectionKeys.Contains(GetSectionKey(s))))
+                AddSectionRanges(s);
         }
+
+        if (exprRanges is not null)
+            raw.AddRange(exprRanges);
 
         raw = [.. raw.OrderBy(r => r.StartPage).ThenBy(r => r.EndPage)];
         if (raw.Count <= 1)
@@ -649,8 +1044,17 @@ public sealed partial class QuizStudioViewModel
         if (_outlineCache.TryGetValue(SelectedPdfPath, out var cached))
         {
             PdfTotalPages = cached.TotalPages;
-            OutlineSections = cached.Sections;
-            OutlineSectionRoots = BuildOutlineTree(cached.Sections);
+            CustomSavedSections = PdfCustomSectionStore.LoadSections(
+                _mainVm.BasinRoot,
+                SelectedPdfPath
+            );
+            var merged = MergeEmbeddedAndCustomSections(
+                cached.Sections,
+                CustomSavedSections,
+                cached.TotalPages
+            );
+            OutlineSections = merged;
+            OutlineSectionRoots = BuildOutlineTree(merged);
             RecomputeScopePreview();
         }
         else
@@ -674,8 +1078,17 @@ public sealed partial class QuizStudioViewModel
             if (string.Equals(SelectedPdfPath, pdfPath, StringComparison.OrdinalIgnoreCase))
             {
                 PdfTotalPages = totalPages;
-                OutlineSections = sections;
-                OutlineSectionRoots = BuildOutlineTree(sections);
+                CustomSavedSections = PdfCustomSectionStore.LoadSections(
+                    _mainVm.BasinRoot,
+                    pdfPath
+                );
+                var merged = MergeEmbeddedAndCustomSections(
+                    sections,
+                    CustomSavedSections,
+                    totalPages
+                );
+                OutlineSections = merged;
+                OutlineSectionRoots = BuildOutlineTree(merged);
                 RecomputeScopePreview();
             }
         }

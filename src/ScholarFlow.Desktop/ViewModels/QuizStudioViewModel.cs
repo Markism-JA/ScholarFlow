@@ -1,6 +1,7 @@
 using Avalonia.Media.Imaging;
 using ScholarFlow.Core.Database;
 using ScholarFlow.Core.Models;
+using ScholarFlow.Core.Pdf;
 using ScholarFlow.Core.Quiz;
 
 namespace ScholarFlow.Desktop.ViewModels;
@@ -97,6 +98,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         public string? SelectedTerm { get; set; }
         public int? StartPage { get; set; }
         public int? EndPage { get; set; }
+        public string PageRangeExpression { get; set; } = string.Empty;
         public HashSet<string> SelectedSectionKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
         public HashSet<string> SelectedFileSourcePaths { get; } =
             new(StringComparer.OrdinalIgnoreCase);
@@ -150,6 +152,13 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public string? SelectedTerm { get; private set; }
     public int? StartPage { get; set; }
     public int? EndPage { get; set; }
+    public string PageRangeExpression { get; private set; } = string.Empty;
+    public string? PageRangeError { get; private set; }
+    public bool PreviewBrowseAllPages { get; private set; }
+    public int PreviewBrowsePageNumber { get; private set; } = 1;
+    public bool IsAddCustomSectionOpen { get; private set; }
+    public string CustomSectionNameDraft { get; set; } = string.Empty;
+    public IReadOnlyList<SavedPdfSection> CustomSavedSections { get; private set; } = [];
     public int QuestionCount { get; private set; } = 10;
     public QuizPresetMode SelectedPreset { get; private set; } = QuizPresetMode.ExamSimulator;
     public QuestionAllocationMode AllocationMode { get; private set; } =
@@ -177,21 +186,37 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public int PreviewScopeIndex { get; private set; }
     public int ScopePreviewPageCount => MatchedScopePages.Count;
     public int CurrentPreviewPdfPage =>
-        MatchedScopePages.Count > 0
-            ? MatchedScopePages[
-                Math.Clamp(PreviewScopeIndex, 0, MatchedScopePages.Count - 1)
-            ].PageNumber
-            : Math.Clamp(StartPage ?? 1, 1, Math.Max(1, PdfTotalPages));
-    public string CurrentPreviewSectionTitle =>
-        MatchedScopePages.Count > 0
-            ? MatchedScopePages[
-                Math.Clamp(PreviewScopeIndex, 0, MatchedScopePages.Count - 1)
-            ].SectionTitle
+        PreviewBrowseAllPages
+            ? Math.Clamp(PreviewBrowsePageNumber, 1, Math.Max(1, PdfTotalPages))
             : (
-                string.IsNullOrWhiteSpace(SelectedPdfPath)
-                    ? "No PDF Selected"
-                    : Path.GetFileNameWithoutExtension(SelectedPdfPath)
+                MatchedScopePages.Count > 0
+                    ? MatchedScopePages[
+                        Math.Clamp(PreviewScopeIndex, 0, MatchedScopePages.Count - 1)
+                    ].PageNumber
+                    : Math.Clamp(StartPage ?? 1, 1, Math.Max(1, PdfTotalPages))
             );
+    public bool IsCurrentPreviewPageInScope =>
+        MatchedScopePages.Any(p => p.PageNumber == CurrentPreviewPdfPage);
+    public string CurrentPreviewSectionTitle
+    {
+        get
+        {
+            int curPage = CurrentPreviewPdfPage;
+            var inScope = MatchedScopePages.FirstOrDefault(p => p.PageNumber == curPage);
+            if (!string.IsNullOrWhiteSpace(inScope.SectionTitle))
+                return inScope.SectionTitle;
+
+            var outlineMatch = OutlineSections.LastOrDefault(s =>
+                curPage >= s.StartPage && curPage <= s.EndPage
+            );
+            if (outlineMatch is not null)
+                return outlineMatch.Title;
+
+            return string.IsNullOrWhiteSpace(SelectedPdfPath)
+                ? "No PDF Selected"
+                : Path.GetFileNameWithoutExtension(SelectedPdfPath);
+        }
+    }
 
     public bool CatalogShowAllCourses { get; private set; }
     public string? CatalogTermFilter { get; private set; }
@@ -381,6 +406,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         state.SelectedTerm = SelectedTerm;
         state.StartPage = StartPage;
         state.EndPage = EndPage;
+        state.PageRangeExpression = PageRangeExpression;
         state.SelectedSectionKeys.Clear();
         foreach (var k in SelectedSectionKeys)
             state.SelectedSectionKeys.Add(k);
@@ -421,6 +447,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
             SelectedTerm = state.SelectedTerm;
             StartPage = state.StartPage;
             EndPage = state.EndPage;
+            PageRangeExpression = state.PageRangeExpression;
+            PageRangeError = null;
             SelectedSectionKeys.Clear();
             foreach (var k in state.SelectedSectionKeys)
                 SelectedSectionKeys.Add(k);
@@ -458,6 +486,13 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
             SelectedTerm = null;
             StartPage = null;
             EndPage = null;
+            PageRangeExpression = string.Empty;
+            PageRangeError = null;
+            PreviewBrowseAllPages = false;
+            PreviewBrowsePageNumber = 1;
+            IsAddCustomSectionOpen = false;
+            CustomSectionNameDraft = string.Empty;
+            CustomSavedSections = [];
             SelectedSectionKeys.Clear();
             _selectedFileSourcePaths.Clear();
             IncludePdfWithFiles = false;
@@ -535,6 +570,13 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         SelectedTerm = null;
         StartPage = null;
         EndPage = null;
+        PageRangeExpression = string.Empty;
+        PageRangeError = null;
+        PreviewBrowseAllPages = false;
+        PreviewBrowsePageNumber = 1;
+        IsAddCustomSectionOpen = false;
+        CustomSectionNameDraft = string.Empty;
+        CustomSavedSections = [];
         AppendTargetQuizId = null;
         AppendTargetQuizTitle = null;
 

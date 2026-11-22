@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
@@ -18,10 +19,11 @@ public static partial class QuizStudioViewBuilder
     {
         var grid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*,Auto") };
 
-        // 1. Top Preview Header Bar
+        // 1. Top Preview Header Bar (responsive WrapPanel for actions)
         var headerGrid = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 8,
             Margin = new Thickness(0, 0, 0, 8),
         };
 
@@ -35,17 +37,46 @@ public static partial class QuizStudioViewBuilder
                 Foreground = ThemeService.Brush(ThemeService.TextPrimary),
             }
         );
+        var scopeStateLabel = studio.IsCurrentPreviewPageInScope ? "In Scope" : "Excluded";
         leftInfo.Children.Add(
             new TextBlock
             {
                 Text =
-                    $"{studio.CurrentPreviewSectionTitle}  ·  PDF Page {studio.CurrentPreviewPdfPage}",
+                    $"{studio.CurrentPreviewSectionTitle}  ·  PDF p.{studio.CurrentPreviewPdfPage}/{Math.Max(1, studio.PdfTotalPages)} ({scopeStateLabel})",
                 FontSize = 11.5,
-                Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
+                Foreground = studio.IsCurrentPreviewPageInScope
+                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    : ThemeService.Brush(ThemeService.PriorityP1Fg),
                 TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
         headerGrid.Children.Add(leftInfo);
+
+        var headerActions = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        if (studio.PdfTotalPages > 0)
+        {
+            var scopeModeBtn = UiBuilder.GhostButton(
+                "Scope",
+                null,
+                () => studio.SetPreviewBrowseMode(false),
+                isActive: !studio.PreviewBrowseAllPages
+            );
+            scopeModeBtn.Margin = new Thickness(0, 0, 4, 2);
+            headerActions.Children.Add(scopeModeBtn);
+
+            var allModeBtn = UiBuilder.GhostButton(
+                "All Pages",
+                null,
+                () => studio.SetPreviewBrowseMode(true),
+                isActive: studio.PreviewBrowseAllPages
+            );
+            allModeBtn.Margin = new Thickness(0, 0, 4, 2);
+            headerActions.Children.Add(allModeBtn);
+        }
 
         if (
             !string.IsNullOrWhiteSpace(studio.SelectedPdfPath)
@@ -53,7 +84,7 @@ public static partial class QuizStudioViewBuilder
         )
         {
             var openReaderBtn = UiBuilder.GhostButton(
-                "Full Reader",
+                "Reader",
                 MaterialIconKind.ArrowExpandAll,
                 () =>
                 {
@@ -61,9 +92,11 @@ public static partial class QuizStudioViewBuilder
                     vm.PdfReader.JumpToPage(studio.CurrentPreviewPdfPage);
                 }
             );
-            Grid.SetColumn(openReaderBtn, 1);
-            headerGrid.Children.Add(openReaderBtn);
+            openReaderBtn.Margin = new Thickness(0, 0, 0, 2);
+            headerActions.Children.Add(openReaderBtn);
         }
+        Grid.SetColumn(headerActions, 1);
+        headerGrid.Children.Add(headerActions);
         grid.Children.Add(headerGrid);
 
         // 2. Center Visual PDF Page Bitmap Sheet
@@ -146,47 +179,144 @@ public static partial class QuizStudioViewBuilder
         Grid.SetRow(canvasBorder, 1);
         grid.Children.Add(canvasBorder);
 
-        // 3. Bottom Scope Page Flipper Bar (< Prev in Scope | Page X of Y (PDF p. Z) | Next in Scope >)
+        // 3. Bottom Responsive Manipulation & Navigation Bar
+        var footerStack = new StackPanel { Spacing = 6, Margin = new Thickness(0, 8, 0, 0) };
+
+        if (studio.PdfTotalPages > 0)
+        {
+            var manipWrap = new WrapPanel
+            {
+                Orientation = Orientation.Horizontal,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+
+            var setStartBtn = UiBuilder.GhostButton(
+                $"Set Start (p.{studio.CurrentPreviewPdfPage})",
+                MaterialIconKind.PageFirst,
+                studio.MarkCurrentPreviewPageAsStart
+            );
+            setStartBtn.Margin = new Thickness(0, 0, 5, 2);
+            manipWrap.Children.Add(setStartBtn);
+
+            var setEndBtn = UiBuilder.GhostButton(
+                $"Set End (p.{studio.CurrentPreviewPdfPage})",
+                MaterialIconKind.PageLast,
+                studio.MarkCurrentPreviewPageAsEnd
+            );
+            setEndBtn.Margin = new Thickness(0, 0, 5, 2);
+            manipWrap.Children.Add(setEndBtn);
+
+            bool inScope = studio.IsCurrentPreviewPageInScope;
+            var togglePageBtn = UiBuilder.GhostButton(
+                inScope
+                    ? $"Exclude p.{studio.CurrentPreviewPdfPage}"
+                    : $"Include p.{studio.CurrentPreviewPdfPage}",
+                inScope ? MaterialIconKind.MinusCircleOutline : MaterialIconKind.PlusCircleOutline,
+                studio.ToggleCurrentPreviewPageInScope,
+                isActive: !inScope
+            );
+            togglePageBtn.Margin = new Thickness(0, 0, 0, 2);
+            manipWrap.Children.Add(togglePageBtn);
+
+            footerStack.Children.Add(manipWrap);
+        }
+
         var footerBar = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
-            Margin = new Thickness(0, 8, 0, 0),
+            ColumnSpacing = 6,
         };
 
         var prevBtn = UiBuilder.GhostButton(
-            "Prev in Scope",
+            "Prev",
             MaterialIconKind.ChevronLeft,
             studio.PreviousPreviewPage
         );
-        prevBtn.IsEnabled = studio.PreviewScopeIndex > 0;
+        prevBtn.IsEnabled = studio.PreviewBrowseAllPages
+            ? studio.CurrentPreviewPdfPage > 1
+            : studio.PreviewScopeIndex > 0;
         footerBar.Children.Add(prevBtn);
 
-        var pageCounter = new TextBlock
+        var centerNav = new StackPanel
         {
-            Text =
-                studio.ScopePreviewPageCount > 0
-                    ? $"Scope Page {studio.PreviewScopeIndex + 1} of {studio.ScopePreviewPageCount}  (PDF p. {studio.CurrentPreviewPdfPage})"
-                    : "0 pages in scope",
-            FontSize = 11.5,
-            FontWeight = FontWeight.Medium,
-            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+            Orientation = Orientation.Horizontal,
+            Spacing = 5,
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
+            [Grid.ColumnProperty] = 1,
         };
-        Grid.SetColumn(pageCounter, 1);
-        footerBar.Children.Add(pageCounter);
+        if (studio.PdfTotalPages > 0)
+        {
+            centerNav.Children.Add(
+                new TextBlock
+                {
+                    Text = "p.",
+                    FontSize = 11.5,
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    VerticalAlignment = VerticalAlignment.Center,
+                }
+            );
+            var jumpBox = new TextBox
+            {
+                Text = studio.CurrentPreviewPdfPage.ToString(),
+                MinWidth = 48,
+                MaxWidth = 64,
+                FontSize = 11.5,
+                Padding = new Thickness(6, 3),
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            jumpBox.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter && int.TryParse(jumpBox.Text?.Trim(), out int target))
+                {
+                    e.Handled = true;
+                    studio.JumpPreviewToPdfPage(target);
+                }
+            };
+            centerNav.Children.Add(jumpBox);
+
+            var counterSummary = studio.PreviewBrowseAllPages
+                ? $"/ {studio.PdfTotalPages}  ({studio.ScopePreviewPageCount} in scope)"
+                : $"({studio.PreviewScopeIndex + 1}/{studio.ScopePreviewPageCount} in scope)";
+            centerNav.Children.Add(
+                new TextBlock
+                {
+                    Text = counterSummary,
+                    FontSize = 11.5,
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    VerticalAlignment = VerticalAlignment.Center,
+                }
+            );
+        }
+        else
+        {
+            centerNav.Children.Add(
+                new TextBlock
+                {
+                    Text = "0 pages in scope",
+                    FontSize = 11.5,
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    VerticalAlignment = VerticalAlignment.Center,
+                }
+            );
+        }
+        footerBar.Children.Add(centerNav);
 
         var nextBtn = UiBuilder.GhostButton(
-            "Next in Scope",
+            "Next",
             MaterialIconKind.ChevronRight,
             studio.NextPreviewPage
         );
-        nextBtn.IsEnabled = studio.PreviewScopeIndex + 1 < studio.ScopePreviewPageCount;
+        nextBtn.IsEnabled = studio.PreviewBrowseAllPages
+            ? studio.CurrentPreviewPdfPage < studio.PdfTotalPages
+            : studio.PreviewScopeIndex + 1 < studio.ScopePreviewPageCount;
         Grid.SetColumn(nextBtn, 2);
         footerBar.Children.Add(nextBtn);
 
-        Grid.SetRow(footerBar, 2);
-        grid.Children.Add(footerBar);
+        footerStack.Children.Add(footerBar);
+        Grid.SetRow(footerStack, 2);
+        grid.Children.Add(footerStack);
 
         return UiBuilder.Card(grid, padding: new Thickness(12, 10));
     }

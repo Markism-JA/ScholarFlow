@@ -47,6 +47,7 @@ public static partial class QuizStudioViewBuilder
         if (
             studio.StartPage.HasValue
             || studio.EndPage.HasValue
+            || !string.IsNullOrWhiteSpace(studio.PageRangeExpression)
             || studio.SelectedSectionKeys.Count > 0
             || !string.IsNullOrEmpty(studio.SelectedTerm)
         )
@@ -171,60 +172,117 @@ public static partial class QuizStudioViewBuilder
             }
         }
 
-        var startPageBox = new TextBox
+        var pageRangeBox = new TextBox
         {
-            Text = studio.StartPage?.ToString() ?? string.Empty,
-            Watermark = "From pg",
-            MinWidth = 64,
-            MaxWidth = 88,
+            Text = studio.PageRangeExpression,
+            Watermark = "Pages e.g. 1-15, 22, !5",
+            MinWidth = 155,
+            MaxWidth = 220,
             FontSize = 12,
-            Margin = new Thickness(6, 0, 4, 4),
-        };
-        var endPageBox = new TextBox
-        {
-            Text = studio.EndPage?.ToString() ?? string.Empty,
-            Watermark = "To pg",
-            MinWidth = 64,
-            MaxWidth = 88,
-            FontSize = 12,
-            Margin = new Thickness(0, 0, 4, 4),
+            Margin = new Thickness(4, 0, 4, 4),
         };
 
-        void ApplyPageInputs()
-        {
-            int? s = int.TryParse(startPageBox.Text?.Trim(), out var sv) && sv > 0 ? sv : null;
-            int? e = int.TryParse(endPageBox.Text?.Trim(), out var ev) && ev > 0 ? ev : null;
-            studio.SetPageRange(s, e);
-        }
+        void ApplyPageExpr() => studio.ApplyPageRangeExpression(pageRangeBox.Text);
 
-        startPageBox.KeyDown += (_, e) =>
+        pageRangeBox.KeyDown += (_, e) =>
         {
             if (e.Key == Key.Enter)
             {
                 e.Handled = true;
-                ApplyPageInputs();
-            }
-        };
-        endPageBox.KeyDown += (_, e) =>
-        {
-            if (e.Key == Key.Enter)
-            {
-                e.Handled = true;
-                ApplyPageInputs();
+                ApplyPageExpr();
             }
         };
 
         var applyPagesBtn = UiBuilder.GhostButton(
-            "Set Pages",
+            "Apply",
             MaterialIconKind.Check,
-            ApplyPageInputs
+            ApplyPageExpr
         );
         applyPagesBtn.Margin = new Thickness(0, 0, 4, 4);
 
-        termRangeWrap.Children.Add(startPageBox);
-        termRangeWrap.Children.Add(endPageBox);
+        var saveSectionBtn = UiBuilder.GhostButton(
+            "Save Section",
+            MaterialIconKind.BookmarkPlusOutline,
+            studio.ToggleAddCustomSectionForm,
+            isActive: studio.IsAddCustomSectionOpen
+        );
+        saveSectionBtn.Margin = new Thickness(0, 0, 4, 4);
+
+        termRangeWrap.Children.Add(pageRangeBox);
         termRangeWrap.Children.Add(applyPagesBtn);
+        if (studio.ScopePreviewPageCount > 0)
+            termRangeWrap.Children.Add(saveSectionBtn);
         scopeCard.Children.Add(termRangeWrap);
+
+        if (!string.IsNullOrWhiteSpace(studio.PageRangeError))
+        {
+            scopeCard.Children.Add(
+                new TextBlock
+                {
+                    Text = studio.PageRangeError,
+                    FontSize = 11,
+                    Foreground = ThemeService.Brush(ThemeService.PriorityP1Fg),
+                    TextWrapping = TextWrapping.Wrap,
+                }
+            );
+        }
+
+        if (studio.IsAddCustomSectionOpen)
+        {
+            var customSecRow = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto"),
+                ColumnSpacing = 6,
+            };
+            var nameBox = new TextBox
+            {
+                Text = studio.CustomSectionNameDraft,
+                Watermark = "Section name (e.g. Ch 3: Divisibility)",
+                FontSize = 12,
+            };
+            nameBox.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == TextBox.TextProperty)
+                    studio.CustomSectionNameDraft = nameBox.Text ?? string.Empty;
+            };
+            nameBox.KeyDown += (_, e) =>
+            {
+                if (e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    studio.SaveCurrentScopeAsCustomSection(nameBox.Text);
+                }
+            };
+            customSecRow.Children.Add(nameBox);
+
+            var confirmSaveBtn = UiBuilder.PrimaryButton(
+                "Save",
+                MaterialIconKind.Check,
+                () => studio.SaveCurrentScopeAsCustomSection(nameBox.Text)
+            );
+            Grid.SetColumn(confirmSaveBtn, 1);
+            customSecRow.Children.Add(confirmSaveBtn);
+
+            var cancelSaveBtn = UiBuilder.GhostButton(
+                "Cancel",
+                null,
+                studio.ToggleAddCustomSectionForm
+            );
+            Grid.SetColumn(cancelSaveBtn, 2);
+            customSecRow.Children.Add(cancelSaveBtn);
+
+            scopeCard.Children.Add(
+                new Border
+                {
+                    Background = ThemeService.Brush(ThemeService.BgBase),
+                    BorderBrush = ThemeService.Brush(ThemeService.AccentPrimary),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(8, 6),
+                    Child = customSecRow,
+                }
+            );
+        }
 
         // Hierarchical Outline Section Tree Picker (supports Mother -> Subsections + tri-state selection)
         static bool NodeMatchesTermFilter(PdfOutlineTreeNode node, string? selectedTerm)
@@ -266,7 +324,7 @@ public static partial class QuizStudioViewBuilder
 
                 var secRow = new Grid
                 {
-                    ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto,*,Auto,Auto"),
+                    ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto,*,Auto,Auto,Auto"),
                     ColumnSpacing = 4,
                     Margin = new Thickness(depth * 14, 0, 0, 0),
                 };
@@ -354,6 +412,20 @@ public static partial class QuizStudioViewBuilder
                 Grid.SetColumn(previewSecBtn, 4);
                 secRow.Children.Add(previewSecBtn);
 
+                var customId = studio.GetCustomSectionIdForOutlineSection(capturedSec);
+                if (!string.IsNullOrWhiteSpace(customId))
+                {
+                    var capturedCustomId = customId;
+                    var delBtn = UiBuilder.IconButton(
+                        MaterialIconKind.DeleteOutline,
+                        () => studio.DeleteCustomSection(capturedCustomId),
+                        14,
+                        ThemeService.Brush(ThemeService.TextMuted)
+                    );
+                    Grid.SetColumn(delBtn, 5);
+                    secRow.Children.Add(delBtn);
+                }
+
                 treeListStack.Children.Add(
                     new Border
                     {
@@ -397,6 +469,27 @@ public static partial class QuizStudioViewBuilder
         else if (studio.IsInspectingPdf)
         {
             scopeCard.Children.Add(BuildOutlineSkeleton());
+        }
+        else if (studio.PdfTotalPages > 0)
+        {
+            scopeCard.Children.Add(
+                new Border
+                {
+                    Background = ThemeService.Brush(ThemeService.BgBase),
+                    BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(9, 7),
+                    Child = new TextBlock
+                    {
+                        Text =
+                            "No embedded TOC in this PDF — type ranges above (e.g. 1-15, 22, !4), use Set Start / Set End / Exclude in the preview pane, or click Save Section to build reusable chapters.",
+                        FontSize = 11.5,
+                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                        TextWrapping = TextWrapping.Wrap,
+                    },
+                }
+            );
         }
 
         if (!studio.IsFileSourceMode || studio.IsMixedSourceMode)

@@ -1117,4 +1117,56 @@ public sealed class QuizSuperEngineTests
         Assert.Contains("without regenerating the entire quiz", ex.TargetedFixPrompt);
         Assert.Contains(@"\\frac", ex.TargetedFixPrompt);
     }
+
+    [Fact]
+    public void PdfPageRangeParser_AndCustomSectionStore_HandleMultiRangesExclusionsAndPersistence()
+    {
+        // 1. Multi-range + exclusion syntax
+        Assert.True(
+            PdfPageRangeParser.TryParse("1-10, 15, 20-25, !4-6, !22", totalPages: 30, out var ranges, out var err)
+        );
+        Assert.Null(err);
+        Assert.Equal("1-3, 7-10, 15, 20-21, 23-25", PdfPageRangeParser.Format(ranges));
+
+        // 2. Standalone exclusion starts from 1..totalPages
+        Assert.True(PdfPageRangeParser.TryParse("!1-2, !10", totalPages: 10, out var exclOnly, out _));
+        Assert.Equal("3-9", PdfPageRangeParser.Format(exclOnly));
+
+        // 3. Invalid syntax reports a clean error
+        Assert.False(PdfPageRangeParser.TryParse("abc-5", totalPages: 10, out _, out var badErr));
+        Assert.False(string.IsNullOrWhiteSpace(badErr));
+
+        // 4. Custom saved sections round-trip & delete cleanly
+        var tempDir = Path.Combine(Path.GetTempPath(), $"sf_custom_sec_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            var pdfPath = Path.Combine(tempDir, "DiscreteMath", "Textbook.pdf");
+            var added = ScholarFlow.Core.Pdf.PdfCustomSectionStore.AddSection(
+                tempDir,
+                pdfPath,
+                "Ch 3: Divisibility",
+                42,
+                67,
+                rangeExpression: "42-50, 52-67"
+            );
+            var loaded = ScholarFlow.Core.Pdf.PdfCustomSectionStore.LoadSections(tempDir, pdfPath);
+            Assert.Single(loaded);
+            Assert.Equal("Ch 3: Divisibility", loaded[0].Title);
+            Assert.Equal("42-50, 52-67", loaded[0].RangeExpression);
+
+            Assert.True(
+                ScholarFlow.Core.Pdf.PdfCustomSectionStore.DeleteSection(tempDir, pdfPath, added.Id)
+            );
+            Assert.Empty(ScholarFlow.Core.Pdf.PdfCustomSectionStore.LoadSections(tempDir, pdfPath));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+            catch { }
+        }
+    }
 }
