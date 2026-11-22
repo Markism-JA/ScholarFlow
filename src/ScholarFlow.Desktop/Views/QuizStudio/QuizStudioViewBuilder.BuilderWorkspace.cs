@@ -483,13 +483,18 @@ public static partial class QuizStudioViewBuilder
                     Child = new TextBlock
                     {
                         Text =
-                            "No embedded TOC in this PDF — type ranges above (e.g. 1-15, 22, !4), use Set Start / Set End / Exclude in the preview pane, or click Save Section to build reusable chapters.",
+                            "No embedded TOC in this PDF — toggle individual pages below, type ranges (e.g. 1-15, !4), open Page Studio, or Save Section to build reusable chapters.",
                         FontSize = 11.5,
                         Foreground = ThemeService.Brush(ThemeService.TextMuted),
                         TextWrapping = TextWrapping.Wrap,
                     },
                 }
             );
+        }
+
+        if (studio.PdfTotalPages > 0)
+        {
+            scopeCard.Children.Add(BuildCollapsiblePageTocPanel(studio, isFullHeight: false));
         }
 
         if (!studio.IsFileSourceMode || studio.IsMixedSourceMode)

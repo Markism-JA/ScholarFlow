@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
+using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
@@ -135,6 +137,78 @@ public sealed class App : Application
             },
         };
         Styles.Add(menuItemSelectedStyle);
+
+        // Global sleek, slim overlay ScrollBars across every ScrollViewer without touching individual widgets
+        Styles.Add(
+            new Style(x => x.OfType<ScrollBar>())
+            {
+                Setters =
+                {
+                    new Setter(TemplatedControl.BackgroundProperty, Brushes.Transparent),
+                    new Setter(TemplatedControl.BorderThicknessProperty, new Thickness(0)),
+                    new Setter(Visual.OpacityProperty, 0.55),
+                },
+            }
+        );
+        Styles.Add(
+            new Style(x => x.OfType<ScrollBar>().Class(":pointerover"))
+            {
+                Setters = { new Setter(Visual.OpacityProperty, 0.95) },
+            }
+        );
+        Styles.Add(
+            new Style(x => x.OfType<ScrollBar>().Class(":vertical"))
+            {
+                Setters =
+                {
+                    new Setter(Layoutable.MinWidthProperty, 8.0),
+                    new Setter(Layoutable.WidthProperty, 8.0),
+                    new Setter(Layoutable.MarginProperty, new Thickness(0, 2, 2, 2)),
+                },
+            }
+        );
+        Styles.Add(
+            new Style(x => x.OfType<ScrollBar>().Class(":horizontal"))
+            {
+                Setters =
+                {
+                    new Setter(Layoutable.MinHeightProperty, 8.0),
+                    new Setter(Layoutable.HeightProperty, 8.0),
+                    new Setter(Layoutable.MarginProperty, new Thickness(2, 0, 2, 2)),
+                },
+            }
+        );
+        Styles.Add(
+            new Style(x => x.OfType<ScrollBar>().Template().OfType<RepeatButton>().Name("PART_LineUpButton"))
+            {
+                Setters =
+                {
+                    new Setter(Visual.IsVisibleProperty, false),
+                    new Setter(Layoutable.WidthProperty, 0.0),
+                    new Setter(Layoutable.HeightProperty, 0.0),
+                },
+            }
+        );
+        Styles.Add(
+            new Style(x => x.OfType<ScrollBar>().Template().OfType<RepeatButton>().Name("PART_LineDownButton"))
+            {
+                Setters =
+                {
+                    new Setter(Visual.IsVisibleProperty, false),
+                    new Setter(Layoutable.WidthProperty, 0.0),
+                    new Setter(Layoutable.HeightProperty, 0.0),
+                },
+            }
+        );
+        Styles.Add(
+            new Style(x => x.OfType<ScrollBar>().Template().OfType<Thumb>())
+            {
+                Setters =
+                {
+                    new Setter(TemplatedControl.CornerRadiusProperty, new CornerRadius(4)),
+                },
+            }
+        );
     }
 
     public override void OnFrameworkInitializationCompleted()

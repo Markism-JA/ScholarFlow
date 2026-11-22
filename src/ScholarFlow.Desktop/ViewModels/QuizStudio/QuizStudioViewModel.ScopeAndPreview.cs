@@ -65,6 +65,11 @@ public sealed partial class QuizStudioViewModel
         PageRangeError = null;
         PreviewBrowseAllPages = false;
         PreviewBrowsePageNumber = 1;
+        IsPageGridOpen = false;
+        PageGridBatchIndex = 0;
+        _lastGridAnchorPage = null;
+        PageTocFilter = PageTocFilterMode.All;
+        PageTocWindowIndex = 0;
         IsAddCustomSectionOpen = false;
         CustomSectionNameDraft = string.Empty;
         SelectedSectionKeys.Clear();
@@ -142,8 +147,12 @@ public sealed partial class QuizStudioViewModel
 
     public void SetPreviewBrowseMode(bool browseAll)
     {
+        IsPageGridOpen = false;
         if (PreviewBrowseAllPages == browseAll)
+        {
+            _mainVm.RequestUiRefresh();
             return;
+        }
 
         int curPage = CurrentPreviewPdfPage;
         PreviewBrowseAllPages = browseAll;
@@ -164,6 +173,363 @@ public sealed partial class QuizStudioViewModel
             }
             PreviewScopeIndex = idx;
         }
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void OpenPageGrid()
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        IsPageGridOpen = true;
+        int cur = Math.Clamp(CurrentPreviewPdfPage, 1, PdfTotalPages);
+        PreviewBrowseAllPages = true;
+        PreviewBrowsePageNumber = cur;
+        PageGridBatchIndex = (cur - 1) / PageGridBatchSize;
+        EnsurePageGridBatchRendered();
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void ClosePageGrid()
+    {
+        if (!IsPageGridOpen)
+            return;
+
+        IsPageGridOpen = false;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public (int StartPage, int EndPage, int TotalBatches) GetPageGridBatchRange()
+    {
+        if (PdfTotalPages <= 0)
+            return (0, 0, 0);
+
+        int totalBatches = Math.Max(1, (int)Math.Ceiling(PdfTotalPages / (double)PageGridBatchSize));
+        int batch = Math.Clamp(PageGridBatchIndex, 0, totalBatches - 1);
+        int start = (batch * PageGridBatchSize) + 1;
+        int end = Math.Min(PdfTotalPages, start + PageGridBatchSize - 1);
+        return (start, end, totalBatches);
+    }
+
+    public void PreviousPageGridBatch()
+    {
+        if (PageGridBatchIndex > 0)
+        {
+            PageGridBatchIndex--;
+            EnsurePageGridBatchRendered();
+            _mainVm.RequestUiRefresh();
+        }
+    }
+
+    public void NextPageGridBatch()
+    {
+        var (_, _, totalBatches) = GetPageGridBatchRange();
+        if (PageGridBatchIndex + 1 < totalBatches)
+        {
+            PageGridBatchIndex++;
+            EnsurePageGridBatchRendered();
+            _mainVm.RequestUiRefresh();
+        }
+    }
+
+    public Bitmap? GetThumbnailBitmap(int pageOneBased)
+    {
+        if (string.IsNullOrWhiteSpace(SelectedPdfPath) || PdfTotalPages <= 0)
+            return null;
+
+        return _thumbnailBitmapCache.TryGetValue((SelectedPdfPath, pageOneBased), out var bmp)
+            ? bmp
+            : null;
+    }
+
+    public void EnsurePageGridBatchRendered()
+    {
+        if (
+            string.IsNullOrWhiteSpace(SelectedPdfPath)
+            || !File.Exists(SelectedPdfPath)
+            || PdfTotalPages <= 0
+        )
+            return;
+
+        var pdfPath = SelectedPdfPath;
+        var (start, end, _) = GetPageGridBatchRange();
+        if (start <= 0 || end < start)
+            return;
+
+        var missingPages = new List<int>();
+        for (int p = start; p <= end; p++)
+        {
+            if (!_thumbnailBitmapCache.ContainsKey((pdfPath, p)))
+                missingPages.Add(p);
+        }
+        if (missingPages.Count == 0)
+            return;
+
+        var batchKey = $"{pdfPath}::{start}-{end}";
+        if (!_pendingThumbnailBatches.Add(batchKey))
+            return;
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                byte[] pdfBytes;
+                lock (_pendingPreviewRenders)
+                {
+                    if (
+                        !string.Equals(
+                            _cachedBytesPath,
+                            pdfPath,
+                            StringComparison.OrdinalIgnoreCase
+                        ) || _cachedPdfBytes is null
+                    )
+                    {
+                        _cachedPdfBytes = File.ReadAllBytes(pdfPath);
+                        _cachedBytesPath = pdfPath;
+                    }
+                    pdfBytes = _cachedPdfBytes;
+                }
+
+                var renderedChunk = new List<(int Page, Services.RenderedPdfPixels Pixels)>();
+                foreach (var page in missingPages)
+                {
+                    if (!string.Equals(SelectedPdfPath, pdfPath, StringComparison.OrdinalIgnoreCase))
+                        break;
+
+                    var pixels = Services.PdfBitmapRenderer.RenderPagePixels(
+                        pdfBytes,
+                        Math.Max(0, page - 1),
+                        dpi: 64
+                    );
+                    renderedChunk.Add((page, pixels));
+
+                    if (renderedChunk.Count >= 6)
+                    {
+                        var flush = renderedChunk.ToList();
+                        renderedChunk.Clear();
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            foreach (var (pg, px) in flush)
+                                _thumbnailBitmapCache[(pdfPath, pg)] =
+                                    Services.PdfBitmapRenderer.CreateWriteableBitmap(px);
+                            _mainVm.RequestUiRefresh();
+                        });
+                    }
+                }
+
+                if (renderedChunk.Count > 0)
+                {
+                    var flush = renderedChunk.ToList();
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        foreach (var (pg, px) in flush)
+                            _thumbnailBitmapCache[(pdfPath, pg)] =
+                                Services.PdfBitmapRenderer.CreateWriteableBitmap(px);
+                        _mainVm.RequestUiRefresh();
+                    });
+                }
+            }
+            catch
+            {
+                // Ignore transient render failure
+            }
+            finally
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    _pendingThumbnailBatches.Remove(batchKey)
+                );
+            }
+        });
+    }
+
+    public void TogglePageInScopeFromGrid(int pageOneBased, bool isShiftHeld)
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        int clicked = Math.Clamp(pageOneBased, 1, PdfTotalPages);
+        var currentPages = MatchedScopePages.Select(p => p.PageNumber).ToHashSet();
+        bool targetInclude = !currentPages.Contains(clicked);
+
+        if (isShiftHeld && _lastGridAnchorPage.HasValue)
+        {
+            int from = Math.Min(_lastGridAnchorPage.Value, clicked);
+            int to = Math.Max(_lastGridAnchorPage.Value, clicked);
+            for (int p = from; p <= to; p++)
+            {
+                if (targetInclude)
+                    currentPages.Add(p);
+                else
+                    currentPages.Remove(p);
+            }
+        }
+        else
+        {
+            if (targetInclude)
+                currentPages.Add(clicked);
+            else
+                currentPages.Remove(clicked);
+        }
+
+        _lastGridAnchorPage = clicked;
+        ApplyPageSetToScope(currentPages);
+    }
+
+    public void SetBatchPagesInScope(bool include)
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        var (start, end, _) = GetPageGridBatchRange();
+        if (start <= 0)
+            return;
+
+        var currentPages = MatchedScopePages.Select(p => p.PageNumber).ToHashSet();
+        for (int p = start; p <= end; p++)
+        {
+            if (include)
+                currentPages.Add(p);
+            else
+                currentPages.Remove(p);
+        }
+        ApplyPageSetToScope(currentPages);
+    }
+
+    public void InvertPdfScope()
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        var currentPages = MatchedScopePages.Select(p => p.PageNumber).ToHashSet();
+        var inverted = new HashSet<int>();
+        for (int p = 1; p <= PdfTotalPages; p++)
+        {
+            if (!currentPages.Contains(p))
+                inverted.Add(p);
+        }
+        ApplyPageSetToScope(inverted);
+    }
+
+    public void InspectPageFromGrid(int pageOneBased)
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        PreviewBrowseAllPages = true;
+        PreviewBrowsePageNumber = Math.Clamp(pageOneBased, 1, PdfTotalPages);
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void ToggleBuilderPageToc()
+    {
+        IsBuilderPageTocOpen = !IsBuilderPageTocOpen;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void ToggleStudioPageToc()
+    {
+        IsStudioPageTocOpen = !IsStudioPageTocOpen;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void SetPageTocFilter(PageTocFilterMode mode)
+    {
+        if (PageTocFilter == mode)
+            return;
+
+        PageTocFilter = mode;
+        PageTocWindowIndex = 0;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void PreviousPageTocWindow()
+    {
+        if (PageTocWindowIndex > 0)
+        {
+            PageTocWindowIndex--;
+            _mainVm.RequestUiRefresh();
+        }
+    }
+
+    public void NextPageTocWindow(int totalWindows)
+    {
+        if (PageTocWindowIndex + 1 < totalWindows)
+        {
+            PageTocWindowIndex++;
+            _mainVm.RequestUiRefresh();
+        }
+    }
+
+    public void ToggleSinglePageInScope(int pageOneBased)
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        int page = Math.Clamp(pageOneBased, 1, PdfTotalPages);
+        var currentPages = MatchedScopePages.Select(p => p.PageNumber).ToHashSet();
+        if (!currentPages.Remove(page))
+            currentPages.Add(page);
+
+        ApplyPageSetToScope(currentPages);
+    }
+
+    public void JumpToPageFromToc(int pageOneBased)
+    {
+        if (PdfTotalPages <= 0)
+            return;
+
+        int clamped = Math.Clamp(pageOneBased, 1, PdfTotalPages);
+        if (IsPageGridOpen)
+        {
+            PreviewBrowseAllPages = true;
+            PreviewBrowsePageNumber = clamped;
+            int targetBatch = (clamped - 1) / PageGridBatchSize;
+            if (PageGridBatchIndex != targetBatch)
+            {
+                PageGridBatchIndex = targetBatch;
+                EnsurePageGridBatchRendered();
+            }
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
+        JumpPreviewToPdfPage(clamped);
+    }
+
+    public string? GetPageSectionLabel(int pageOneBased)
+    {
+        var match = OutlineSections.LastOrDefault(s =>
+            pageOneBased >= s.StartPage && pageOneBased <= s.EndPage
+        );
+        return match?.Title;
+    }
+
+    private void ApplyPageSetToScope(HashSet<int> pages)
+    {
+        if (pages.Count == 0)
+        {
+            StatusMessage = "At least 1 page must remain in scope.";
+            IsStatusError = false;
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
+        SelectedSectionKeys.Clear();
+        var ranges = PdfPageRangeParser.CompressToRanges(pages);
+        PageRangeExpression = PdfPageRangeParser.Format(ranges);
+        PageRangeError = null;
+        if (ranges.Count == 1)
+        {
+            StartPage = ranges[0].StartPage;
+            EndPage = ranges[0].EndPage;
+        }
+        else
+        {
+            StartPage = null;
+            EndPage = null;
+        }
+
+        RecomputeScopePreview();
         _mainVm.RequestUiRefresh();
     }
 
@@ -1055,6 +1421,8 @@ public sealed partial class QuizStudioViewModel
             );
             OutlineSections = merged;
             OutlineSectionRoots = BuildOutlineTree(merged);
+            IsBuilderPageTocOpen = merged.Count == 0 && cached.TotalPages > 0;
+            PageTocWindowIndex = 0;
             RecomputeScopePreview();
         }
         else
@@ -1089,6 +1457,8 @@ public sealed partial class QuizStudioViewModel
                 );
                 OutlineSections = merged;
                 OutlineSectionRoots = BuildOutlineTree(merged);
+                IsBuilderPageTocOpen = merged.Count == 0 && totalPages > 0;
+                PageTocWindowIndex = 0;
                 RecomputeScopePreview();
             }
         }

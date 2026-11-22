@@ -48,6 +48,13 @@ public enum OutlineSelectionState
     Checked,
 }
 
+public enum PageTocFilterMode
+{
+    All,
+    InScope,
+    Excluded,
+}
+
 public sealed class PdfOutlineTreeNode
 {
     public required PdfOutlineSectionInfo Section { get; init; }
@@ -87,6 +94,10 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         (int TotalPages, IReadOnlyList<PdfOutlineSectionInfo> Sections)
     > _outlineCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<(string Path, int Page), Bitmap> _previewBitmapCache = [];
+    private readonly Dictionary<(string Path, int Page), Bitmap> _thumbnailBitmapCache = [];
+    private readonly HashSet<string> _pendingThumbnailBatches = new(
+        StringComparer.OrdinalIgnoreCase
+    );
     private string? _cachedBytesPath;
     private byte[]? _cachedPdfBytes;
 
@@ -156,6 +167,15 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public string? PageRangeError { get; private set; }
     public bool PreviewBrowseAllPages { get; private set; }
     public int PreviewBrowsePageNumber { get; private set; } = 1;
+    public bool IsPageGridOpen { get; private set; }
+    public int PageGridBatchIndex { get; private set; }
+    public const int PageGridBatchSize = 24;
+    private int? _lastGridAnchorPage;
+    public bool IsBuilderPageTocOpen { get; private set; }
+    public bool IsStudioPageTocOpen { get; private set; } = true;
+    public PageTocFilterMode PageTocFilter { get; private set; } = PageTocFilterMode.All;
+    public int PageTocWindowIndex { get; private set; }
+    public const int PageTocWindowSize = 80;
     public bool IsAddCustomSectionOpen { get; private set; }
     public string CustomSectionNameDraft { get; set; } = string.Empty;
     public IReadOnlyList<SavedPdfSection> CustomSavedSections { get; private set; } = [];
@@ -547,6 +567,10 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         foreach (var bmp in _previewBitmapCache.Values)
             bmp.Dispose();
         _previewBitmapCache.Clear();
+        foreach (var bmp in _thumbnailBitmapCache.Values)
+            bmp.Dispose();
+        _thumbnailBitmapCache.Clear();
+        _pendingThumbnailBatches.Clear();
         foreach (var bmp in _snipBitmapCache.Values)
             bmp.Dispose();
         _snipBitmapCache.Clear();
@@ -574,6 +598,13 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         PageRangeError = null;
         PreviewBrowseAllPages = false;
         PreviewBrowsePageNumber = 1;
+        IsPageGridOpen = false;
+        PageGridBatchIndex = 0;
+        _lastGridAnchorPage = null;
+        IsBuilderPageTocOpen = false;
+        IsStudioPageTocOpen = true;
+        PageTocFilter = PageTocFilterMode.All;
+        PageTocWindowIndex = 0;
         IsAddCustomSectionOpen = false;
         CustomSectionNameDraft = string.Empty;
         CustomSavedSections = [];

@@ -28,6 +28,15 @@ public static partial class QuizStudioViewBuilder
         }
 
         if (
+            studio.ActiveSubTab == QuizStudioSubTab.Builder
+            && studio.IsPageGridOpen
+            && studio.PdfTotalPages > 0
+        )
+        {
+            return BuildDedicatedPageStudioView(vm, studio);
+        }
+
+        if (
             studio.ActiveSubTab == QuizStudioSubTab.Organizer
             && studio.IsDedicatedSnipperOpen
             && studio.EditingQuestionDraft is not null

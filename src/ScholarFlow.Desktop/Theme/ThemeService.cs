@@ -98,6 +98,20 @@ public static class ThemeService
             SetBrush(res, "CalendarDatePickerCalendarGlyphForeground", "#949BA7");
             SetBrush(res, "CalendarViewBackground", "#191B1F");
             SetBrush(res, "CalendarViewBorderBrush", "#343844");
+
+            // Sleek slim ScrollBar theme resources (no chunky track background)
+            res["ScrollBarSize"] = 8.0;
+            res["ScrollBarTrackFill"] = Brushes.Transparent;
+            res["ScrollBarTrackFillPointerOver"] = Brushes.Transparent;
+            res["ScrollBarTrackStroke"] = Brushes.Transparent;
+            res["ScrollBarTrackStrokePointerOver"] = Brushes.Transparent;
+            SetBrush(res, "ScrollBarThumbFill", "#404552");
+            SetBrush(res, "ScrollBarThumbFillPointerOver", "#5E6678");
+            SetBrush(res, "ScrollBarThumbFillPressed", "#7A849A");
+            SetBrush(res, "ScrollBarPanningThumbBackground", "#5E6678");
+            res["ScrollBarButtonArrowForeground"] = Brushes.Transparent;
+            res["ScrollBarButtonArrowForegroundPointerOver"] = Brushes.Transparent;
+            res["ScrollBarButtonArrowForegroundPressed"] = Brushes.Transparent;
             SetBrush(res, "CalendarViewCalendarItemBackground", "#1D2027");
             SetBrush(res, "CalendarViewCalendarItemForeground", "#EAECEF");
             SetBrush(res, "CalendarViewCalendarItemHoverBackground", "#272A32");
@@ -172,6 +186,20 @@ public static class ThemeService
             SetBrush(res, "CalendarViewTodayBackground", "#DC4C3E");
             SetBrush(res, "CalendarViewSelectedBorderBrush", "#DC4C3E");
             SetBrush(res, "CalendarViewHoverBorderBrush", "#B8B5AE");
+
+            // Sleek slim ScrollBar theme resources (Light mode)
+            res["ScrollBarSize"] = 8.0;
+            res["ScrollBarTrackFill"] = Brushes.Transparent;
+            res["ScrollBarTrackFillPointerOver"] = Brushes.Transparent;
+            res["ScrollBarTrackStroke"] = Brushes.Transparent;
+            res["ScrollBarTrackStrokePointerOver"] = Brushes.Transparent;
+            SetBrush(res, "ScrollBarThumbFill", "#C6C9D1");
+            SetBrush(res, "ScrollBarThumbFillPointerOver", "#9EA4B2");
+            SetBrush(res, "ScrollBarThumbFillPressed", "#7A8190");
+            SetBrush(res, "ScrollBarPanningThumbBackground", "#9EA4B2");
+            res["ScrollBarButtonArrowForeground"] = Brushes.Transparent;
+            res["ScrollBarButtonArrowForegroundPointerOver"] = Brushes.Transparent;
+            res["ScrollBarButtonArrowForegroundPressed"] = Brushes.Transparent;
         }
 
         ThemeChanged?.Invoke(null, mode);
