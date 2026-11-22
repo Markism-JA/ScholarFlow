@@ -1,8 +1,11 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Material.Icons;
+using ScholarFlow.Core.Models;
 using ScholarFlow.Desktop.Theme;
 using ScholarFlow.Desktop.UI;
 using ScholarFlow.Desktop.ViewModels;
@@ -11,52 +14,366 @@ namespace ScholarFlow.Desktop.Views;
 
 public static partial class QuizStudioViewBuilder
 {
-    private static Border BuildAiSettingsCard(MainWindowViewModel vm, QuizStudioViewModel studio)
+    private static readonly (string Id, string Label, MaterialIconKind Icon)[] AiProviderPresets =
+    [
+        ("OpenAI", "OpenAI", MaterialIconKind.CreationOutline),
+        ("OpenRouter", "OpenRouter", MaterialIconKind.SwapHorizontal),
+        ("GeminiAiStudio", "Google AI Studio", MaterialIconKind.AutoFix),
+        ("DeepSeek", "DeepSeek", MaterialIconKind.Brain),
+        ("Groq", "Groq", MaterialIconKind.LightningBoltOutline),
+        ("OllamaLocal", "Ollama (Local)", MaterialIconKind.ServerNetwork),
+        ("LmStudio", "LM Studio / Custom", MaterialIconKind.DesktopClassic),
+        ("OfflineSmart", "Offline PDF Analyzer", MaterialIconKind.FileSearchOutline),
+    ];
+
+    /// <summary>
+    /// Compact header pill showing the active AI model/profile + readiness dot.
+    /// Clicking opens a floating quick-switch Flyout popover (zero workspace shrink),
+    /// with a button to open the full floating AI Engine Configuration modal.
+    /// </summary>
+    private static Button BuildAiQuickSwitchButton(
+        MainWindowViewModel vm,
+        QuizStudioViewModel studio
+    )
     {
         var settings = vm.Settings;
-        var cardStack = new StackPanel { Spacing = 8 };
+        var (displayLabel, isConfigured, missingReason) = studio.GetActiveAiEngineStatus();
 
-        cardStack.Children.Add(
-            UiBuilder.SectionHeader("Unified OpenAI-Compatible AI Engine & Saved Model Profiles")
+        // Concise pill label: prefer active profile name, or model name, or "Offline Analyzer"
+        var activeProfile = !string.IsNullOrWhiteSpace(settings.ActiveAiProfileId)
+            ? settings.SavedAiProfiles.FirstOrDefault(p =>
+                string.Equals(p.Id, settings.ActiveAiProfileId, StringComparison.OrdinalIgnoreCase)
+            )
+            : null;
+
+        bool isOffline =
+            activeProfile?.IsOffline == true
+            || string.Equals(
+                settings.AiProviderPreset,
+                "OfflineSmart",
+                StringComparison.OrdinalIgnoreCase
+            );
+
+        string shortLabel =
+            !isConfigured ? "Configure AI"
+            : isOffline ? "Offline Analyzer"
+            : activeProfile is not null ? activeProfile.Name
+            : !string.IsNullOrWhiteSpace(settings.AiModelName) ? settings.AiModelName
+            : displayLabel;
+
+        var statusDotColor =
+            !isConfigured ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+            : isOffline ? ThemeService.Brush(ThemeService.TextSecondary)
+            : new SolidColorBrush(
+                Color.Parse(ThemeService.CurrentTheme == ThemeMode.Dark ? "#4ADE80" : "#16A34A")
+            );
+
+        var dot = new Border
+        {
+            Width = 7,
+            Height = 7,
+            CornerRadius = new CornerRadius(3.5),
+            Background = statusDotColor,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var labelText = new TextBlock
+        {
+            Text = shortLabel,
+            FontSize = 12,
+            FontWeight = FontWeight.Medium,
+            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+            MaxWidth = 148,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var normalBg = studio.IsAiSettingsOpen
+            ? ThemeService.Brush(ThemeService.BgElevated)
+            : Brushes.Transparent;
+        var hoverBg = ThemeService.Brush(ThemeService.BgHover);
+        var normalBorder = studio.IsAiSettingsOpen
+            ? ThemeService.Brush(ThemeService.BorderStrong)
+            : ThemeService.Brush(ThemeService.BorderSubtle);
+
+        var btn = new Button
+        {
+            Background = normalBg,
+            BorderBrush = normalBorder,
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(8, 4),
+            VerticalAlignment = VerticalAlignment.Center,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 6,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    dot,
+                    labelText,
+                    UiBuilder.Icon(
+                        MaterialIconKind.ChevronDown,
+                        13.5,
+                        ThemeService.Brush(ThemeService.TextMuted)
+                    ),
+                },
+            },
+        };
+        btn.PointerEntered += (_, _) => btn.Background = hoverBg;
+        btn.PointerExited += (_, _) => btn.Background = normalBg;
+
+        ToolTip.SetTip(
+            btn,
+            isConfigured
+                ? $"Active AI: {displayLabel} — Click to switch model or configure"
+                : $"AI Engine needs setup: {missingReason} — Click to configure"
         );
 
-        var presetRow = new WrapPanel { Orientation = Orientation.Horizontal };
-        void AddProviderPreset(string id, string label, MaterialIconKind icon)
+        var flyoutHost = new Border
         {
+            Background = Brushes.Transparent,
+            Padding = new Thickness(2),
+            Width = 304,
+            MaxHeight = 390,
+        };
+        var flyout = new Flyout
+        {
+            Content = flyoutHost,
+            Placement = PlacementMode.BottomEdgeAlignedRight,
+        };
+
+        flyout.Opening += (_, _) =>
+        {
+            var (currLabel, currReady, currMissing) = studio.GetActiveAiEngineStatus();
+            var stack = new StackPanel { Spacing = 8 };
+
+            // Active status summary header
+            var statusCard = new Border
+            {
+                Background = ThemeService.Brush(ThemeService.BgElevated),
+                BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(9, 7),
+                Child = new StackPanel
+                {
+                    Spacing = 2,
+                    Children =
+                    {
+                        new TextBlock
+                        {
+                            Text = "ACTIVE AI ENGINE",
+                            FontSize = 10,
+                            FontWeight = FontWeight.SemiBold,
+                            LetterSpacing = 0.6,
+                            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                        },
+                        new TextBlock
+                        {
+                            Text = currLabel,
+                            FontSize = 12.5,
+                            FontWeight = FontWeight.SemiBold,
+                            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                        },
+                        new TextBlock
+                        {
+                            Text = currReady ? "Ready to generate & fix decks" : currMissing ?? "Configuration required",
+                            FontSize = 11,
+                            Foreground = currReady
+                                ? ThemeService.Brush(ThemeService.TextSecondary)
+                                : ThemeService.Brush(ThemeService.PriorityP2Fg),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                    },
+                },
+            };
+            stack.Children.Add(statusCard);
+
+            // Saved Profiles (1-click switch)
+            if (settings.SavedAiProfiles.Count > 0)
+            {
+                stack.Children.Add(UiBuilder.SectionHeader("Saved Profiles"));
+                var profList = new StackPanel { Spacing = 3 };
+                foreach (var prof in settings.SavedAiProfiles)
+                {
+                    var capturedProf = prof;
+                    bool isActiveProf = string.Equals(
+                        settings.ActiveAiProfileId,
+                        prof.Id,
+                        StringComparison.OrdinalIgnoreCase
+                    );
+                    var pBtn = UiBuilder.GhostButton(
+                        $"{prof.Name} · {prof.ModelName}",
+                        isActiveProf ? MaterialIconKind.Check : MaterialIconKind.RobotOutline,
+                        async () =>
+                        {
+                            flyout.Hide();
+                            await studio.SelectSavedAiProfileAsync(capturedProf);
+                        },
+                        isActive: isActiveProf
+                    );
+                    pBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    pBtn.HorizontalContentAlignment = HorizontalAlignment.Left;
+                    profList.Children.Add(pBtn);
+                }
+                stack.Children.Add(profList);
+            }
+
+            // Quick Provider Presets
+            stack.Children.Add(UiBuilder.SectionHeader("Quick Switch Provider"));
+            var presetWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (var (id, label, icon) in AiProviderPresets)
+            {
+                var capturedId = id;
+                bool active =
+                    string.Equals(settings.AiProviderPreset, id, StringComparison.OrdinalIgnoreCase)
+                    && string.IsNullOrWhiteSpace(settings.ActiveAiProfileId);
+                var pBtn = UiBuilder.GhostButton(
+                    label,
+                    icon,
+                    async () =>
+                    {
+                        flyout.Hide();
+                        await studio.ApplyAiProviderPresetAsync(capturedId);
+                    },
+                    isActive: active
+                );
+                pBtn.Margin = new Thickness(0, 0, 4, 4);
+                presetWrap.Children.Add(pBtn);
+            }
+            stack.Children.Add(presetWrap);
+
+            stack.Children.Add(UiBuilder.HairlineDivider());
+
+            // Footer: Open Full Floating Configuration Modal
+            var configBtn = UiBuilder.GhostButton(
+                "Configure Provider, Model & API Keys...",
+                MaterialIconKind.CogOutline,
+                () =>
+                {
+                    flyout.Hide();
+                    if (!studio.IsAiSettingsOpen)
+                        studio.ToggleAiSettings();
+                }
+            );
+            configBtn.HorizontalAlignment = HorizontalAlignment.Stretch;
+            configBtn.HorizontalContentAlignment = HorizontalAlignment.Center;
+            stack.Children.Add(configBtn);
+
+            flyoutHost.Child = new ScrollViewer
+            {
+                Content = stack,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            };
+        };
+
+        btn.Flyout = flyout;
+        return btn;
+    }
+
+    /// <summary>
+    /// Full floating centered AI Engine Configuration modal overlay.
+    /// Zero impact on workspace layout; responsive 2-column/stacked form fields.
+    /// </summary>
+    private static Grid BuildFloatingAiSettingsOverlay(
+        MainWindowViewModel vm,
+        QuizStudioViewModel studio
+    )
+    {
+        var settings = vm.Settings;
+        var (displayLabel, isConfigured, _) = studio.GetActiveAiEngineStatus();
+
+        var overlay = new Grid();
+
+        var scrim = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#7A000000")),
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        scrim.PointerPressed += (_, _) => studio.ToggleAiSettings();
+        overlay.Children.Add(scrim);
+
+        // Modal Header
+        var headerGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
+            ColumnSpacing = 8,
+            Margin = new Thickness(0, 0, 0, 10),
+        };
+        headerGrid.Children.Add(
+            UiBuilder.Icon(
+                MaterialIconKind.RobotOutline,
+                18,
+                ThemeService.Brush(ThemeService.TextPrimary)
+            )
+        );
+        var titleStack = new StackPanel
+        {
+            Spacing = 1,
+            [Grid.ColumnProperty] = 1,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = "AI Engine & Saved Profiles",
+                    FontSize = 14.5,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                },
+                new TextBlock
+                {
+                    Text = isConfigured ? $"Active: {displayLabel}" : $"Needs setup: {displayLabel}",
+                    FontSize = 11.5,
+                    Foreground = isConfigured
+                        ? ThemeService.Brush(ThemeService.TextSecondary)
+                        : ThemeService.Brush(ThemeService.PriorityP2Fg),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                },
+            },
+        };
+        headerGrid.Children.Add(titleStack);
+
+        var closeBtn = UiBuilder.IconButton(
+            MaterialIconKind.Close,
+            studio.ToggleAiSettings,
+            16,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(closeBtn, "Close (Esc)");
+        Grid.SetColumn(closeBtn, 2);
+        headerGrid.Children.Add(closeBtn);
+
+        // Scrollable Modal Body
+        var bodyStack = new StackPanel { Spacing = 10 };
+
+        bodyStack.Children.Add(UiBuilder.SectionHeader("Provider Presets"));
+        var presetRow = new WrapPanel { Orientation = Orientation.Horizontal };
+        foreach (var (id, label, icon) in AiProviderPresets)
+        {
+            var capturedId = id;
             bool active =
                 string.Equals(settings.AiProviderPreset, id, StringComparison.OrdinalIgnoreCase)
                 && string.IsNullOrWhiteSpace(settings.ActiveAiProfileId);
             var btn = UiBuilder.GhostButton(
                 label,
                 icon,
-                async () => await studio.ApplyAiProviderPresetAsync(id),
+                async () => await studio.ApplyAiProviderPresetAsync(capturedId),
                 isActive: active
             );
-            btn.Margin = new Thickness(0, 0, 6, 4);
+            btn.Margin = new Thickness(0, 0, 5, 5);
             presetRow.Children.Add(btn);
         }
-
-        AddProviderPreset("OpenAI", "OpenAI", MaterialIconKind.CreationOutline);
-        AddProviderPreset(
-            "OpenRouter",
-            "OpenRouter (Claude / Multi)",
-            MaterialIconKind.SwapHorizontal
-        );
-        AddProviderPreset("GeminiAiStudio", "Google AI Studio", MaterialIconKind.AutoFix);
-        AddProviderPreset("DeepSeek", "DeepSeek", MaterialIconKind.Brain);
-        AddProviderPreset("Groq", "Groq", MaterialIconKind.LightningBoltOutline);
-        AddProviderPreset("OllamaLocal", "Ollama (Local)", MaterialIconKind.ServerNetwork);
-        AddProviderPreset("LmStudio", "LM Studio / Custom", MaterialIconKind.DesktopClassic);
-        AddProviderPreset(
-            "OfflineSmart",
-            "Offline PDF Analyzer",
-            MaterialIconKind.FileSearchOutline
-        );
-        cardStack.Children.Add(presetRow);
+        bodyStack.Children.Add(presetRow);
 
         // Saved Custom Model Profiles
         if (settings.SavedAiProfiles.Count > 0)
         {
+            bodyStack.Children.Add(UiBuilder.SectionHeader("Saved Model Profiles"));
             var profilesWrap = new WrapPanel { Orientation = Orientation.Horizontal };
             foreach (var prof in settings.SavedAiProfiles)
             {
@@ -70,38 +387,49 @@ public static partial class QuizStudioViewBuilder
                 var chipStack = new StackPanel
                 {
                     Orientation = Orientation.Horizontal,
-                    Spacing = 4,
+                    Spacing = 3,
+                    Margin = new Thickness(0, 0, 6, 5),
                 };
-                var selectBtn = UiBuilder.GhostButton(
-                    $"{prof.Name} ({prof.ModelName})",
-                    isActiveProf ? MaterialIconKind.Check : MaterialIconKind.RobotOutline,
-                    async () => await studio.SelectSavedAiProfileAsync(capturedProf),
-                    isActive: isActiveProf
+                chipStack.Children.Add(
+                    UiBuilder.GhostButton(
+                        $"{prof.Name} ({prof.ModelName})",
+                        isActiveProf ? MaterialIconKind.Check : MaterialIconKind.RobotOutline,
+                        async () => await studio.SelectSavedAiProfileAsync(capturedProf),
+                        isActive: isActiveProf
+                    )
                 );
-                chipStack.Children.Add(selectBtn);
-
                 var delBtn = UiBuilder.IconButton(
                     MaterialIconKind.Close,
                     async () => await studio.DeleteSavedAiProfileAsync(capturedProf.Id),
                     12.5,
                     ThemeService.Brush(ThemeService.TextMuted)
                 );
+                ToolTip.SetTip(delBtn, $"Delete profile '{prof.Name}'");
                 chipStack.Children.Add(delBtn);
-
-                chipStack.Margin = new Thickness(0, 0, 8, 4);
                 profilesWrap.Children.Add(chipStack);
             }
-            cardStack.Children.Add(profilesWrap);
+            bodyStack.Children.Add(profilesWrap);
         }
 
-        var fieldsGrid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("1.1*,1.8*,1.2*,1.3*,Auto,Auto"),
-            ColumnSpacing = 6,
-        };
+        bodyStack.Children.Add(UiBuilder.HairlineDivider());
+        bodyStack.Children.Add(UiBuilder.SectionHeader("Endpoint & Credentials"));
 
-        var profileNameBox = new TextBox { Watermark = "Profile name (optional)", FontSize = 12 };
-        fieldsGrid.Children.Add(profileNameBox);
+        static StackPanel FieldGroup(string label, Control input) =>
+            new()
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = label,
+                        FontSize = 11,
+                        FontWeight = FontWeight.Medium,
+                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    },
+                    input,
+                },
+            };
 
         var urlBox = new TextBox
         {
@@ -109,18 +437,19 @@ public static partial class QuizStudioViewBuilder
             Watermark = "OpenAI-compatible /chat/completions URL",
             FontSize = 12,
         };
-        Grid.SetColumn(urlBox, 1);
-        fieldsGrid.Children.Add(urlBox);
+        bodyStack.Children.Add(FieldGroup("Base URL", urlBox));
 
+        var modelKeyRow = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,*"),
+            ColumnSpacing = 10,
+        };
         var modelBox = new TextBox
         {
             Text = settings.AiModelName,
-            Watermark = "Model ID (e.g. gpt-4o-mini, claude-3.5-sonnet, qwen2.5:7b)",
+            Watermark = "e.g. gpt-4o-mini, claude-3.5-sonnet, qwen2.5:7b",
             FontSize = 12,
         };
-        Grid.SetColumn(modelBox, 2);
-        fieldsGrid.Children.Add(modelBox);
-
         var keyBox = new TextBox
         {
             Text = settings.AiApiKey ?? string.Empty,
@@ -128,21 +457,36 @@ public static partial class QuizStudioViewBuilder
             PasswordChar = '•',
             FontSize = 12,
         };
-        Grid.SetColumn(keyBox, 3);
-        fieldsGrid.Children.Add(keyBox);
+        modelKeyRow.Children.Add(FieldGroup("Model ID", modelBox));
+        var keyField = FieldGroup("API Key", keyBox);
+        Grid.SetColumn(keyField, 1);
+        modelKeyRow.Children.Add(keyField);
+        bodyStack.Children.Add(modelKeyRow);
 
-        var saveBtn = UiBuilder.PrimaryButton(
-            "Save",
-            MaterialIconKind.ContentSaveOutline,
-            async () =>
-                await studio.SaveAiCredentialsAsync(
-                    urlBox.Text ?? "",
-                    modelBox.Text ?? "",
-                    keyBox.Text
-                )
-        );
-        Grid.SetColumn(saveBtn, 4);
-        fieldsGrid.Children.Add(saveBtn);
+        var profileNameBox = new TextBox
+        {
+            Watermark = "Profile name (optional — used when saving a new profile)",
+            FontSize = 12,
+        };
+        bodyStack.Children.Add(FieldGroup("Save As Named Profile", profileNameBox));
+
+        var scrollBody = new ScrollViewer
+        {
+            Content = bodyStack,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, 4, 0),
+        };
+
+        // Footer Actions
+        var footerGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
+            ColumnSpacing = 6,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+        var doneBtn = UiBuilder.GhostButton("Done", null, studio.ToggleAiSettings);
+        footerGrid.Children.Add(doneBtn);
 
         var addProfileBtn = UiBuilder.GhostButton(
             "+ Save Profile",
@@ -155,11 +499,54 @@ public static partial class QuizStudioViewBuilder
                     keyBox.Text
                 )
         );
-        Grid.SetColumn(addProfileBtn, 5);
-        fieldsGrid.Children.Add(addProfileBtn);
+        Grid.SetColumn(addProfileBtn, 2);
+        footerGrid.Children.Add(addProfileBtn);
 
-        cardStack.Children.Add(fieldsGrid);
-        return UiBuilder.Card(cardStack, padding: new Thickness(12, 10));
+        var saveBtn = UiBuilder.PrimaryButton(
+            "Save",
+            MaterialIconKind.ContentSaveOutline,
+            async () =>
+            {
+                await studio.SaveAiCredentialsAsync(
+                    urlBox.Text ?? "",
+                    modelBox.Text ?? "",
+                    keyBox.Text
+                );
+                if (studio.IsAiSettingsOpen)
+                    studio.ToggleAiSettings();
+            }
+        );
+        Grid.SetColumn(saveBtn, 3);
+        footerGrid.Children.Add(saveBtn);
+
+        var modalGrid = new Grid
+        {
+            RowDefinitions = RowDefinitions.Parse("Auto,*,Auto"),
+        };
+        modalGrid.Children.Add(headerGrid);
+        Grid.SetRow(scrollBody, 1);
+        modalGrid.Children.Add(scrollBody);
+        Grid.SetRow(footerGrid, 2);
+        modalGrid.Children.Add(footerGrid);
+
+        var modalCard = new Border
+        {
+            Background = ThemeService.Brush(ThemeService.BgSurface),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(18, 16),
+            MaxWidth = 540,
+            MaxHeight = 580,
+            Margin = new Thickness(20),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            BoxShadow = BoxShadows.Parse("0 12 36 0 #70000000"),
+            Child = modalGrid,
+        };
+        overlay.Children.Add(modalCard);
+
+        return overlay;
     }
 
     private static Border BuildManualJsonBridgeCard(QuizStudioViewModel studio)

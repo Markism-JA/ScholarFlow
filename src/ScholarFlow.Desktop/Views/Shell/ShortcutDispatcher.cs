@@ -54,6 +54,12 @@ public static class ShortcutDispatcher
                     vm.QuizStudio.CloseImageZoom();
                     return;
                 }
+                if (vm.QuizStudio.IsAiSettingsOpen)
+                {
+                    e.Handled = true;
+                    vm.QuizStudio.ToggleAiSettings();
+                    return;
+                }
                 if (vm.QuizStudio.IsPageGridOpen)
                 {
                     e.Handled = true;

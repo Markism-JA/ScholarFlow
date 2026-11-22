@@ -142,16 +142,7 @@ public static partial class QuizStudioViewBuilder
         dueBtn.Margin = new Thickness(0, 0, 6, 4);
         utilityWrap.Children.Add(dueBtn);
 
-        var aiEngineBtn = UiBuilder.GhostButton(
-            "AI Engine",
-            MaterialIconKind.CogOutline,
-            studio.ToggleAiSettings,
-            isActive: studio.IsAiSettingsOpen
-        );
-        ToolTip.SetTip(
-            aiEngineBtn,
-            "Configure AI provider endpoint, model, API key, or saved profiles"
-        );
+        var aiEngineBtn = BuildAiQuickSwitchButton(vm, studio);
         aiEngineBtn.Margin = new Thickness(0, 0, 0, 4);
         utilityWrap.Children.Add(aiEngineBtn);
 
@@ -473,9 +464,6 @@ public static partial class QuizStudioViewBuilder
             );
         }
 
-        if (studio.IsAiSettingsOpen)
-            topStack.Children.Add(BuildAiSettingsCard(vm, studio));
-
         if (studio.IsManualJsonModalOpen)
             topStack.Children.Add(BuildManualJsonBridgeCard(studio));
 
@@ -506,6 +494,14 @@ public static partial class QuizStudioViewBuilder
             host.Children.Add(
                 BuildImageZoomLightbox(studio.ZoomedImagePath, studio.CloseImageZoom)
             );
+            return host;
+        }
+
+        if (studio.IsAiSettingsOpen)
+        {
+            var host = new Grid();
+            host.Children.Add(root);
+            host.Children.Add(BuildFloatingAiSettingsOverlay(vm, studio));
             return host;
         }
 
