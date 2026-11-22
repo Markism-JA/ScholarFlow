@@ -58,9 +58,9 @@ public sealed partial class KnowledgeIndexService
                 ct
             );
 
-            var activeCourses = courses ?? await new BasinService().LoadCoursesAsync(basinRoot);
-            var activeQuizzes = quizzes
-                ?? await ScholarFlowDatabase.LoadQuizSessionsAsync(basinRoot, ct: ct);
+            var activeCourses = courses ?? await new BasinService().LoadCoursesAsync(basinRoot, ct);
+            var activeQuizzes =
+                quizzes ?? await ScholarFlowDatabase.LoadQuizSessionsAsync(basinRoot, ct: ct);
 
             var courseAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in activeCourses)

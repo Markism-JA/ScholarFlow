@@ -35,6 +35,11 @@ public sealed partial class MasterPdfService
         WriteIndented = true,
     };
 
+    private static readonly JsonSerializerOptions CaseInsenstitiveJsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
+
     private static int _fontResolverInitialized;
 
     [GeneratedRegex(@"/P\s+(\d{10})\b")]
@@ -72,9 +77,9 @@ public sealed partial class MasterPdfService
         string courseFolder,
         string? displayTitle = null,
         bool force = false,
-        CancellationToken ct = default,
         IReadOnlyList<string>? configuredTerms = null,
-        bool? useStiSyllabusFallback = null
+        bool? useStiSyllabusFallback = null,
+        CancellationToken ct = default
     )
     {
         EnsureFontResolver();
@@ -149,7 +154,7 @@ public sealed partial class MasterPdfService
                 var json = File.ReadAllText(configPath);
                 var cfg = JsonSerializer.Deserialize<Models.BasinConfig>(
                     json,
-                    new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+                    CaseInsenstitiveJsonOptions
                 );
                 if (cfg is not null)
                 {
@@ -906,17 +911,20 @@ public sealed partial class MasterPdfService
 
         bool modified = false;
         var patched = UnsignedPdfPermissionRegex()
-            .Replace(text, m =>
-            {
-                if (uint.TryParse(m.Groups[1].Value, out uint u) && u > int.MaxValue)
+            .Replace(
+                text,
+                m =>
                 {
-                    modified = true;
-                    int signed = unchecked((int)u);
-                    var rep = $"/P {signed}";
-                    return rep.PadRight(m.Value.Length, ' ');
+                    if (uint.TryParse(m.Groups[1].Value, out uint u) && u > int.MaxValue)
+                    {
+                        modified = true;
+                        int signed = unchecked((int)u);
+                        var rep = $"/P {signed}";
+                        return rep.PadRight(m.Value.Length, ' ');
+                    }
+                    return m.Value;
                 }
-                return m.Value;
-            });
+            );
 
         if (modified)
         {
@@ -1436,9 +1444,9 @@ public sealed partial class MasterPdfService
 
         await using var stream = File.OpenRead(statePath);
         return await JsonSerializer.DeserializeAsync<Dictionary<string, string>>(
-            stream,
-            cancellationToken: ct
-        ) ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                stream,
+                cancellationToken: ct
+            ) ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 
     private static async Task SaveStateAsync(
@@ -1641,9 +1649,10 @@ public sealed partial class MasterPdfService
                 if (!Directory.Exists(dir))
                     continue;
 
-                var anyTtf = Directory
-                    .EnumerateFiles(dir, "*Sans-Regular.ttf", SearchOption.AllDirectories)
-                    .FirstOrDefault()
+                var anyTtf =
+                    Directory
+                        .EnumerateFiles(dir, "*Sans-Regular.ttf", SearchOption.AllDirectories)
+                        .FirstOrDefault()
                     ?? Directory
                         .EnumerateFiles(dir, "*-Regular.ttf", SearchOption.AllDirectories)
                         .FirstOrDefault()

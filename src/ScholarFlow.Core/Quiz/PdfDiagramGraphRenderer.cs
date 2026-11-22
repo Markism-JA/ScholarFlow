@@ -172,14 +172,7 @@ public static partial class PdfDiagramGraphRenderer
             return false;
 
         // If it starts with flowchart/graph, it's not a sequence diagram
-        if (
-            !hasSequenceHeader
-            && Regex.IsMatch(
-                lines[0].Trim(),
-                @"^(?:flowchart|graph|stateDiagram)\b",
-                RegexOptions.IgnoreCase
-            )
-        )
+        if (!hasSequenceHeader && MyRegex().IsMatch(lines[0].Trim()))
         {
             return false;
         }
@@ -559,7 +552,7 @@ public static partial class PdfDiagramGraphRenderer
                     double noteW =
                         i1 == i2
                             ? Math.Clamp(colSpan * 0.85, 76, 136)
-                            : Math.Max(100, (x2 - x1) + 56);
+                            : Math.Max(100, x2 - x1 + 56);
                     double noteX = (x1 + x2) / 2.0 - (noteW / 2.0);
                     if (step.FragmentTag?.Contains("left") == true)
                         noteX = Math.Max(leftOrigin + 4, x1 - noteW - 6);
@@ -791,7 +784,7 @@ public static partial class PdfDiagramGraphRenderer
             if (trimmed.StartsWith("subgraph ", StringComparison.OrdinalIgnoreCase))
             {
                 var sgRaw = trimmed["subgraph ".Length..].Trim();
-                var mSg = Regex.Match(sgRaw, @"^[A-Za-z0-9_]+\s*\[(.+)\]$");
+                var mSg = MyRegex1().Match(sgRaw);
                 currentSubgraph = mSg.Success
                     ? mSg.Groups[1].Value.Trim().Trim('"')
                     : sgRaw.Trim('"');
@@ -921,7 +914,7 @@ public static partial class PdfDiagramGraphRenderer
                 .Nodes.Where(n =>
                     !string.IsNullOrWhiteSpace(n.Subgraph) && layout.NodeRects.ContainsKey(n.Id)
                 )
-                .GroupBy(n => n.Subgraph!)
+                .GroupBy(n => n.Subgraph)
         )
         {
             double minX = sg.Min(n => layout.NodeRects[n.Id].X) - 8;
@@ -1075,8 +1068,8 @@ public static partial class PdfDiagramGraphRenderer
             )
             {
                 list.Add(e.ToId);
-                if (inDegree.ContainsKey(e.ToId))
-                    inDegree[e.ToId]++;
+                if (inDegree.TryGetValue(e.ToId, out int value))
+                    inDegree[e.ToId] = ++value;
             }
         }
 
@@ -1150,7 +1143,7 @@ public static partial class PdfDiagramGraphRenderer
                 maxUsedW = Math.Max(maxUsedW, rowW);
 
                 double curX = 0;
-                var displayOrder = reverseRow ? slice.AsEnumerable().Reverse().ToList() : slice;
+                var displayOrder = reverseRow ? [.. slice.AsEnumerable().Reverse()] : slice;
                 foreach (var n in displayOrder)
                 {
                     var sz = nodeSizes[n.Id];
@@ -1540,7 +1533,7 @@ public static partial class PdfDiagramGraphRenderer
         bool isCloze = t.Contains("???", StringComparison.Ordinal);
 
         // Database Cylinder: A[(Database)] or [(Database)]
-        var mDb = Regex.Match(t, @"^(?<id>[A-Za-z0-9_]*)\s*\[\((?<label>.+)\)\]$");
+        var mDb = MyRegex2().Match(t);
         if (mDb.Success)
         {
             var lbl = mDb.Groups["label"].Value.Trim().Trim('"', '\'');
@@ -1551,7 +1544,7 @@ public static partial class PdfDiagramGraphRenderer
         }
 
         // Circle State: A((State)) or ((State))
-        var mCircle = Regex.Match(t, @"^(?<id>[A-Za-z0-9_]*)\s*\(\((?<label>.+)\)\)$");
+        var mCircle = MyRegex3().Match(t);
         if (mCircle.Success)
         {
             var lbl = mCircle.Groups["label"].Value.Trim().Trim('"', '\'');
@@ -1674,4 +1667,16 @@ public static partial class PdfDiagramGraphRenderer
 
     [GeneratedRegex(@"^(?<prefix>[\s│\|]*[├└\+\|][─\-]+)\s*(?<label>.+)$")]
     private static partial Regex TreeBranchRegex();
+
+    [GeneratedRegex(@"^(?:flowchart|graph|stateDiagram)\b", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex MyRegex();
+
+    [GeneratedRegex(@"^[A-Za-z0-9_]+\s*\[(.+)\]$")]
+    private static partial Regex MyRegex1();
+
+    [GeneratedRegex(@"^(?<id>[A-Za-z0-9_]*)\s*\[\((?<label>.+)\)\]$")]
+    private static partial Regex MyRegex2();
+
+    [GeneratedRegex(@"^(?<id>[A-Za-z0-9_]*)\s*\(\((?<label>.+)\)\)$")]
+    private static partial Regex MyRegex3();
 }

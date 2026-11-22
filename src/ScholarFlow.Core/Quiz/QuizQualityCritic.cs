@@ -26,9 +26,11 @@ public sealed record QuizQualityReport(IReadOnlyList<QuestionQualityIssue> Issue
         Issues.Select(i => i.QuestionId).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     public IReadOnlyList<QuestionQualityIssue> GetIssuesFor(string questionId) =>
-        Issues
-            .Where(i => string.Equals(i.QuestionId, questionId, StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        [
+            .. Issues.Where(i =>
+                string.Equals(i.QuestionId, questionId, StringComparison.OrdinalIgnoreCase)
+            ),
+        ];
 
     public string SummaryText =>
         Issues.Count == 0
@@ -43,12 +45,16 @@ public sealed record QuizQualityReport(IReadOnlyList<QuestionQualityIssue> Issue
 /// </summary>
 public static class QuizQualityCritic
 {
+#pragma warning disable SYSLIB1045 // Keeping compiled static Regex fields to avoid partial class
     private static readonly Regex LazyDistractorRegex = new(
         @"\b(all\s+of\s+the\s+above|none\s+of\s+the\s+above|both\s+[a-d]\s+and\s+[a-d]|all\s+of\s+these)\b",
         RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
 
     private static readonly Regex BlankMarkerRegex = new(@"_{3,}", RegexOptions.Compiled);
+
+    private static readonly Regex WordTokenRegex = new(@"[a-z0-9]+", RegexOptions.Compiled);
+#pragma warning restore SYSLIB1045
 
     private static readonly HashSet<string> StemStopwords = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -382,7 +388,7 @@ public static class QuizQualityCritic
         if (string.IsNullOrWhiteSpace(stem))
             return [];
 
-        var matches = Regex.Matches(stem.ToLowerInvariant(), @"[a-z0-9]+");
+        var matches = WordTokenRegex.Matches(stem.ToLowerInvariant());
         var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (Match m in matches)
         {

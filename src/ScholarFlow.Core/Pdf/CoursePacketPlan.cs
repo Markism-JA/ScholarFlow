@@ -1,6 +1,5 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using ScholarFlow.Core.Knowledge;
 
 namespace ScholarFlow.Core.Pdf;
@@ -161,9 +160,10 @@ public sealed class CoursePacketPlan
     }
 
     public static List<PacketItemPlan> DiscoverCoursePdfItems(string courseDir) =>
-        DiscoverCoursePacketItems(courseDir, includeNonPdfByDefault: false)
-            .Where(i => i.IsPdf)
-            .ToList();
+        [
+            .. DiscoverCoursePacketItems(courseDir, includeNonPdfByDefault: false)
+                .Where(i => i.IsPdf),
+        ];
 
     public static List<PacketItemPlan> DiscoverCoursePacketItems(
         string courseDir,
@@ -441,8 +441,8 @@ public sealed class CoursePacketPlan
         if (missing.Count == 0)
             return;
 
-        var targetSec = plan.Sections.LastOrDefault()
-            ?? new PacketSectionPlan { Title = "Study Materials" };
+        var targetSec =
+            plan.Sections.LastOrDefault() ?? new PacketSectionPlan { Title = "Study Materials" };
         if (plan.Sections.Count == 0)
             plan.Sections.Add(targetSec);
 

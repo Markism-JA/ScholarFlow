@@ -77,7 +77,7 @@ public static partial class QuizPdfPrintRenderer
     private static readonly XPen StrongRulePen = new(XColor.FromArgb(40, 46, 56), 1.0);
     private static readonly XPen CheckboxPen = new(XColor.FromArgb(140, 148, 160), 0.75);
     private static readonly XPen WriteLinePen = new(XColor.FromArgb(165, 172, 182), 0.65);
-    private static readonly XPen SoftAccentPen = new(XColor.FromArgb(135, 155, 180), 1.3);
+    private static readonly XPen SoftAccentPen = new(XColor.FromArgb(135, 155, 180), 1.3); //NOTE: This is not used yet but, might help.
     private static readonly XPen SoftWarnPen = new(XColor.FromArgb(215, 148, 48), 1.3);
 
     public static void Render(

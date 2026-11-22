@@ -10,7 +10,7 @@ public sealed class BasinWatcher : IDisposable
 
     private readonly FileSystemWatcher _watcher;
     private readonly Timer _debounceTimer;
-    private readonly object _gate = new();
+    private readonly Lock _gate = new();
     private bool _disposed;
 
     public event EventHandler? BasinChanged;

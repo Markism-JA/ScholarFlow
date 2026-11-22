@@ -1,9 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
-using ScholarFlow.Core.Database;
-using ScholarFlow.Core.Models;
 
 namespace ScholarFlow.Core.Quiz;
 

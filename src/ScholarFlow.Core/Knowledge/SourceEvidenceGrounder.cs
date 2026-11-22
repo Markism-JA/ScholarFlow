@@ -91,9 +91,9 @@ public static partial class SourceEvidenceGrounder
             int score = matchedLines * 100;
             if (hintStartLine.HasValue)
             {
-                int dist = Math.Abs((i + 1) - hintStartLine.Value);
+                int dist = Math.Abs(i + 1 - hintStartLine.Value);
                 if (dist <= 10)
-                    score += (15 - dist);
+                    score += 15 - dist;
             }
 
             if (score > bestScore && matchedLines >= Math.Max(1, (quoteLines.Count + 1) / 2))
@@ -208,12 +208,13 @@ public static partial class SourceEvidenceGrounder
         WhitespaceRegex().Replace(line.Trim(), " ");
 
     private static List<string> ExtractTokens(string text) =>
-        TokenRegex()
-            .Matches(text)
-            .Select(m => m.Value)
-            .Where(t => t.Length >= 3)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
+        [
+            .. TokenRegex()
+                .Matches(text)
+                .Select(m => m.Value)
+                .Where(t => t.Length >= 3)
+                .Distinct(StringComparer.OrdinalIgnoreCase),
+        ];
 
     [GeneratedRegex(@"\s+")]
     private static partial Regex WhitespaceRegex();

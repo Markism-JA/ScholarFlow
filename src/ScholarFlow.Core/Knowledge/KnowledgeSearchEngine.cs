@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text;
 using System.Text.RegularExpressions;
 using ScholarFlow.Core.Database;
 using ScholarFlow.Core.Services;
@@ -43,13 +42,16 @@ public static partial class KnowledgeSearchEngine
 
         // 1. Extract quoted "exact phrases"
         working = QuotedPhraseRegex()
-            .Replace(working, m =>
-            {
-                var phrase = m.Groups["phrase"].Value.Trim();
-                if (!string.IsNullOrWhiteSpace(phrase))
-                    phrases.Add(phrase);
-                return " ";
-            });
+            .Replace(
+                working,
+                m =>
+                {
+                    var phrase = m.Groups["phrase"].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(phrase))
+                        phrases.Add(phrase);
+                    return " ";
+                }
+            );
 
         // 2. Parse whitespace-delimited tokens
         var rawTokens = working.Split(
@@ -654,12 +656,16 @@ public static partial class KnowledgeSearchEngine
         return string.Join('\n', lines);
     }
 
-    private static List<string> ExtractSafeFtsWords(string text) =>
-        FtsWordRegex()
-            .Matches(text)
-            .Select(m => m.Value)
-            .Where(w => !string.IsNullOrWhiteSpace(w))
-            .ToList();
+    private static List<string> ExtractSafeFtsWords(string text)
+    {
+        return
+        [
+            .. FtsWordRegex()
+                .Matches(text)
+                .Select(m => m.Value)
+                .Where(w => !string.IsNullOrWhiteSpace(w)),
+        ];
+    }
 
     public static bool TryParseSourceKindToken(string tag, out KnowledgeSourceFilterKind kind)
     {

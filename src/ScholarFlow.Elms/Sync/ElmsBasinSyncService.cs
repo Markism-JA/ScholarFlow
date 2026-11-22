@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using ScholarFlow.Core.Markdown;
 using ScholarFlow.Core.Models;
 using ScholarFlow.Core.Pdf;
 using ScholarFlow.Core.Services;
@@ -37,8 +36,8 @@ public sealed class ElmsBasinSyncService(
             logger
         ) { }
 
-    private readonly Func<BasinConfig, IElmsClient> _clientResolver = clientResolver
-        ?? throw new ArgumentNullException(nameof(clientResolver));
+    private readonly Func<BasinConfig, IElmsClient> _clientResolver =
+        clientResolver ?? throw new ArgumentNullException(nameof(clientResolver));
     private readonly BasinService _basinService = basinService ?? new BasinService();
     private readonly ISyncResolver _syncResolver = syncResolver ?? new SyncResolver();
     private readonly MasterPdfService _pdfService = pdfService ?? new MasterPdfService();
@@ -102,14 +101,18 @@ public sealed class ElmsBasinSyncService(
         foreach (var rawElmsCourse in discoveredCourses)
         {
             ct.ThrowIfCancellationRequested();
-            var courseEntry = basinCourses.FirstOrDefault(c =>
-                (!string.IsNullOrWhiteSpace(c.CourseId) && c.CourseId == rawElmsCourse.CourseId)
-                || c.FolderName.Equals(
-                    rawElmsCourse.SanitizedFolderName,
-                    StringComparison.OrdinalIgnoreCase
+            var courseEntry =
+                basinCourses.FirstOrDefault(c =>
+                    (!string.IsNullOrWhiteSpace(c.CourseId) && c.CourseId == rawElmsCourse.CourseId)
+                    || c.FolderName.Equals(
+                        rawElmsCourse.SanitizedFolderName,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || BasinService.IsSameCourseFuzzy(
+                        c.FolderName,
+                        rawElmsCourse.SanitizedFolderName
+                    )
                 )
-                || BasinService.IsSameCourseFuzzy(c.FolderName, rawElmsCourse.SanitizedFolderName)
-            )
                 ?? basinCourses.First(c =>
                     c.Title.Equals(rawElmsCourse.Title, StringComparison.OrdinalIgnoreCase)
                 );
@@ -379,7 +382,7 @@ public sealed class ElmsBasinSyncService(
                     courseEntry.FolderName,
                     courseEntry.Title,
                     force: false,
-                    ct
+                    ct: ct
                 );
                 if (pdfResult.WasRegenerated)
                 {
@@ -465,7 +468,7 @@ public sealed class ElmsBasinSyncService(
     )
     {
         var syncedAssignments = assignments
-            .Select(a => new SyncedAssignment(
+            .Select(static a => new SyncedAssignment(
                 ExternalId: a.LmsId,
                 CourseId: a.CourseId,
                 Title: a.Title,
@@ -483,16 +486,20 @@ public sealed class ElmsBasinSyncService(
                 ParentModuleTitle: a.ParentModuleTitle,
                 Kind: a.Kind != ElmsAssignmentKind.Unknown ? a.Kind.ToString() : null,
                 WeightPercent: a.WeightPercent,
-                InstructionFiles: a.Attachments.Where(r =>
-                        r.Kind == ElmsResourceKind.AssignmentAttachment
-                    )
-                    .Select(r => r.RelativeTargetPath)
-                    .ToList(),
-                SubmissionFiles: a.SubmissionInfo.SubmittedFiles.Where(r =>
-                        r.Kind == ElmsResourceKind.SubmittedArtifact
-                    )
-                    .Select(r => r.RelativeTargetPath)
-                    .ToList()
+                InstructionFiles:
+                [
+                    .. a
+                        .Attachments.Where(r => r.Kind == ElmsResourceKind.AssignmentAttachment)
+                        .Select(r => r.RelativeTargetPath),
+                ],
+                SubmissionFiles:
+                [
+                    .. a
+                        .SubmissionInfo.SubmittedFiles.Where(r =>
+                            r.Kind == ElmsResourceKind.SubmittedArtifact
+                        )
+                        .Select(r => r.RelativeTargetPath),
+                ]
             ))
             .ToList();
 
@@ -500,7 +507,7 @@ public sealed class ElmsBasinSyncService(
             ?.Select(l => new SyncedLessonInfo(
                 l.Title,
                 l.SanitizedFolderName,
-                l.Resources.Select(r => new SyncedLessonResource(r.RelativeTargetPath)).ToList()
+                [.. l.Resources.Select(r => new SyncedLessonResource(r.RelativeTargetPath))]
             ))
             .ToList();
 

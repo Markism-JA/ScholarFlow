@@ -188,6 +188,7 @@ public sealed partial class QuizLlmService
         return sb.ToString();
     }
 
+    // NOTE: What does content modality mean for the prompt? Should we include a note about code/math/diagrams?
     private static string BuildFileUserPrompt(
         QuizGenerationRequest req,
         FileSourcePromptBundle bundle,
@@ -354,7 +355,7 @@ public sealed partial class QuizLlmService
         );
 
         var dto = ParseQuizResponseJson(raw);
-        dto.Questions = dto.Questions.Take(desiredCount).ToList();
+        dto.Questions = [.. dto.Questions.Take(desiredCount)];
         return await BuildGroundAndPersistSessionAsync(
             request,
             dto,

@@ -34,8 +34,8 @@ public sealed class MultiBasinSyncCoordinator(
     ILogger<MultiBasinSyncCoordinator>? logger = null
 ) : IAsyncDisposable
 {
-    private readonly BasinSyncProviderRegistry _registry = registry
-        ?? throw new ArgumentNullException(nameof(registry));
+    private readonly BasinSyncProviderRegistry _registry =
+        registry ?? throw new ArgumentNullException(nameof(registry));
     private readonly BasinService _basinService = basinService ?? new BasinService();
     private readonly ILogger<MultiBasinSyncCoordinator>? _logger = logger;
 

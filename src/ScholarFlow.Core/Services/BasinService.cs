@@ -110,8 +110,8 @@ public sealed partial class BasinService
         CancellationToken ct = default
     )
     {
-        var courses = await LoadJsonAsync<List<BasinCourseEntry>>(GetCoursesPath(basinRoot), ct)
-            ?? [];
+        var courses =
+            await LoadJsonAsync<List<BasinCourseEntry>>(GetCoursesPath(basinRoot), ct) ?? [];
         foreach (var c in courses)
         {
             if (
@@ -814,14 +814,16 @@ public sealed partial class BasinService
         if (configuredTerms is { Count: 0 })
             return null;
 
-        var norm = MatchConfiguredOrStandardTerm(explicitTerm, configuredTerms)
+        var norm =
+            MatchConfiguredOrStandardTerm(explicitTerm, configuredTerms)
             ?? MatchConfiguredOrStandardTerm(title, configuredTerms)
             ?? MatchConfiguredOrStandardTerm(parentModuleOrSection, configuredTerms);
         if (norm is not null)
             return norm;
 
         // Extract leading 2-digit module prefix (e.g. "04 Quiz 1" -> "04", "05 Task Performance 1" -> "05")
-        var prefix = ExtractTwoDigitModulePrefix(title)
+        var prefix =
+            ExtractTwoDigitModulePrefix(title)
             ?? ExtractTwoDigitModulePrefix(parentModuleOrSection);
         if (prefix is null)
             return null;
@@ -944,7 +946,8 @@ public sealed partial class BasinService
         termMap ??= LoadCourseTermMap(basinRoot, course.FolderName);
         var courseDir = Path.Combine(basinRoot, course.FolderName);
 
-        var resolvedTerm = ResolveAcademicTerm(termMap, null, task.Title, task.Section)
+        var resolvedTerm =
+            ResolveAcademicTerm(termMap, null, task.Title, task.Section)
             ?? TaskItem.NormalizeTerm(task.Term);
         if (resolvedTerm is null)
         {

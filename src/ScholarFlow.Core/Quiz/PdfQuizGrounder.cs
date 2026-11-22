@@ -151,7 +151,8 @@ public static class PdfQuizGrounder
         if (totalPages <= 0)
             return [];
 
-        var normalizedTerm = TaskItem.NormalizeTerm(termFilter)
+        var normalizedTerm =
+            TaskItem.NormalizeTerm(termFilter)
             ?? (string.IsNullOrWhiteSpace(termFilter) ? null : termFilter.Trim());
         bool hasExplicitRanges = explicitRanges is { Count: > 0 };
         var leafSections = outlineSections.Where(s => s.Level >= 2).ToList();
@@ -348,7 +349,8 @@ public static class PdfQuizGrounder
             return [];
 
         var pageSections = cached.PageSections;
-        var normalizedTerm = TaskItem.NormalizeTerm(termFilter)
+        var normalizedTerm =
+            TaskItem.NormalizeTerm(termFilter)
             ?? (string.IsNullOrWhiteSpace(termFilter) ? null : termFilter.Trim());
         bool hasAnyTermBookmarks = pageSections.Any(ps => !string.IsNullOrWhiteSpace(ps.Term));
         bool hasNonSyllabusPages = pageSections.Any(ps =>
@@ -557,7 +559,7 @@ public static class PdfQuizGrounder
             return pages;
 
         static string NormalizeEdgeLine(string line) =>
-            new string(line.Trim().Where(c => !char.IsDigit(c)).ToArray()).Trim();
+            new string([.. line.Trim().Where(c => !char.IsDigit(c))]).Trim();
 
         var firstLineCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var lastLineCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -644,7 +646,7 @@ public static class PdfQuizGrounder
         if (string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
 
-        var questionList = questions as IList<QuizQuestionRecord> ?? questions.ToList();
+        var questionList = questions as IList<QuizQuestionRecord> ?? [.. questions];
         if (questionList.Count == 0)
             return;
 
@@ -866,8 +868,8 @@ public static class PdfQuizGrounder
         var matchingWords = GetVisibleWordsInReadingOrder(page)
             .Where(w =>
             {
-                double cx = ((w.BoundingBox.Left + w.BoundingBox.Right) * 0.5) / pw;
-                double cy = 1.0 - (((w.BoundingBox.Bottom + w.BoundingBox.Top) * 0.5) / ph);
+                double cx = (w.BoundingBox.Left + w.BoundingBox.Right) * 0.5 / pw;
+                double cy = 1.0 - ((w.BoundingBox.Bottom + w.BoundingBox.Top) * 0.5 / ph);
                 return cx >= rx1 && cx <= rx2 && cy >= ry1 && cy <= ry2;
             })
             .ToList();
@@ -1331,7 +1333,7 @@ public static class PdfQuizGrounder
 
         lock (cached.ExtractionLock)
         {
-            missing = missing.Where(p => !cached.PageTexts.ContainsKey(p)).ToList();
+            missing = [.. missing.Where(p => !cached.PageTexts.ContainsKey(p))];
             if (missing.Count == 0)
                 return;
 

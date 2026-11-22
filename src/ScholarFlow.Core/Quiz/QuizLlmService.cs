@@ -1,7 +1,5 @@
-using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using ScholarFlow.Core.Database;
 using ScholarFlow.Core.Knowledge;
 using ScholarFlow.Core.Models;
@@ -250,10 +248,8 @@ public sealed partial class QuizLlmService
             {
                 QuizTitle = firstTitle ?? string.Empty,
                 CourseTerm = firstTerm ?? string.Empty,
-                KeyConceptsCovered = allConcepts
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList(),
-                Questions = allQuestions.Take(desiredCount).ToList(),
+                KeyConceptsCovered = [.. allConcepts.Distinct(StringComparer.OrdinalIgnoreCase)],
+                Questions = [.. allQuestions.Take(desiredCount)],
             };
             modelLabel = request.ModelName;
         }
@@ -288,7 +284,8 @@ public sealed partial class QuizLlmService
         CancellationToken ct
     )
     {
-        var inferredTerm = TaskItem.NormalizeTerm(dto.CourseTerm)
+        var inferredTerm =
+            TaskItem.NormalizeTerm(dto.CourseTerm)
             ?? TaskItem.NormalizeTerm(request.Term)
             ?? pages.FirstOrDefault(p => p.Term is not null)?.Term;
 
@@ -387,10 +384,11 @@ public sealed partial class QuizLlmService
                 Prompt = cleanPrompt,
                 Options = options,
                 CorrectAnswer = correctAnswer,
-                AcceptedAliases = qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a))
-                    .Select(a => a.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList()
+                AcceptedAliases =
+                    qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a))
+                        .Select(a => a.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList()
                     ?? [],
                 Explanation = (qDto.Explanation ?? string.Empty).Trim(),
                 Hint = string.IsNullOrWhiteSpace(qDto.Hint) ? null : qDto.Hint.Trim(),
@@ -403,7 +401,8 @@ public sealed partial class QuizLlmService
                 SourcePage =
                     qDto.Evidence?.PageNumber > 0
                         ? qDto.Evidence.PageNumber
-                        : (pages.FirstOrDefault()?.PageNumber ?? 1),
+                        : (pages.Count > 0 ? pages[0].PageNumber : 1),
+
                 SectionTitle = qDto.Evidence?.SectionTitle ?? string.Empty,
                 VerbatimQuote = qDto.Evidence?.VerbatimQuote ?? string.Empty,
                 EvidenceAnchors =
@@ -527,11 +526,12 @@ public sealed partial class QuizLlmService
         string? rawCorrectAnswer
     )
     {
-        var options = rawOptions
-            ?.Where(o => !string.IsNullOrWhiteSpace(o))
-            .Select(StripLeadingOptionMarker)
-            .Where(o => o.Length > 0)
-            .ToList()
+        var options =
+            rawOptions
+                ?.Where(o => !string.IsNullOrWhiteSpace(o))
+                .Select(StripLeadingOptionMarker)
+                .Where(o => o.Length > 0)
+                .ToList()
             ?? [];
 
         var correct = StripLeadingOptionMarker(rawCorrectAnswer ?? string.Empty);

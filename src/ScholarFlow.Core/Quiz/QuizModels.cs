@@ -317,9 +317,9 @@ public sealed class QuizQuestionRecord
     /// <summary>True when the grounding source is a PDF (page + highlight rects); false for code / text / image files.</summary>
     public bool IsPdfSource =>
         string.IsNullOrWhiteSpace(SourcePdfPath)
-        || ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(SourcePdfPath).Kind
-            is ScholarFlow.Core.Knowledge.StudySourceKind.Pdf
-                or ScholarFlow.Core.Knowledge.StudySourceKind.Unknown;
+        || Knowledge.StudySourceClassifier.Classify(SourcePdfPath).Kind
+            is Knowledge.StudySourceKind.Pdf
+                or Knowledge.StudySourceKind.Unknown;
 
     /// <summary>Short evidence chip text: "p.12" for PDFs, "L10–24" for text/code, file name for images.</summary>
     public string EvidenceChipLabel
@@ -328,16 +328,14 @@ public sealed class QuizQuestionRecord
         {
             if (IsPdfSource)
                 return $"p.{SourcePage}";
-            var (kind, _) = ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(
-                SourcePdfPath
-            );
-            if (kind == ScholarFlow.Core.Knowledge.StudySourceKind.Image)
-                return System.IO.Path.GetFileName(SourcePdfPath);
+            var (kind, _) = Knowledge.StudySourceClassifier.Classify(SourcePdfPath);
+            if (kind == Knowledge.StudySourceKind.Image)
+                return Path.GetFileName(SourcePdfPath);
             if (SourceStartLine is > 0)
                 return SourceEndLine is > 0 && SourceEndLine != SourceStartLine
                     ? $"L{SourceStartLine}–{SourceEndLine}"
                     : $"L{SourceStartLine}";
-            return System.IO.Path.GetFileName(SourcePdfPath);
+            return Path.GetFileName(SourcePdfPath);
         }
     }
 
@@ -523,11 +521,13 @@ public sealed class QuizQuestionRecord
 
     private static List<string> TokenizeSignificant(string raw)
     {
-        return NormalizeAnswerToken(raw)
-            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(t => !AnswerStopwords.Contains(t))
-            .Select(SingularizeToken)
-            .ToList();
+        return
+        [
+            .. NormalizeAnswerToken(raw)
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(t => !AnswerStopwords.Contains(t))
+                .Select(SingularizeToken),
+        ];
     }
 
     private static string SingularizeToken(string token)
@@ -794,13 +794,13 @@ public sealed class QuizGenerationRequest
             remainders.Add((l, exact - fl, w));
         }
         foreach (
-            var item in remainders
+            var (Level, Rem, Weight) in remainders
                 .OrderByDescending(r => r.Rem)
                 .ThenByDescending(r => r.Weight)
                 .Take(Math.Max(0, 100 - allocated))
         )
         {
-            scaled[item.Level]++;
+            scaled[Level]++;
         }
         return scaled;
     }
@@ -829,13 +829,13 @@ public sealed class QuizGenerationRequest
             remainders.Add((l, exact - fl, w));
         }
         foreach (
-            var item in remainders
+            var (Level, Rem, Weight) in remainders
                 .OrderByDescending(r => r.Rem)
                 .ThenByDescending(r => r.Weight)
                 .Take(Math.Max(0, total - allocated))
         )
         {
-            result[item.Level]++;
+            result[Level]++;
         }
         return result;
     }
@@ -1030,14 +1030,14 @@ public sealed class QuizGenerationRequest
 
         int leftover = targetTotal - allocated;
         foreach (
-            var item in remainders
+            var (Kind, Remainder, Weight) in remainders
                 .OrderByDescending(r => r.Remainder)
                 .ThenByDescending(r => r.Weight)
                 .ThenBy(r => (int)r.Kind)
                 .Take(Math.Max(0, leftover))
         )
         {
-            result[item.Kind]++;
+            result[Kind]++;
         }
 
         return result;

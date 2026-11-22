@@ -1,9 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using PdfSharpCore.Drawing;
-using PdfSharpCore.Pdf;
-using ScholarFlow.Core.Pdf;
-using UglyToad.PdfPig;
 
 namespace ScholarFlow.Core.Quiz;
 
@@ -82,7 +78,8 @@ public static class QuizExportService
         }
 
         // 2. Fallback to AI QuizGenerationResponseDto format
-        var dto = JsonSerializer.Deserialize<QuizGenerationResponseDto>(cleaned, PrettyJsonOpts)
+        var dto =
+            JsonSerializer.Deserialize<QuizGenerationResponseDto>(cleaned, PrettyJsonOpts)
             ?? throw new InvalidOperationException(
                 "Could not parse quiz JSON as a QuizSessionRecord or QuizGenerationResponseDto."
             );
@@ -125,16 +122,16 @@ public static class QuizExportService
                         ? "general"
                         : qDto.TopicTag.Trim(),
                     Prompt = qDto.Prompt.Trim(),
-                    Options = qDto.Options?.Where(o => !string.IsNullOrWhiteSpace(o))
-                        .Select(o => o.Trim())
-                        .ToList()
+                    Options =
+                        qDto.Options?.Where(o => !string.IsNullOrWhiteSpace(o))
+                            .Select(o => o.Trim())
+                            .ToList()
                         ?? [],
                     CorrectAnswer = qDto.CorrectAnswer.Trim(),
-                    AcceptedAliases = qDto.AcceptedAliases?.Where(a =>
-                            !string.IsNullOrWhiteSpace(a)
-                        )
-                        .Select(a => a.Trim())
-                        .ToList()
+                    AcceptedAliases =
+                        qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a))
+                            .Select(a => a.Trim())
+                            .ToList()
                         ?? [],
                     Explanation = (qDto.Explanation ?? string.Empty).Trim(),
                     CodeSnippet = string.IsNullOrWhiteSpace(qDto.CodeSnippet)
@@ -414,17 +411,16 @@ public static class QuizExportService
 
         if (cleaned.StartsWith('['))
         {
-            updateCandidates = JsonSerializer.Deserialize<List<ComprehensiveUpdatedQuestionDto>>(
-                cleaned,
-                PrettyJsonOpts
-            ) ?? [];
+            updateCandidates =
+                JsonSerializer.Deserialize<List<ComprehensiveUpdatedQuestionDto>>(
+                    cleaned,
+                    PrettyJsonOpts
+                ) ?? [];
         }
         else
         {
-            var payload = JsonSerializer.Deserialize<ComprehensiveFixResponseDto>(
-                cleaned,
-                PrettyJsonOpts
-            )
+            var payload =
+                JsonSerializer.Deserialize<ComprehensiveFixResponseDto>(cleaned, PrettyJsonOpts)
                 ?? throw new InvalidOperationException(
                     "Could not parse comprehensive deck fix JSON."
                 );
@@ -519,10 +515,7 @@ public static class QuizExportService
                 .Select(t => t.Question.SourcePdfPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(
-                distinctPaths,
-                fileTouched
-            );
+            Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(distinctPaths, fileTouched);
         }
 
         return (updated, added);
@@ -612,7 +605,8 @@ public static class QuizExportService
             // Try direct single-object deserialization
         }
 
-        dto ??= JsonSerializer.Deserialize<GeneratedQuestionDto>(cleaned, PrettyJsonOpts)
+        dto ??=
+            JsonSerializer.Deserialize<GeneratedQuestionDto>(cleaned, PrettyJsonOpts)
             ?? throw new InvalidOperationException("Could not parse fixed question JSON.");
 
         ApplyDtoToQuestion(target, dto);
@@ -628,7 +622,7 @@ public static class QuizExportService
             && !string.IsNullOrWhiteSpace(target.SourcePdfPath)
             && File.Exists(target.SourcePdfPath)
         )
-            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(
+            Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(
                 [target.SourcePdfPath],
                 [(target, dto.Evidence)]
             );
@@ -654,10 +648,11 @@ public static class QuizExportService
         );
         target.Options = options;
         target.CorrectAnswer = correctAnswer;
-        target.AcceptedAliases = dto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a))
-            .Select(a => a.Trim())
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList()
+        target.AcceptedAliases =
+            dto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a))
+                .Select(a => a.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
             ?? [];
         target.Explanation = (dto.Explanation ?? string.Empty).Trim();
         if (dto.Hint is not null)

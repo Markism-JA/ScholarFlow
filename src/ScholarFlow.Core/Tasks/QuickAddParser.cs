@@ -62,143 +62,170 @@ public static partial class QuickAddParser
 
         var priority = TaskPriority.P4;
         working = PriorityRegex()
-            .Replace(working, m =>
-            {
-                priority = (TaskPriority)int.Parse(m.Groups[1].Value);
-                chips.Add(new QuickAddChip("Priority", $"P{(int)priority}"));
-                return string.Empty;
-            });
+            .Replace(
+                working,
+                m =>
+                {
+                    priority = (TaskPriority)int.Parse(m.Groups[1].Value);
+                    chips.Add(new QuickAddChip("Priority", $"P{(int)priority}"));
+                    return string.Empty;
+                }
+            );
 
         int difficulty = 1;
         working = DifficultyRegex()
-            .Replace(working, m =>
-            {
-                difficulty = int.Parse(m.Groups[1].Value);
-                chips.Add(new QuickAddChip("Difficulty", $"D{difficulty}"));
-                return string.Empty;
-            });
+            .Replace(
+                working,
+                m =>
+                {
+                    difficulty = int.Parse(m.Groups[1].Value);
+                    chips.Add(new QuickAddChip("Difficulty", $"D{difficulty}"));
+                    return string.Empty;
+                }
+            );
 
         string? courseFolder = null;
         string? courseAlias = null;
         working = CourseTagRegex()
-            .Replace(working, m =>
-            {
-                var tag = m.Groups[1].Value;
-                var matched = MatchCourse(tag, courses);
-                if (matched is not null)
+            .Replace(
+                working,
+                m =>
                 {
-                    courseFolder = matched.FolderName;
-                    courseAlias = matched.Alias;
-                    chips.Add(new QuickAddChip("Course", $"#{matched.Alias}"));
+                    var tag = m.Groups[1].Value;
+                    var matched = MatchCourse(tag, courses);
+                    if (matched is not null)
+                    {
+                        courseFolder = matched.FolderName;
+                        courseAlias = matched.Alias;
+                        chips.Add(new QuickAddChip("Course", $"#{matched.Alias}"));
+                    }
+                    else
+                    {
+                        courseAlias = tag;
+                        chips.Add(new QuickAddChip("Course", $"#{tag}"));
+                    }
+                    return string.Empty;
                 }
-                else
-                {
-                    courseAlias = tag;
-                    chips.Add(new QuickAddChip("Course", $"#{tag}"));
-                }
-                return string.Empty;
-            });
+            );
 
         string? term = null;
         var labels = new List<string>();
         working = LabelTagRegex()
-            .Replace(working, m =>
-            {
-                var lbl = m.Groups[1].Value;
-                var maybeTerm = TaskItem.NormalizeTerm(lbl);
-                if (maybeTerm is not null)
+            .Replace(
+                working,
+                m =>
                 {
-                    term = maybeTerm;
-                    chips.Add(new QuickAddChip("Term", maybeTerm));
+                    var lbl = m.Groups[1].Value;
+                    var maybeTerm = TaskItem.NormalizeTerm(lbl);
+                    if (maybeTerm is not null)
+                    {
+                        term = maybeTerm;
+                        chips.Add(new QuickAddChip("Term", maybeTerm));
+                    }
+                    if (!labels.Contains(lbl, StringComparer.OrdinalIgnoreCase))
+                    {
+                        labels.Add(lbl);
+                        chips.Add(new QuickAddChip("Label", $"@{lbl}"));
+                    }
+                    return string.Empty;
                 }
-                if (!labels.Contains(lbl, StringComparer.OrdinalIgnoreCase))
-                {
-                    labels.Add(lbl);
-                    chips.Add(new QuickAddChip("Label", $"@{lbl}"));
-                }
-                return string.Empty;
-            });
+            );
 
         string? section = null;
         working = SectionTagRegex()
-            .Replace(working, m =>
-            {
-                section = m.Groups[1].Value.Replace('_', ' ');
-                chips.Add(new QuickAddChip("Section", $"/{section}"));
-                return string.Empty;
-            });
-
-        working = TermTokenRegex()
-            .Replace(working, m =>
-            {
-                if (term is not null)
-                    return m.Value;
-
-                var normalized = TaskItem.NormalizeTerm(m.Groups[1].Value);
-                if (normalized is not null)
+            .Replace(
+                working,
+                m =>
                 {
-                    term = normalized;
-                    var termTag = normalized.ToLowerInvariant();
-                    if (!labels.Contains(termTag, StringComparer.OrdinalIgnoreCase))
-                        labels.Add(termTag);
-                    chips.Add(new QuickAddChip("Term", normalized));
+                    section = m.Groups[1].Value.Replace('_', ' ');
+                    chips.Add(new QuickAddChip("Section", $"/{section}"));
                     return string.Empty;
                 }
-                return m.Value;
-            });
+            );
+
+        working = TermTokenRegex()
+            .Replace(
+                working,
+                m =>
+                {
+                    if (term is not null)
+                        return m.Value;
+
+                    var normalized = TaskItem.NormalizeTerm(m.Groups[1].Value);
+                    if (normalized is not null)
+                    {
+                        term = normalized;
+                        var termTag = normalized.ToLowerInvariant();
+                        if (!labels.Contains(termTag, StringComparer.OrdinalIgnoreCase))
+                            labels.Add(termTag);
+                        chips.Add(new QuickAddChip("Term", normalized));
+                        return string.Empty;
+                    }
+                    return m.Value;
+                }
+            );
 
         DateOnly? dueDate = null;
         working = IsoDateRegex()
-            .Replace(working, m =>
-            {
-                if (
-                    dueDate is null
-                    && DateOnly.TryParseExact(
-                        m.Groups[1].Value,
-                        "yyyy-MM-dd",
-                        CultureInfo.InvariantCulture,
-                        DateTimeStyles.None,
-                        out var d
-                    )
-                )
+            .Replace(
+                working,
+                m =>
                 {
-                    dueDate = d;
-                    chips.Add(new QuickAddChip("Due", d.ToString("MMM d")));
-                    return string.Empty;
+                    if (
+                        dueDate is null
+                        && DateOnly.TryParseExact(
+                            m.Groups[1].Value,
+                            "yyyy-MM-dd",
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None,
+                            out var d
+                        )
+                    )
+                    {
+                        dueDate = d;
+                        chips.Add(new QuickAddChip("Due", d.ToString("MMM d")));
+                        return string.Empty;
+                    }
+                    return m.Value;
                 }
-                return m.Value;
-            });
+            );
 
         if (dueDate is null)
         {
             working = RelativeDateRegex()
-                .Replace(working, m =>
-                {
-                    if (dueDate is not null)
-                        return m.Value;
+                .Replace(
+                    working,
+                    m =>
+                    {
+                        if (dueDate is not null)
+                            return m.Value;
 
-                    dueDate = ResolveRelativeDate(m.Groups[1].Value, today);
-                    if (dueDate.HasValue)
-                        chips.Add(new QuickAddChip("Due", dueDate.Value.ToString("MMM d")));
-                    return string.Empty;
-                });
+                        dueDate = ResolveRelativeDate(m.Groups[1].Value, today);
+                        if (dueDate.HasValue)
+                            chips.Add(new QuickAddChip("Due", dueDate.Value.ToString("MMM d")));
+                        return string.Empty;
+                    }
+                );
         }
 
         TimeOnly? dueTime = null;
         working = TimeTokenRegex()
-            .Replace(working, m =>
-            {
-                if (dueTime is not null)
-                    return m.Value;
-
-                if (TryParseTimeToken(m.Groups[1].Value, out var parsedTime))
+            .Replace(
+                working,
+                m =>
                 {
-                    dueTime = parsedTime;
-                    chips.Add(new QuickAddChip("Time", parsedTime.ToString("h:mm tt")));
-                    return string.Empty;
+                    if (dueTime is not null)
+                        return m.Value;
+
+                    if (TryParseTimeToken(m.Groups[1].Value, out var parsedTime))
+                    {
+                        dueTime = parsedTime;
+                        chips.Add(new QuickAddChip("Time", parsedTime.ToString("h:mm tt")));
+                        return string.Empty;
+                    }
+                    return m.Value;
                 }
-                return m.Value;
-            });
+            );
 
         if (dueTime.HasValue && !dueDate.HasValue)
         {

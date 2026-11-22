@@ -1506,7 +1506,8 @@ public sealed partial class QuizStudioViewModel
     public string BuildQuestionAiFixPrompt(QuizQuestionRecord question, string problemDescription)
     {
         FlagProblemDescription = problemDescription;
-        var deck = OrganizerQuiz
+        var deck =
+            OrganizerQuiz
             ?? new QuizSessionRecord
             {
                 Title = "Quiz Deck",

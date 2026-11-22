@@ -348,7 +348,7 @@ public static partial class ScholarFlowDatabase
                     WHERE knowledge_chunks_fts MATCH $match
                     """
                 );
-                cmd.Parameters.AddWithValue("$match", ftsMatchExpression!);
+                cmd.Parameters.AddWithValue("$match", ftsMatchExpression);
             }
             else
             {

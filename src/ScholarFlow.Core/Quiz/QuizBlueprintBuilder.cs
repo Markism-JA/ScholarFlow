@@ -106,11 +106,9 @@ public static class QuizBlueprintBuilder
                 QuestionArchetype.DiscriminativeContrast,
                 QuestionArchetype.CausalPerturbation,
                 QuestionArchetype.SpotTheFlaw,
-                .. (
-                    hasDiagrams || hasMath
-                        ? new[] { QuestionArchetype.DualCoding }
-                        : Array.Empty<QuestionArchetype>()
-                ),
+                .. hasDiagrams || hasMath
+                    ? [QuestionArchetype.DualCoding]
+                    : Array.Empty<QuestionArchetype>(),
             ];
 
         sb.AppendLine(
