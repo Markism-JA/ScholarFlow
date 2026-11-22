@@ -173,7 +173,7 @@ public sealed partial class MainWindowViewModel
             )
         )
             PdfReader.LoadPdf(pdfFullPath, BasinRoot);
-        PdfReader.SetEvidenceAnchors(anchors, initialIndex, questionPrompt);
+        PdfReader.SetEvidenceAnchors(anchors, initialIndex, questionPrompt, notify: false);
         ActiveMode = WorkspaceTabMode.PdfReader;
         NotifyStateChanged();
     }

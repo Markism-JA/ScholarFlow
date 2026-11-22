@@ -576,7 +576,8 @@ public sealed class PdfReaderViewModel : IDisposable
     public void SetEvidenceAnchors(
         IReadOnlyList<GroundedEvidenceAnchor> anchors,
         int initialIndex = 0,
-        string? questionPrompt = null
+        string? questionPrompt = null,
+        bool notify = true
     )
     {
         var list = (anchors ?? [])
@@ -597,7 +598,7 @@ public sealed class PdfReaderViewModel : IDisposable
 
         if (list.Count == 0)
         {
-            ClearEvidenceHighlight(notify: true);
+            ClearEvidenceHighlight(notify: notify);
             return;
         }
 
@@ -613,11 +614,15 @@ public sealed class PdfReaderViewModel : IDisposable
         {
             _pendingJumpPage = active.PageNumber;
             CurrentPage = active.PageNumber;
-            Changed?.Invoke(this, EventArgs.Empty);
+            if (notify)
+                Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
 
         CurrentPage = Math.Clamp(active.PageNumber, 1, PageCount);
+
+        if (!notify)
+            return;
 
         // If the evidence banner already has the same pill structure (e.g. async Knowledge Search rects arriving
         // for an already-open PDF), update overlays + banner in-place and glide smoothly without ScrollViewer teardown!

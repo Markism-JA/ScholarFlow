@@ -1452,6 +1452,18 @@ public static class PdfReaderViewBuilder
 
             continuousScroll.ScrollChanged += (_, _) => SyncVisiblePages();
 
+            var initHighlightRect =
+                reader.ActiveHighlightPage == initPage
+                    ? PdfReaderViewModel.GetPrimaryFocusRect(reader.ActiveEvidenceAnchor)
+                    : null;
+            bool needsInitialJump = initPage > 1 || initHighlightRect is not null;
+            if (needsInitialJump)
+            {
+                // Avoid 1-frame flash of Page 1 (Offset.Y = 0) before initial target-page jump settles
+                isApplyingZoom = true;
+                continuousScroll.Opacity = 0.0;
+            }
+
             // Scroll directly to the target CurrentPage & highlight rect once layout settles
             continuousScroll.AttachedToVisualTree += (_, _) =>
             {
@@ -1468,14 +1480,12 @@ public static class PdfReaderViewBuilder
                             }
                         }
 
-                        var initRect =
-                            reader.ActiveHighlightPage == initPage
-                                ? PdfReaderViewModel.GetPrimaryFocusRect(reader.ActiveEvidenceAnchor)
-                                : null;
-
-                        if (initPage > 1 || initRect is not null)
+                        if (needsInitialJump)
                         {
-                            ScrollToPageAndRectInPlace(initPage, initRect);
+                            ScrollToPageAndRectInPlace(initPage, initHighlightRect, animate: false);
+                            isApplyingZoom = false;
+                            SyncVisiblePages();
+                            continuousScroll.Opacity = 1.0;
                         }
                         else
                         {
