@@ -432,88 +432,262 @@ public sealed partial class MainWindow
 
     private Border BuildFloatingNotificationsModal()
     {
-        var stack = new StackPanel { Spacing = 8 };
-        var header = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        static string FormatRelativeTime(DateTimeOffset occurredAt)
+        {
+            var local = occurredAt.LocalDateTime;
+            var diff = DateTime.Now - local;
+            if (diff.TotalMinutes < 1)
+                return "Just now";
+            if (diff.TotalMinutes < 60)
+                return $"{(int)diff.TotalMinutes}m ago";
+            if (diff.TotalHours < 24 && local.Date == DateTime.Today)
+                return $"{(int)diff.TotalHours}h ago";
+            if (local.Date == DateTime.Today.AddDays(-1))
+                return $"Yesterday · {local:h:mm tt}";
+            return local.ToString("MMM d · h:mm tt");
+        }
+
+        static (MaterialIconKind Icon, IBrush Fg) GetNotificationVisual(AppNotification n)
+        {
+            var combined = $"{n.Title} {n.Message}";
+            if (
+                combined.Contains("fail", StringComparison.OrdinalIgnoreCase)
+                || combined.Contains("error", StringComparison.OrdinalIgnoreCase)
+                || combined.Contains("overdue", StringComparison.OrdinalIgnoreCase)
+            )
+                return (MaterialIconKind.AlertCircleOutline, ThemeService.Brush(ThemeService.PriorityP1Fg));
+
+            if (
+                combined.Contains("due", StringComparison.OrdinalIgnoreCase)
+                || combined.Contains("deadline", StringComparison.OrdinalIgnoreCase)
+            )
+                return (MaterialIconKind.ClockAlertOutline, ThemeService.Brush(ThemeService.PriorityP2Fg));
+
+            if (
+                combined.Contains("sync", StringComparison.OrdinalIgnoreCase)
+                || combined.Contains("grade", StringComparison.OrdinalIgnoreCase)
+                || combined.Contains("new", StringComparison.OrdinalIgnoreCase)
+            )
+                return (MaterialIconKind.CheckCircleOutline, ThemeService.Brush(ThemeService.SuccessFg));
+
+            return (MaterialIconKind.BellOutline, ThemeService.Brush(ThemeService.TextSecondary));
+        }
+
+        var rootGrid = new Grid
+        {
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
+            RowSpacing = 8,
+        };
+
+        // Header
+        var header = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
+            ColumnSpacing = 8,
+        };
         header.Children.Add(
-            new TextBlock
+            new StackPanel
             {
-                Text = $"Notifications ({_vm.Notifications.Count})",
-                FontSize = 14,
-                FontWeight = FontWeight.Bold,
-                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                Orientation = Orientation.Horizontal,
+                Spacing = 7,
                 VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    UiBuilder.Icon(
+                        MaterialIconKind.BellOutline,
+                        16,
+                        ThemeService.Brush(ThemeService.TextSecondary)
+                    ),
+                    new TextBlock
+                    {
+                        Text = "Notifications",
+                        FontSize = 14,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                    UiBuilder.Pill(
+                        _vm.Notifications.Count.ToString(),
+                        ThemeService.Brush(ThemeService.TextSecondary),
+                        ThemeService.Brush(ThemeService.BgElevated),
+                        fontSize: 10.5
+                    ),
+                },
             }
         );
-        var closeBtn = UiBuilder.IconButton(MaterialIconKind.Close, _vm.ToggleNotificationDrawer);
-        Grid.SetColumn(closeBtn, 1);
-        header.Children.Add(closeBtn);
-        stack.Children.Add(header);
-        stack.Children.Add(UiBuilder.HairlineDivider());
 
+        if (_vm.Notifications.Count > 0)
+        {
+            var clearAllBtn = UiBuilder.GhostButton(
+                "Clear all",
+                MaterialIconKind.NotificationClearAll,
+                _vm.ClearNotifications
+            );
+            ToolTip.SetTip(clearAllBtn, "Dismiss all notifications");
+            Grid.SetColumn(clearAllBtn, 2);
+            header.Children.Add(clearAllBtn);
+        }
+
+        var closeBtn = UiBuilder.IconButton(MaterialIconKind.Close, _vm.ToggleNotificationDrawer);
+        ToolTip.SetTip(closeBtn, "Close notifications (Esc)");
+        Grid.SetColumn(closeBtn, 3);
+        header.Children.Add(closeBtn);
+        rootGrid.Children.Add(header);
+
+        var divider = UiBuilder.HairlineDivider();
+        Grid.SetRow(divider, 1);
+        rootGrid.Children.Add(divider);
+
+        Control bodyContent;
         if (_vm.Notifications.Count == 0)
         {
-            stack.Children.Add(
-                new TextBlock
+            var emptyStack = new StackPanel
+            {
+                Spacing = 8,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(12, 24),
+                Children =
                 {
-                    Text =
-                        "No notifications yet. Background eLMS polling will post new deadlines and grades here.",
-                    FontSize = 12.5,
-                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                    Margin = new Thickness(0, 12),
+                    new Border
+                    {
+                        Width = 40,
+                        Height = 40,
+                        CornerRadius = new CornerRadius(20),
+                        Background = ThemeService.Brush(ThemeService.BgElevated),
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        Child = UiBuilder.Icon(
+                            MaterialIconKind.BellCheckOutline,
+                            20,
+                            ThemeService.Brush(ThemeService.TextSecondary)
+                        ),
+                    },
+                    new TextBlock
+                    {
+                        Text = "You're all caught up",
+                        FontSize = 13.5,
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                    },
+                    new TextBlock
+                    {
+                        Text =
+                            "New deadlines, grade updates, and background sync alerts will appear here.",
+                        FontSize = 12,
+                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                        TextWrapping = TextWrapping.Wrap,
+                        TextAlignment = TextAlignment.Center,
+                    },
+                },
+            };
+            var settingsShortcut = UiBuilder.GhostButton(
+                _vm.Settings.EnableDesktopNotifications
+                    ? "Desktop Alerts: On"
+                    : "Desktop Alerts: Off",
+                MaterialIconKind.CogOutline,
+                () =>
+                {
+                    _vm.ToggleNotificationDrawer();
+                    _vm.ToggleSettingsModal();
                 }
             );
+            settingsShortcut.HorizontalAlignment = HorizontalAlignment.Center;
+            settingsShortcut.Margin = new Thickness(0, 4, 0, 0);
+            emptyStack.Children.Add(settingsShortcut);
+            bodyContent = emptyStack;
         }
         else
         {
-            foreach (var n in _vm.Notifications.Take(8))
+            var listStack = new StackPanel { Spacing = 6, Margin = new Thickness(0, 2, 4, 2) };
+            foreach (var n in _vm.Notifications.Take(50))
             {
+                var captured = n;
+                var (iconKind, iconFg) = GetNotificationVisual(captured);
+
                 var nRow = new Grid
                 {
                     ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
-                    Margin = new Thickness(0, 4),
+                    ColumnSpacing = 9,
                 };
-                nRow.Children.Add(
-                    UiBuilder.Icon(
-                        MaterialIconKind.BellOutline,
-                        15,
-                        ThemeService.Brush(ThemeService.AccentPrimary)
-                    )
-                );
-                nRow.Children.Add(
-                    new StackPanel
+                var iconWrap = new Border
+                {
+                    Width = 28,
+                    Height = 28,
+                    CornerRadius = new CornerRadius(6),
+                    Background = ThemeService.Brush(ThemeService.BgElevated),
+                    VerticalAlignment = VerticalAlignment.Top,
+                    Child = UiBuilder.Icon(iconKind, 15, iconFg),
+                };
+                nRow.Children.Add(iconWrap);
+
+                var textCol = new StackPanel
+                {
+                    Spacing = 2,
+                    [Grid.ColumnProperty] = 1,
+                    Children =
                     {
-                        Margin = new Thickness(8, 0),
-                        Children =
+                        new TextBlock
                         {
-                            new TextBlock
-                            {
-                                Text = n.Title,
-                                FontSize = 12.5,
-                                FontWeight = FontWeight.SemiBold,
-                                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                            },
-                            new TextBlock
-                            {
-                                Text = n.Message,
-                                FontSize = 11.5,
-                                Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                            },
+                            Text = captured.Title,
+                            FontSize = 12.5,
+                            FontWeight = FontWeight.SemiBold,
+                            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                            TextWrapping = TextWrapping.Wrap,
                         },
-                        [Grid.ColumnProperty] = 1,
-                    }
+                        new TextBlock
+                        {
+                            Text = captured.Message,
+                            FontSize = 11.5,
+                            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
+                        new TextBlock
+                        {
+                            Text = FormatRelativeTime(captured.OccurredAt),
+                            FontSize = 10.5,
+                            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                            Margin = new Thickness(0, 2, 0, 0),
+                        },
+                    },
+                };
+                nRow.Children.Add(textCol);
+
+                var dismissBtn = UiBuilder.IconButton(
+                    MaterialIconKind.Close,
+                    () => _vm.DismissNotification(captured),
+                    13,
+                    ThemeService.Brush(ThemeService.TextMuted)
                 );
-                nRow.Children.Add(
-                    new TextBlock
+                dismissBtn.VerticalAlignment = VerticalAlignment.Top;
+                ToolTip.SetTip(dismissBtn, "Dismiss notification");
+                Grid.SetColumn(dismissBtn, 2);
+                nRow.Children.Add(dismissBtn);
+
+                listStack.Children.Add(
+                    new Border
                     {
-                        Text = n.OccurredAt.LocalDateTime.ToString("h:mm tt"),
-                        FontSize = 11,
-                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                        [Grid.ColumnProperty] = 2,
+                        Background = ThemeService.Brush(ThemeService.BgBase),
+                        BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(7),
+                        Padding = new Thickness(10, 8),
+                        Child = nRow,
                     }
                 );
-                stack.Children.Add(nRow);
             }
+
+            bodyContent = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility =
+                    Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                Content = listStack,
+            };
         }
+
+        Grid.SetRow(bodyContent, 2);
+        rootGrid.Children.Add(bodyContent);
 
         return new Border
         {
@@ -522,79 +696,156 @@ public sealed partial class MainWindow
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             BoxShadow = BoxShadows.Parse("0 16 40 0 #66000000"),
-            MaxWidth = 480,
+            MaxWidth = 500,
+            MaxHeight = 560,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(24, 70, 24, 24),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(16, 20),
             Padding = new Thickness(16, 12),
-            Child = stack,
+            Child = rootGrid,
         };
     }
 
     private Border BuildFloatingShortcutsModal()
     {
-        var stack = new StackPanel { Spacing = 8 };
-        var header = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        var rootGrid = new Grid
+        {
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
+            RowSpacing = 8,
+        };
+
+        var header = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto"),
+            ColumnSpacing = 8,
+        };
         header.Children.Add(
-            new TextBlock
+            new StackPanel
             {
-                Text = "Keyboard Shortcuts",
-                FontSize = 14,
-                FontWeight = FontWeight.Bold,
-                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
                 VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    UiBuilder.Icon(
+                        MaterialIconKind.KeyboardOutline,
+                        16,
+                        ThemeService.Brush(ThemeService.TextSecondary)
+                    ),
+                    new TextBlock
+                    {
+                        Text = "Keyboard Shortcuts",
+                        FontSize = 14,
+                        FontWeight = FontWeight.Bold,
+                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                },
             }
         );
-        var closeBtn = UiBuilder.IconButton(MaterialIconKind.Close, _vm.ToggleShortcutsModal);
-        Grid.SetColumn(closeBtn, 1);
-        header.Children.Add(closeBtn);
-        stack.Children.Add(header);
-        stack.Children.Add(UiBuilder.HairlineDivider());
 
-        (string Key, string Desc)[] items =
+        var escChip = UiBuilder.KbdChip("Esc");
+        Grid.SetColumn(escChip, 1);
+        header.Children.Add(escChip);
+
+        var closeBtn = UiBuilder.IconButton(MaterialIconKind.Close, _vm.ToggleShortcutsModal);
+        ToolTip.SetTip(closeBtn, "Close shortcuts (Esc)");
+        Grid.SetColumn(closeBtn, 2);
+        header.Children.Add(closeBtn);
+        rootGrid.Children.Add(header);
+
+        var divider = UiBuilder.HairlineDivider();
+        Grid.SetRow(divider, 1);
+        rootGrid.Children.Add(divider);
+
+        (string Category, (string Key, string Desc)[] Items)[] groups =
         [
-            ("Q", "Open floating Quick-Add Task modal"),
-            ("/ or Ctrl+K", "Open Quick-Search & Navigation palette"),
-            ("Ctrl+Shift+F", "Open Knowledge Hub FTS5 Search (#course @pdf @code @quiz @weak)"),
-            ("Esc", "Close active modal or Task Inspector drawer"),
-            ("j / k or Up / Down", "Move task selection or turn PDF pages"),
-            ("g / Shift+G", "Jump to top / bottom item"),
-            ("Enter or E", "Inspect selected task (or open primary file/PDF)"),
-            ("Space or D", "Complete / reopen selected task"),
-            ("O", "Open selected assignment in STI eLMS app"),
-            ("[ or Ctrl+B", "Collapse / expand left navigation sidebar"),
             (
-                "1 - 6",
-                "Switch smart views (Inbox, Today, Upcoming, Calendar, Completed, Test & Recall)"
+                "Global & Navigation",
+                [
+                    ("Q", "Open floating Quick-Add Task modal"),
+                    ("/ or Ctrl+K", "Open Quick-Search & Navigation palette"),
+                    ("Ctrl+Shift+F", "Open Knowledge Hub Search (#course @pdf @code @quiz @weak)"),
+                    ("[ or Ctrl+B", "Toggle left navigation sidebar (or floating drawer on narrow windows)"),
+                    ("1 – 6", "Switch views (Inbox, Today, Upcoming, Calendar, Completed, Test & Recall)"),
+                    ("T", "Toggle Dark / Light theme"),
+                    ("Esc", "Close active modal, search bar, drawer, or full-screen studio"),
+                ]
             ),
-            ("R / Ctrl+S", "Fast poll assignments / Run full eLMS sync"),
-            ("Shift+P", "Pause / resume background eLMS polling (single-session shield)"),
-            ("T", "Toggle Dark / Light mode"),
+            (
+                "Tasks & Deck Organizer",
+                [
+                    ("j / k or ↑ / ↓", "Move selection across tasks or quiz cards"),
+                    ("g / Shift+G", "Jump to top / bottom item"),
+                    ("Enter or E", "Inspect selected task or open primary file/PDF"),
+                    ("Space or D", "Complete / reopen selected task"),
+                    ("O", "Open selected assignment in STI eLMS"),
+                ]
+            ),
+            (
+                "PDF Reader & Page Studio",
+                [
+                    ("Ctrl + Scroll", "Smooth in-place zoom in / out"),
+                    ("Shift + Scroll", "Horizontal pan when zoomed in"),
+                    ("Ctrl+F", "Find & highlight text inside the current PDF"),
+                    ("R / Shift+R", "Rotate PDF page 90° clockwise / counter-clockwise"),
+                    ("← / → or Home / End", "Previous / next page or jump to first / last page"),
+                    ("Ctrl+0", "Toggle Fit-to-Width"),
+                ]
+            ),
+            (
+                "Sync & Polling",
+                [
+                    ("R / Ctrl+S", "Fast poll assignments / Run full sync"),
+                    ("Shift+P", "Pause / resume background polling (single-session shield)"),
+                ]
+            ),
         ];
 
-        foreach (var (key, desc) in items)
+        var bodyStack = new StackPanel { Spacing = 12, Margin = new Thickness(0, 2, 6, 4) };
+        foreach (var (category, items) in groups)
         {
-            var row = new Grid
+            var groupStack = new StackPanel { Spacing = 4 };
+            groupStack.Children.Add(UiBuilder.SectionHeader(category));
+
+            foreach (var (key, desc) in items)
             {
-                ColumnDefinitions = ColumnDefinitions.Parse("130,*"),
-                Margin = new Thickness(0, 2),
-            };
-            var chip = UiBuilder.KbdChip(key);
-            chip.HorizontalAlignment = HorizontalAlignment.Left;
-            row.Children.Add(chip);
-            row.Children.Add(
-                new TextBlock
+                var row = new Grid
                 {
-                    Text = desc,
-                    FontSize = 12,
-                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextWrapping = TextWrapping.Wrap,
-                    [Grid.ColumnProperty] = 1,
-                }
-            );
-            stack.Children.Add(row);
+                    ColumnDefinitions = ColumnDefinitions.Parse("Auto,*"),
+                    ColumnSpacing = 12,
+                    Margin = new Thickness(0, 1.5),
+                };
+                var chip = UiBuilder.KbdChip(key);
+                chip.MinWidth = 112;
+                chip.HorizontalAlignment = HorizontalAlignment.Left;
+                row.Children.Add(chip);
+                row.Children.Add(
+                    new TextBlock
+                    {
+                        Text = desc,
+                        FontSize = 12,
+                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        TextWrapping = TextWrapping.Wrap,
+                        [Grid.ColumnProperty] = 1,
+                    }
+                );
+                groupStack.Children.Add(row);
+            }
+
+            bodyStack.Children.Add(groupStack);
         }
+
+        var scroll = new ScrollViewer
+        {
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility =
+                Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            Content = bodyStack,
+        };
+        Grid.SetRow(scroll, 2);
+        rootGrid.Children.Add(scroll);
 
         return new Border
         {
@@ -603,12 +854,13 @@ public sealed partial class MainWindow
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             BoxShadow = BoxShadows.Parse("0 16 40 0 #66000000"),
-            MaxWidth = 560,
+            MaxWidth = 600,
+            MaxHeight = 580,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(24, 70, 24, 24),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(16, 20),
             Padding = new Thickness(16, 14),
-            Child = stack,
+            Child = rootGrid,
         };
     }
 

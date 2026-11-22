@@ -581,6 +581,22 @@ public sealed partial class MainWindowViewModel
         NotifyStateChanged(UiChangeKind.NotificationsOnly);
     }
 
+    public void ClearNotifications()
+    {
+        if (Notifications.Count == 0 && UnreadNotificationsCount == 0)
+            return;
+
+        Notifications.Clear();
+        UnreadNotificationsCount = 0;
+        NotifyStateChanged(UiChangeKind.NotificationsOnly);
+    }
+
+    public void DismissNotification(AppNotification notification)
+    {
+        if (Notifications.Remove(notification))
+            NotifyStateChanged(UiChangeKind.NotificationsOnly);
+    }
+
     private void OnCoordinatorNotification(object? sender, BasinNotificationEvent ev)
     {
         Dispatcher.UIThread.Post(() =>
