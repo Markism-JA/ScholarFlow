@@ -1209,9 +1209,39 @@ public sealed partial class QuizStudioViewModel
         }
 
         SyncPrimaryEvidenceFromAnchors(draft);
+        ActiveSnipAnchorIndex =
+            additive && existingOnPageIdx >= 0
+                ? existingOnPageIdx
+                : Math.Max(0, draft.EvidenceAnchors.Count - 1);
         EditingGroundStatus =
             $"✓ {draft.EvidenceAnchors.Count} evidence anchor(s) pinned (latest on p.{page})";
-        _mainVm.RequestUiRefresh();
+        if (IsDedicatedSnipperOpen && SnipAnchorsChangedInPlace is not null)
+            SnipAnchorsChangedInPlace.Invoke();
+        else
+            _mainVm.RequestUiRefresh();
+    }
+
+    public void FocusSnipAnchor(int index)
+    {
+        var draft = EditingQuestionDraft;
+        if (draft is null || index < 0 || index >= draft.EvidenceAnchors.Count)
+            return;
+
+        ActiveSnipAnchorIndex = index;
+        var anchor = draft.EvidenceAnchors[index];
+        int targetPage = Math.Max(1, anchor.PageNumber);
+        EditingSnipPageNumber = targetPage;
+        SnipPdfReader.SetCurrentPageQuietly(targetPage);
+
+        var focusRect = anchor.HighlightRects.Count > 0
+            ? anchor.HighlightRects.OrderBy(r => r.Y).First()
+            : null;
+
+        SnipAnchorsChangedInPlace?.Invoke();
+        if (SnipHighlightFocusRequested is not null)
+            SnipHighlightFocusRequested.Invoke(targetPage, focusRect);
+        else
+            SnipPdfReader.JumpToPage(targetPage);
     }
 
     public void RemoveEvidenceAnchor(int index)
@@ -1221,12 +1251,24 @@ public sealed partial class QuizStudioViewModel
             return;
 
         draft.EvidenceAnchors.RemoveAt(index);
+        if (draft.EvidenceAnchors.Count == 0)
+            ActiveSnipAnchorIndex = -1;
+        else
+            ActiveSnipAnchorIndex = Math.Clamp(
+                ActiveSnipAnchorIndex,
+                0,
+                draft.EvidenceAnchors.Count - 1
+            );
+
         SyncPrimaryEvidenceFromAnchors(draft);
         EditingGroundStatus =
             draft.EvidenceAnchors.Count > 0
                 ? $"✓ {draft.EvidenceAnchors.Count} evidence anchor(s) remaining"
                 : "Cleared all evidence anchors.";
-        _mainVm.RequestUiRefresh();
+        if (IsDedicatedSnipperOpen && SnipAnchorsChangedInPlace is not null)
+            SnipAnchorsChangedInPlace.Invoke();
+        else
+            _mainVm.RequestUiRefresh();
     }
 
     public void ClearVisualSnipHighlights()
@@ -1236,8 +1278,12 @@ public sealed partial class QuizStudioViewModel
             return;
         draft.EvidenceAnchors.Clear();
         draft.HighlightRects.Clear();
+        ActiveSnipAnchorIndex = -1;
         EditingGroundStatus = "Cleared all visual highlights.";
-        _mainVm.RequestUiRefresh();
+        if (IsDedicatedSnipperOpen && SnipAnchorsChangedInPlace is not null)
+            SnipAnchorsChangedInPlace.Invoke();
+        else
+            _mainVm.RequestUiRefresh();
     }
 
     private static void SyncPrimaryEvidenceFromAnchors(QuizQuestionRecord draft)

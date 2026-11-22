@@ -2328,7 +2328,28 @@ public static partial class QuizStudioViewBuilder
 
             var pageImages = new Image[snipTotalPages + 1];
             var pageSheets = new Border[snipTotalPages + 1];
+            var pageSnippers = new PdfVisualSnipperControl[snipTotalPages + 1];
             int initPage = Math.Clamp(snipReader.CurrentPage, 1, snipTotalPages);
+
+            (List<NormalizedHighlightRect> Primary, List<NormalizedHighlightRect> Secondary) CollectSnipPageRects(
+                int pageNum
+            )
+            {
+                var primary = new List<NormalizedHighlightRect>();
+                var secondary = new List<NormalizedHighlightRect>();
+                int activeIdx = studio.ActiveSnipAnchorIndex;
+                for (int i = 0; i < draft.EvidenceAnchors.Count; i++)
+                {
+                    var anc = draft.EvidenceAnchors[i];
+                    if (anc.PageNumber != pageNum || anc.HighlightRects.Count == 0)
+                        continue;
+                    if (activeIdx < 0 || i == activeIdx)
+                        primary.AddRange(anc.HighlightRects);
+                    else
+                        secondary.AddRange(anc.HighlightRects);
+                }
+                return (primary, secondary);
+            }
 
             for (int p = 1; p <= snipTotalPages; p++)
             {
@@ -2355,34 +2376,31 @@ public static partial class QuizStudioViewBuilder
                 };
                 pageLayer.Children.Add(img);
 
-                var pageHighlights = draft
-                    .EvidenceAnchors.Where(a => a.PageNumber == capturedPage)
-                    .SelectMany(a => a.HighlightRects)
-                    .ToList();
-
-                pageLayer.Children.Add(
-                    new PdfVisualSnipperControl(
-                        pageHighlights,
-                        async (rect, additive) =>
-                        {
-                            if (studio.SnipMode == SnipCaptureMode.CaptureImage)
-                                await studio.CaptureQuestionImageFromSnipperAsync(
-                                    rect,
-                                    capturedPage
-                                );
-                            else
-                                await studio.ApplyVisualSnipRegionAsync(
-                                    rect,
-                                    additive,
-                                    capturedPage
-                                );
-                        }
-                    )
+                var (initPri, initSec) = CollectSnipPageRects(capturedPage);
+                var snipperCtrl = new PdfVisualSnipperControl(
+                    initPri,
+                    initSec,
+                    async (rect, additive) =>
                     {
-                        HorizontalAlignment = HorizontalAlignment.Stretch,
-                        VerticalAlignment = VerticalAlignment.Stretch,
+                        if (studio.SnipMode == SnipCaptureMode.CaptureImage)
+                            await studio.CaptureQuestionImageFromSnipperAsync(
+                                rect,
+                                capturedPage
+                            );
+                        else
+                            await studio.ApplyVisualSnipRegionAsync(
+                                rect,
+                                additive,
+                                capturedPage
+                            );
                     }
-                );
+                )
+                {
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Stretch,
+                };
+                pageSnippers[p] = snipperCtrl;
+                pageLayer.Children.Add(snipperCtrl);
 
                 var sheet = new Border
                 {
@@ -2425,8 +2443,84 @@ public static partial class QuizStudioViewBuilder
             );
 
             bool isApplyingZoom = false;
+            Avalonia.Threading.DispatcherTimer? smoothScrollTimer = null;
             Avalonia.Threading.DispatcherTimer? zoomSharpenTimer = null;
             int lastReportedPage = initPage;
+
+            void CancelSmoothScroll()
+            {
+                if (smoothScrollTimer is not null)
+                {
+                    smoothScrollTimer.Stop();
+                    smoothScrollTimer = null;
+                }
+            }
+
+            snipScroll.AddHandler(
+                Avalonia.Input.InputElement.PointerWheelChangedEvent,
+                (_, _) => CancelSmoothScroll(),
+                Avalonia.Interactivity.RoutingStrategies.Tunnel
+            );
+            snipScroll.AddHandler(
+                Avalonia.Input.InputElement.PointerPressedEvent,
+                (_, _) => CancelSmoothScroll(),
+                Avalonia.Interactivity.RoutingStrategies.Tunnel
+            );
+
+            void SetSnipOffsetClamped(double y)
+            {
+                double maxY = Math.Max(0.0, snipScroll.Extent.Height - snipScroll.Viewport.Height);
+                double clampedY = maxY > 1.0 ? Math.Clamp(y, 0.0, maxY) : Math.Max(0.0, y);
+                snipScroll.Offset = new Vector(snipScroll.Offset.X, clampedY);
+            }
+
+            void AnimateSnipScrollToY(double targetY, bool animate)
+            {
+                CancelSmoothScroll();
+                double maxY = Math.Max(0.0, snipScroll.Extent.Height - snipScroll.Viewport.Height);
+                double clampedTarget =
+                    maxY > 1.0 ? Math.Clamp(targetY, 0.0, maxY) : Math.Max(0.0, targetY);
+                double startY = snipScroll.Offset.Y;
+                double delta = clampedTarget - startY;
+
+                if (!animate || Math.Abs(delta) < 6.0)
+                {
+                    SetSnipOffsetClamped(clampedTarget);
+                    SyncVisiblePages();
+                    return;
+                }
+
+                if (Math.Abs(delta) > 2800.0)
+                {
+                    startY = clampedTarget - Math.Sign(delta) * 360.0;
+                    delta = clampedTarget - startY;
+                    SetSnipOffsetClamped(startY);
+                }
+
+                const double durationMs = 175.0;
+                var startUtc = DateTime.UtcNow;
+                var timer = new Avalonia.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(14),
+                };
+                smoothScrollTimer = timer;
+                timer.Tick += (_, _) =>
+                {
+                    double t = Math.Clamp(
+                        (DateTime.UtcNow - startUtc).TotalMilliseconds / durationMs,
+                        0.0,
+                        1.0
+                    );
+                    double eased = 1.0 - Math.Pow(1.0 - t, 3.0);
+                    SetSnipOffsetClamped(startY + delta * eased);
+                    if (t >= 1.0)
+                    {
+                        CancelSmoothScroll();
+                        SyncVisiblePages();
+                    }
+                };
+                timer.Start();
+            }
 
             void SyncVisiblePages()
             {
@@ -2497,9 +2591,27 @@ public static partial class QuizStudioViewBuilder
                 }
             }
 
-            void ScrollToPageInPlace(int targetPage)
+            void ScrollToPageAndRectInPlace(
+                int targetPage,
+                NormalizedHighlightRect? targetRect,
+                bool animate = false
+            )
             {
                 int clamped = Math.Clamp(targetPage, 1, snipTotalPages);
+                if (snipReader.FitMode == PdfFitMode.FitWidth && snipScroll.Viewport.Width > 100)
+                {
+                    double liveW = Math.Min(900, snipScroll.Viewport.Width - 36);
+                    if (Math.Abs(liveW - currentPageWidth) > 2.0)
+                    {
+                        currentPageWidth = liveW;
+                        for (int p = 1; p <= snipTotalPages; p++)
+                        {
+                            if (pageImages[p].Source is null && pageSheets[p].Child is Grid g)
+                                g.MinHeight = GetSlotHeight(p);
+                        }
+                    }
+                }
+
                 if (pageImages[clamped].Source is null)
                 {
                     var pre = snipReader.GetPageBitmap(clamped);
@@ -2511,20 +2623,45 @@ public static partial class QuizStudioViewBuilder
                     }
                 }
 
-                double targetY = 12.0;
+                double pageTopY = 12.0;
                 for (int p = 1; p < clamped; p++)
                 {
                     double h = pageSheets[p].Bounds.Height > 10
                         ? pageSheets[p].Bounds.Height
                         : (GetSlotHeight(p) + sheetChromeH);
-                    targetY += h + pageGap;
+                    pageTopY += h + pageGap;
+                }
+
+                double targetY = pageTopY;
+                if (targetRect is not null)
+                {
+                    double targetPageH = pageSheets[clamped].Bounds.Height > 10
+                        ? pageSheets[clamped].Bounds.Height
+                        : (GetSlotHeight(clamped) + sheetChromeH);
+                    double viewH = snipScroll.Viewport.Height > 100
+                        ? snipScroll.Viewport.Height
+                        : 650.0;
+                    double highlightY = pageTopY + (targetRect.Y * targetPageH);
+                    double topLead = Math.Max(56.0, viewH * 0.28);
+                    targetY = Math.Max(0.0, highlightY - topLead);
                 }
 
                 lastReportedPage = clamped;
                 if (!pageJumpBox.IsFocused)
                     pageJumpBox.Text = clamped.ToString();
-                snipScroll.Offset = new Vector(snipScroll.Offset.X, targetY);
-                SyncVisiblePages();
+                AnimateSnipScrollToY(targetY, animate);
+            }
+
+            void ScrollToPageInPlace(int targetPage) =>
+                ScrollToPageAndRectInPlace(targetPage, null, animate: true);
+
+            void RefreshSnipOverlaysInPlace()
+            {
+                for (int p = 1; p <= snipTotalPages; p++)
+                {
+                    var (pri, sec) = CollectSnipPageRects(p);
+                    pageSnippers[p].UpdateHighlights(pri, sec);
+                }
             }
 
             void ApplyZoomInPlace()
@@ -2646,22 +2783,37 @@ public static partial class QuizStudioViewBuilder
                 }
             };
             Action<int> onSnipNav = ScrollToPageInPlace;
+            Action<int, NormalizedHighlightRect?> onSnipHighlightFocus = (pg, rect) =>
+                ScrollToPageAndRectInPlace(pg, rect, animate: true);
+            Action onSnipAnchorsChanged = RefreshSnipOverlaysInPlace;
             Action onSnipZoom = ApplyZoomInPlace;
 
             snipReader.PageBitmapReady += onSnipBmp;
             snipReader.NavigationRequested += onSnipNav;
             snipReader.ZoomChangedInPlace += onSnipZoom;
+            studio.SnipHighlightFocusRequested += onSnipHighlightFocus;
+            studio.SnipAnchorsChangedInPlace += onSnipAnchorsChanged;
             snipScroll.DetachedFromVisualTree += (_, _) =>
             {
+                CancelSmoothScroll();
                 zoomSharpenTimer?.Stop();
                 snipReader.PageBitmapReady -= onSnipBmp;
                 snipReader.NavigationRequested -= onSnipNav;
                 snipReader.ZoomChangedInPlace -= onSnipZoom;
+                studio.SnipHighlightFocusRequested -= onSnipHighlightFocus;
+                studio.SnipAnchorsChangedInPlace -= onSnipAnchorsChanged;
             };
 
             snipScroll.ScrollChanged += (_, _) => SyncVisiblePages();
 
-            if (initPage > 1)
+            var initSnipAnchor = draft.EvidenceAnchors.FirstOrDefault(a => a.PageNumber == initPage);
+            var initSnipRect =
+                initSnipAnchor is { HighlightRects.Count: > 0 }
+                    ? initSnipAnchor.HighlightRects.OrderBy(r => r.Y).First()
+                    : null;
+            bool needsInitialJump = initPage > 1 || initSnipRect is not null;
+
+            if (needsInitialJump)
             {
                 isApplyingZoom = true;
                 snipScroll.Opacity = 0.0;
@@ -2682,9 +2834,9 @@ public static partial class QuizStudioViewBuilder
                             }
                         }
 
-                        if (initPage > 1)
+                        if (needsInitialJump)
                         {
-                            ScrollToPageInPlace(initPage);
+                            ScrollToPageAndRectInPlace(initPage, initSnipRect, animate: false);
                             isApplyingZoom = false;
                             SyncVisiblePages();
                             snipScroll.Opacity = 1.0;
@@ -2781,62 +2933,78 @@ public static partial class QuizStudioViewBuilder
             }
         }
 
-        for (int ai = 0; ai < draft.EvidenceAnchors.Count; ai++)
+        var anchorsListStack = new StackPanel { Spacing = 8 };
+        void RebuildAnchorsListInPlace()
         {
-            int capturedAi = ai;
-            var anchor = draft.EvidenceAnchors[ai];
-            bool isCurPageAnchor = anchor.PageNumber == curPage;
-            var anchorCard = new StackPanel { Spacing = 4 };
-            var aHead = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
-            aHead.Children.Add(
-                UiBuilder.GhostButton(
-                    $"Page {anchor.PageNumber} ({anchor.HighlightRects.Count} box)",
-                    MaterialIconKind.Marker,
-                    async () => await studio.LoadEditorSnipPageAsync(anchor.PageNumber),
-                    isActive: isCurPageAnchor
-                )
-            );
-            var delBtn = UiBuilder.IconButton(
-                MaterialIconKind.Close,
-                () => studio.RemoveEvidenceAnchor(capturedAi),
-                13,
-                ThemeService.Brush(ThemeService.TextMuted)
-            );
-            ToolTip.SetTip(delBtn, "Remove anchor");
-            Grid.SetColumn(delBtn, 1);
-            aHead.Children.Add(delBtn);
-            anchorCard.Children.Add(aHead);
-
-            if (!string.IsNullOrWhiteSpace(anchor.VerbatimQuote))
+            anchorsListStack.Children.Clear();
+            int activeAnchorIdx = studio.ActiveSnipAnchorIndex;
+            for (int ai = 0; ai < draft.EvidenceAnchors.Count; ai++)
             {
-                anchorCard.Children.Add(
-                    new TextBlock
+                int capturedAi = ai;
+                var anchor = draft.EvidenceAnchors[ai];
+                bool isFocusedAnchor =
+                    activeAnchorIdx >= 0
+                        ? ai == activeAnchorIdx
+                        : anchor.PageNumber == studio.EditingSnipPageNumber;
+                var anchorCard = new StackPanel { Spacing = 4 };
+                var aHead = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+                aHead.Children.Add(
+                    UiBuilder.GhostButton(
+                        $"#{ai + 1} · Page {anchor.PageNumber} ({anchor.HighlightRects.Count} box)",
+                        isFocusedAnchor ? MaterialIconKind.CrosshairsGps : MaterialIconKind.Marker,
+                        () => studio.FocusSnipAnchor(capturedAi),
+                        isActive: isFocusedAnchor
+                    )
+                );
+                var delBtn = UiBuilder.IconButton(
+                    MaterialIconKind.Close,
+                    () => studio.RemoveEvidenceAnchor(capturedAi),
+                    13,
+                    ThemeService.Brush(ThemeService.TextMuted)
+                );
+                ToolTip.SetTip(delBtn, "Remove anchor");
+                Grid.SetColumn(delBtn, 1);
+                aHead.Children.Add(delBtn);
+                anchorCard.Children.Add(aHead);
+
+                if (!string.IsNullOrWhiteSpace(anchor.VerbatimQuote))
+                {
+                    anchorCard.Children.Add(
+                        new TextBlock
+                        {
+                            Text = $"\"{anchor.VerbatimQuote}\"",
+                            FontSize = 11,
+                            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                            TextWrapping = TextWrapping.Wrap,
+                            MaxLines = 3,
+                            TextTrimming = TextTrimming.CharacterEllipsis,
+                        }
+                    );
+                }
+                anchorsListStack.Children.Add(
+                    new Border
                     {
-                        Text = $"\"{anchor.VerbatimQuote}\"",
-                        FontSize = 11,
-                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                        TextWrapping = TextWrapping.Wrap,
-                        MaxLines = 3,
-                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        Background = isFocusedAnchor
+                            ? ThemeService.Brush(ThemeService.BgElevated)
+                            : ThemeService.Brush(ThemeService.BgBase),
+                        BorderBrush = isFocusedAnchor
+                            ? ThemeService.Brush(ThemeService.BorderStrong)
+                            : ThemeService.Brush(ThemeService.BorderSubtle),
+                        BorderThickness = new Thickness(1),
+                        CornerRadius = new CornerRadius(6),
+                        Padding = new Thickness(8, 6),
+                        Child = anchorCard,
                     }
                 );
             }
-            railStack.Children.Add(
-                new Border
-                {
-                    Background = isCurPageAnchor
-                        ? ThemeService.Brush(ThemeService.BgElevated)
-                        : ThemeService.Brush(ThemeService.BgBase),
-                    BorderBrush = isCurPageAnchor
-                        ? ThemeService.Brush(ThemeService.BorderStrong)
-                        : ThemeService.Brush(ThemeService.BorderSubtle),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(6),
-                    Padding = new Thickness(8, 6),
-                    Child = anchorCard,
-                }
-            );
         }
+        RebuildAnchorsListInPlace();
+        railStack.Children.Add(anchorsListStack);
+
+        Action onAnchorsRailRefresh = RebuildAnchorsListInPlace;
+        studio.SnipAnchorsChangedInPlace += onAnchorsRailRefresh;
+        anchorsListStack.DetachedFromVisualTree += (_, _) =>
+            studio.SnipAnchorsChangedInPlace -= onAnchorsRailRefresh;
 
         var railGrid = new Grid
         {
@@ -3802,10 +3970,15 @@ public static partial class QuizStudioViewBuilder
 
     private sealed class PdfVisualSnipperControl : Control
     {
-        private static readonly IBrush ExistingFill = new SolidColorBrush(Color.Parse("#48F59E0B"));
-        private static readonly IPen ExistingBorder = new Pen(
-            new SolidColorBrush(Color.Parse("#E6D97706")),
-            1.6
+        private static readonly IBrush PrimaryFill = new SolidColorBrush(Color.Parse("#52F59E0B"));
+        private static readonly IPen PrimaryBorder = new Pen(
+            new SolidColorBrush(Color.Parse("#F5D97706")),
+            2.0
+        );
+        private static readonly IBrush SecondaryFill = new SolidColorBrush(Color.Parse("#2AF59E0B"));
+        private static readonly IPen SecondaryBorder = new Pen(
+            new SolidColorBrush(Color.Parse("#99D97706")),
+            1.1
         );
         private static readonly IBrush DragFill = new SolidColorBrush(Color.Parse("#385E81F4"));
         private static readonly IPen DragBorder = new Pen(
@@ -3813,19 +3986,32 @@ public static partial class QuizStudioViewBuilder
             1.8
         );
 
-        private readonly IReadOnlyList<NormalizedHighlightRect> _existingRects;
+        private IReadOnlyList<NormalizedHighlightRect> _primaryRects;
+        private IReadOnlyList<NormalizedHighlightRect> _secondaryRects;
         private readonly Func<NormalizedHighlightRect, bool, Task> _onRegionSelected;
         private Point? _dragStart;
         private Point? _dragEnd;
 
         public PdfVisualSnipperControl(
-            IReadOnlyList<NormalizedHighlightRect> existingRects,
+            IReadOnlyList<NormalizedHighlightRect> primaryRects,
+            IReadOnlyList<NormalizedHighlightRect> secondaryRects,
             Func<NormalizedHighlightRect, bool, Task> onRegionSelected
         )
         {
-            _existingRects = existingRects;
+            _primaryRects = primaryRects;
+            _secondaryRects = secondaryRects;
             _onRegionSelected = onRegionSelected;
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Cross);
+        }
+
+        public void UpdateHighlights(
+            IReadOnlyList<NormalizedHighlightRect> primaryRects,
+            IReadOnlyList<NormalizedHighlightRect> secondaryRects
+        )
+        {
+            _primaryRects = primaryRects;
+            _secondaryRects = secondaryRects;
+            InvalidateVisual();
         }
 
         public override void Render(DrawingContext context)
@@ -3839,7 +4025,7 @@ public static partial class QuizStudioViewBuilder
             // Hit-test surface
             context.FillRectangle(Brushes.Transparent, new Rect(0, 0, w, h));
 
-            foreach (var r in _existingRects)
+            foreach (var r in _secondaryRects)
             {
                 var rect = new Rect(
                     r.X * w,
@@ -3847,7 +4033,18 @@ public static partial class QuizStudioViewBuilder
                     Math.Max(6, r.Width * w),
                     Math.Max(8, r.Height * h)
                 );
-                context.DrawRectangle(ExistingFill, ExistingBorder, rect, 3, 3);
+                context.DrawRectangle(SecondaryFill, SecondaryBorder, rect, 3, 3);
+            }
+
+            foreach (var r in _primaryRects)
+            {
+                var rect = new Rect(
+                    r.X * w,
+                    r.Y * h,
+                    Math.Max(6, r.Width * w),
+                    Math.Max(8, r.Height * h)
+                );
+                context.DrawRectangle(PrimaryFill, PrimaryBorder, rect, 3, 3);
             }
 
             if (_dragStart.HasValue && _dragEnd.HasValue)

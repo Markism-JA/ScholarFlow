@@ -293,6 +293,9 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public bool IsSnipOutlineOpen { get; private set; } = true;
     public bool IsSnipAnchorsOpen { get; private set; } = true;
     public SnipCaptureMode SnipMode { get; private set; } = SnipCaptureMode.PinHighlight;
+    public int ActiveSnipAnchorIndex { get; private set; } = -1;
+    public event Action? SnipAnchorsChangedInPlace;
+    public event Action<int, NormalizedHighlightRect?>? SnipHighlightFocusRequested;
     public IReadOnlyList<string> SnipExtractedFigures { get; private set; } = [];
     public string? ZoomedImagePath { get; private set; }
     public IReadOnlyList<PdfBookmarkNode> SnipOutlineRoots => SnipPdfReader.BookmarkRoots;
