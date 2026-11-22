@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -20,47 +21,94 @@ namespace ScholarFlow.Desktop.Views.Shell;
 /// </summary>
 public static class OnboardingAndSettingsModalBuilder
 {
+    private static StackPanel BuildLabeledField(string label, Control input) =>
+        new()
+        {
+            Spacing = 4,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = label,
+                    FontSize = 11,
+                    FontWeight = FontWeight.Medium,
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                },
+                input,
+            },
+        };
+
     public static Control BuildOnboardingModal(Window owner, MainWindowViewModel vm)
     {
-        var stack = new StackPanel { Spacing = 14 };
+        bool hasExistingBasin = !string.IsNullOrWhiteSpace(vm.BasinRoot);
 
-        var header = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
-        header.Children.Add(
-            new StackPanel
-            {
-                Spacing = 3,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = "Welcome to ScholarFlow",
-                        FontSize = 18,
-                        FontWeight = FontWeight.Bold,
-                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                    },
-                    new TextBlock
-                    {
-                        Text =
-                            "Set up a local Study Basin and choose its sync provider (Local Knowledge Hub or an LMS integration).",
-                        FontSize = 12.5,
-                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                        TextWrapping = TextWrapping.Wrap,
-                    },
-                },
-            }
-        );
-
-        if (!string.IsNullOrWhiteSpace(vm.BasinRoot))
+        // 1. Pinned Header
+        var header = new Grid
         {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
+            ColumnSpacing = 8,
+        };
+        var hdrIcon = UiBuilder.Icon(
+            MaterialIconKind.FolderPlusOutline,
+            18,
+            ThemeService.Brush(ThemeService.TextPrimary)
+        );
+        hdrIcon.VerticalAlignment = VerticalAlignment.Center;
+        header.Children.Add(hdrIcon);
+
+        var titleStack = new StackPanel
+        {
+            Spacing = 2,
+            VerticalAlignment = VerticalAlignment.Center,
+            [Grid.ColumnProperty] = 1,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = hasExistingBasin ? "New Study Basin Setup" : "Welcome to ScholarFlow",
+                    FontSize = 15.5,
+                    FontWeight = FontWeight.Bold,
+                    Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                },
+                new TextBlock
+                {
+                    Text =
+                        "Set up a local Study Basin folder and choose its sync provider (Local Knowledge Hub or an LMS integration).",
+                    FontSize = 12,
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    TextWrapping = TextWrapping.Wrap,
+                },
+            },
+        };
+        header.Children.Add(titleStack);
+
+        if (hasExistingBasin)
+        {
+            var escChip = UiBuilder.KbdChip("Esc");
+            escChip.VerticalAlignment = VerticalAlignment.Center;
+            Grid.SetColumn(escChip, 2);
+            header.Children.Add(escChip);
+
             var closeBtn = UiBuilder.IconButton(
                 MaterialIconKind.Close,
                 () => vm.CloseTopOverlayOrDrawer(),
                 16
             );
-            Grid.SetColumn(closeBtn, 1);
+            closeBtn.VerticalAlignment = VerticalAlignment.Center;
+            ToolTip.SetTip(closeBtn, "Close (Esc)");
+            Grid.SetColumn(closeBtn, 3);
             header.Children.Add(closeBtn);
         }
-        stack.Children.Add(header);
+
+        var headerBlock = new StackPanel
+        {
+            Spacing = 10,
+            Margin = new Thickness(0, 0, 0, 10),
+            Children = { header, UiBuilder.HairlineDivider() },
+        };
+
+        // 2. Scrollable Wizard Body
+        var bodyStack = new StackPanel { Spacing = 12 };
 
         // Step 1: Study Basin Folder
         var vaultCard = new StackPanel { Spacing = 8 };
@@ -112,10 +160,10 @@ public static class OnboardingAndSettingsModalBuilder
         Grid.SetColumn(browseBtn, 1);
         pathGrid.Children.Add(browseBtn);
         vaultCard.Children.Add(pathGrid);
-        stack.Children.Add(UiBuilder.Card(vaultCard, padding: new Thickness(12, 10)));
+        bodyStack.Children.Add(UiBuilder.Card(vaultCard, padding: new Thickness(12, 10)));
 
         // Step 2: Pluggable Sync Provider Selector & Dynamic Config Fields
-        var providerCard = new StackPanel { Spacing = 8 };
+        var providerCard = new StackPanel { Spacing = 10 };
         providerCard.Children.Add(UiBuilder.SectionHeader("2. Basin Sync Provider"));
 
         var providerPills = new WrapPanel { Orientation = Orientation.Horizontal };
@@ -135,7 +183,7 @@ public static class OnboardingAndSettingsModalBuilder
                 () => vm.SelectOnboardingProvider(captured.ProviderId),
                 isActive: isSelected
             );
-            pill.Margin = new Thickness(0, 0, 6, 6);
+            pill.Margin = new Thickness(0, 0, 6, 4);
             providerPills.Children.Add(pill);
         }
         providerCard.Children.Add(providerPills);
@@ -149,7 +197,7 @@ public static class OnboardingAndSettingsModalBuilder
             var acctBox = new TextBox
             {
                 Text = vm.OnboardingAccountKey,
-                Watermark = "Account Profile Key (e.g. default, school-main)",
+                Watermark = "e.g. default, school-main",
                 FontSize = 12,
             };
             acctBox.PropertyChanged += (_, e) =>
@@ -157,7 +205,7 @@ public static class OnboardingAndSettingsModalBuilder
                 if (e.Property == TextBox.TextProperty)
                     vm.OnboardingAccountKey = acctBox.Text ?? "default";
             };
-            providerCard.Children.Add(acctBox);
+            providerCard.Children.Add(BuildLabeledField("Account Profile Key", acctBox));
 
             foreach (var field in selectedProvider.Capabilities.ConfigFields ?? [])
             {
@@ -181,43 +229,82 @@ public static class OnboardingAndSettingsModalBuilder
                         vm.OnboardingProviderSettings[capturedField.Key] =
                             fieldBox.Text ?? string.Empty;
                 };
-                providerCard.Children.Add(fieldBox);
+                providerCard.Children.Add(BuildLabeledField(capturedField.Label, fieldBox));
             }
         }
         else
         {
             providerCard.Children.Add(
-                new TextBlock
+                new Border
                 {
-                    Text =
-                        "Local Knowledge Hub basins store subjects, books, PDFs, notes, and recall decks purely offline with zero background LMS polling.",
-                    FontSize = 12,
-                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                    TextWrapping = TextWrapping.Wrap,
+                    Background = ThemeService.Brush(ThemeService.BgElevated),
+                    BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(10, 8),
+                    Child = new TextBlock
+                    {
+                        Text =
+                            "Local Knowledge Hub basins store subjects, books, PDFs, notes, and recall decks purely offline with zero background LMS polling.",
+                        FontSize = 12,
+                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                        TextWrapping = TextWrapping.Wrap,
+                    },
                 }
             );
         }
 
-        stack.Children.Add(UiBuilder.Card(providerCard, padding: new Thickness(12, 10)));
+        bodyStack.Children.Add(UiBuilder.Card(providerCard, padding: new Thickness(12, 10)));
 
-        // Action Buttons
-        var actions = new Grid
+        var scrollBody = new ScrollViewer
         {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto"),
-            ColumnSpacing = 8,
+            Content = bodyStack,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, 4, 0),
         };
-        var offlineBtn = UiBuilder.GhostButton(
-            "Create as Local Basin",
-            MaterialIconKind.FolderCheckOutline,
-            async () =>
-                await vm.CompleteOnboardingAsync(
-                    vm.OnboardingVaultPath,
-                    runElmsAuth: false,
-                    runInitialSync: false
-                )
-        );
-        Grid.SetColumn(offlineBtn, 1);
-        actions.Children.Add(offlineBtn);
+
+        // 3. Pinned Responsive Action Footer
+        var footerWrap = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            HorizontalAlignment = HorizontalAlignment.Right,
+        };
+
+        if (hasExistingBasin)
+        {
+            var cancelBtn = UiBuilder.GhostButton(
+                "Cancel",
+                null,
+                () => vm.CloseTopOverlayOrDrawer()
+            );
+            cancelBtn.Margin = new Thickness(0, 0, 6, 0);
+            footerWrap.Children.Add(cancelBtn);
+        }
+
+        var offlineBtn = selectedProvider.Capabilities.SupportsSync
+            ? UiBuilder.GhostButton(
+                "Create as Local Basin",
+                MaterialIconKind.FolderCheckOutline,
+                async () =>
+                    await vm.CompleteOnboardingAsync(
+                        vm.OnboardingVaultPath,
+                        runElmsAuth: false,
+                        runInitialSync: false
+                    )
+            )
+            : UiBuilder.PrimaryButton(
+                "Create Local Basin",
+                MaterialIconKind.FolderCheckOutline,
+                async () =>
+                    await vm.CompleteOnboardingAsync(
+                        vm.OnboardingVaultPath,
+                        runElmsAuth: false,
+                        runInitialSync: false
+                    )
+            );
+        offlineBtn.Margin = new Thickness(0, 0, selectedProvider.Capabilities.SupportsSync ? 6 : 0, 0);
+        footerWrap.Children.Add(offlineBtn);
 
         if (selectedProvider.Capabilities.SupportsSync)
         {
@@ -231,48 +318,91 @@ public static class OnboardingAndSettingsModalBuilder
                         runInitialSync: true
                     )
             );
-            Grid.SetColumn(connectBtn, 2);
-            actions.Children.Add(connectBtn);
+            footerWrap.Children.Add(connectBtn);
         }
 
-        stack.Children.Add(actions);
+        var footerBlock = new StackPanel
+        {
+            Spacing = 10,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children = { UiBuilder.HairlineDivider(), footerWrap },
+        };
+
+        var modalGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*,Auto") };
+        modalGrid.Children.Add(headerBlock);
+        Grid.SetRow(scrollBody, 1);
+        modalGrid.Children.Add(scrollBody);
+        Grid.SetRow(footerBlock, 2);
+        modalGrid.Children.Add(footerBlock);
 
         return new Border
         {
-            Width = 580,
-            Background = ThemeService.Brush(ThemeService.BgElevated),
-            BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+            MaxWidth = 580,
+            MaxHeight = 620,
+            Margin = new Thickness(24, 20),
+            Background = ThemeService.Brush(ThemeService.BgSurface),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(20, 18),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            BoxShadow = BoxShadows.Parse("0 16 40 0 #66000000"),
+            Padding = new Thickness(18, 16),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
-            Child = stack,
+            Child = modalGrid,
         };
     }
 
     public static Control BuildSettingsModal(MainWindowViewModel vm)
     {
-        var stack = new StackPanel { Spacing = 10 };
+        // 1. Pinned Header
+        var header = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
+            ColumnSpacing = 8,
+        };
+        var hdrIcon = UiBuilder.Icon(
+            MaterialIconKind.CogOutline,
+            18,
+            ThemeService.Brush(ThemeService.TextPrimary)
+        );
+        hdrIcon.VerticalAlignment = VerticalAlignment.Center;
+        header.Children.Add(hdrIcon);
 
-        var header = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
         header.Children.Add(
             new TextBlock
             {
-                Text = "Basin Sync Provider & Desktop Settings",
-                FontSize = 16,
+                Text = "Basin & Desktop Settings",
+                FontSize = 15.5,
                 FontWeight = FontWeight.Bold,
                 Foreground = ThemeService.Brush(ThemeService.TextPrimary),
                 VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                [Grid.ColumnProperty] = 1,
             }
         );
-        var closeBtn = UiBuilder.IconButton(MaterialIconKind.Close, vm.ToggleSettingsModal, 16);
-        Grid.SetColumn(closeBtn, 1);
-        header.Children.Add(closeBtn);
-        stack.Children.Add(header);
-        stack.Children.Add(UiBuilder.HairlineDivider());
 
-        // 1. Active Basin & Pluggable Sync Provider Configuration Card
+        var escChip = UiBuilder.KbdChip("Esc");
+        escChip.VerticalAlignment = VerticalAlignment.Center;
+        Grid.SetColumn(escChip, 2);
+        header.Children.Add(escChip);
+
+        var closeBtn = UiBuilder.IconButton(MaterialIconKind.Close, vm.ToggleSettingsModal, 16);
+        closeBtn.VerticalAlignment = VerticalAlignment.Center;
+        ToolTip.SetTip(closeBtn, "Close (Esc)");
+        Grid.SetColumn(closeBtn, 3);
+        header.Children.Add(closeBtn);
+
+        var headerBlock = new StackPanel
+        {
+            Spacing = 10,
+            Margin = new Thickness(0, 0, 0, 10),
+            Children = { header, UiBuilder.HairlineDivider() },
+        };
+
+        // 2. Scrollable Settings Body
+        var stack = new StackPanel { Spacing = 10 };
+
+        // Active Basin & Pluggable Sync Provider Configuration Card
         var basinCard = new StackPanel { Spacing = 8 };
         basinCard.Children.Add(UiBuilder.SectionHeader($"Active Basin: {vm.BasinConfig.Name}"));
 
@@ -300,13 +430,6 @@ public static class OnboardingAndSettingsModalBuilder
 
         if (vm.SupportsActiveBasinSync)
         {
-            // Dynamic Config Fields + Account Key
-            var fieldsGrid = new Grid
-            {
-                ColumnDefinitions = ColumnDefinitions.Parse("160,*"),
-                ColumnSpacing = 8,
-            };
-
             var acctBox = new TextBox
             {
                 Text = vm.BasinConfig.AccountKey,
@@ -315,53 +438,28 @@ public static class OnboardingAndSettingsModalBuilder
             };
             acctBox.LostFocus += async (_, _) =>
                 await vm.SetBasinAccountKeyAsync(acctBox.Text ?? "default");
-            fieldsGrid.Children.Add(acctBox);
+            basinCard.Children.Add(BuildLabeledField("Account Profile Key", acctBox));
 
-            var configFields = vm.ActiveCapabilities.ConfigFields ?? [];
-            if (configFields.Count > 0)
+            foreach (var field in vm.ActiveCapabilities.ConfigFields ?? [])
             {
-                var firstField = configFields[0];
-                var val = vm.BasinConfig.GetProviderSetting(
-                    firstField.Key,
-                    firstField.DefaultValue
-                );
-                var fieldBox = new TextBox
-                {
-                    Text = val,
-                    Watermark = firstField.Placeholder ?? firstField.Label,
-                    PasswordChar = firstField.IsSecret ? '•' : '\0',
-                    FontSize = 12,
-                };
-                fieldBox.LostFocus += async (_, _) =>
-                    await vm.SetBasinProviderSettingAsync(
-                        firstField.Key,
-                        fieldBox.Text ?? firstField.DefaultValue
-                    );
-                Grid.SetColumn(fieldBox, 1);
-                fieldsGrid.Children.Add(fieldBox);
-            }
-            basinCard.Children.Add(fieldsGrid);
-
-            foreach (var extraField in configFields.Skip(1))
-            {
-                var capturedField = extraField;
+                var capturedField = field;
                 var val = vm.BasinConfig.GetProviderSetting(
                     capturedField.Key,
                     capturedField.DefaultValue
                 );
-                var extraBox = new TextBox
+                var fieldBox = new TextBox
                 {
                     Text = val,
                     Watermark = capturedField.Placeholder ?? capturedField.Label,
                     PasswordChar = capturedField.IsSecret ? '•' : '\0',
                     FontSize = 12,
                 };
-                extraBox.LostFocus += async (_, _) =>
+                fieldBox.LostFocus += async (_, _) =>
                     await vm.SetBasinProviderSettingAsync(
                         capturedField.Key,
-                        extraBox.Text ?? capturedField.DefaultValue
+                        fieldBox.Text ?? capturedField.DefaultValue
                     );
-                basinCard.Children.Add(extraBox);
+                basinCard.Children.Add(BuildLabeledField(capturedField.Label, fieldBox));
             }
 
             // Per-Basin Background Polling & Auth Action Strip
@@ -409,7 +507,7 @@ public static class OnboardingAndSettingsModalBuilder
                 {
                     var capturedCourse = course;
                     var chip = UiBuilder.GhostButton(
-                        $"Excluded: {capturedCourse.Title} (Click to Include)",
+                        $"Excluded: {capturedCourse.Title} (Include)",
                         MaterialIconKind.EyeOffOutline,
                         async () => await vm.ToggleCourseSyncExclusionAsync(capturedCourse)
                     );
@@ -420,14 +518,18 @@ public static class OnboardingAndSettingsModalBuilder
             }
         }
 
-        // Academic Terms / Study Sections Editor (available for both Manual/Local and LMS basins)
+        // Academic Terms / Study Sections Editor
         basinCard.Children.Add(UiBuilder.HairlineDivider(new Thickness(0, 4)));
-        var termsHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        var termsHeader = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 8,
+        };
         termsHeader.Children.Add(
-            UiBuilder.SectionHeader("Academic Terms / Study Sections (Sidebar & Master PDF)")
+            UiBuilder.SectionHeader("Academic Terms / Study Sections")
         );
         var resetTermsBtn = UiBuilder.GhostButton(
-            "Reset to Defaults",
+            "Reset Defaults",
             MaterialIconKind.Restore,
             async () => await vm.ResetBasinTermsToProviderDefaultAsync()
         );
@@ -484,7 +586,7 @@ public static class OnboardingAndSettingsModalBuilder
                 termsWrap.Children.Add(
                     new Border
                     {
-                        Background = ThemeService.Brush(ThemeService.BgSurface),
+                        Background = ThemeService.Brush(ThemeService.BgBase),
                         BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(6),
@@ -505,6 +607,7 @@ public static class OnboardingAndSettingsModalBuilder
                         "No terms configured — tasks and Master PDFs use flat subject/module organization.",
                     FontSize = 11.5,
                     Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                    TextWrapping = TextWrapping.Wrap,
                 }
             );
         }
@@ -516,22 +619,31 @@ public static class OnboardingAndSettingsModalBuilder
         };
         var newTermBox = new TextBox
         {
-            Watermark = "Add term or study section (e.g. Prelims, Unit 1, Part I, Exam Prep)...",
+            Watermark = "Add term or study section (e.g. Prelims, Unit 1, Exam Prep)...",
             FontSize = 12,
+        };
+        async Task CommitNewTermAsync()
+        {
+            if (!string.IsNullOrWhiteSpace(newTermBox.Text))
+            {
+                var txt = newTermBox.Text;
+                newTermBox.Text = string.Empty;
+                await vm.AddBasinTermAsync(txt);
+            }
+        }
+        newTermBox.KeyDown += async (_, e) =>
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                await CommitNewTermAsync();
+            }
         };
         addTermGrid.Children.Add(newTermBox);
         var addTermBtn = UiBuilder.GhostButton(
             "Add Term",
             MaterialIconKind.Plus,
-            async () =>
-            {
-                if (!string.IsNullOrWhiteSpace(newTermBox.Text))
-                {
-                    var txt = newTermBox.Text;
-                    newTermBox.Text = string.Empty;
-                    await vm.AddBasinTermAsync(txt);
-                }
-            }
+            async () => await CommitNewTermAsync()
         );
         Grid.SetColumn(addTermBtn, 1);
         addTermGrid.Children.Add(addTermBtn);
@@ -559,6 +671,7 @@ public static class OnboardingAndSettingsModalBuilder
                             FontSize = 13,
                             FontWeight = FontWeight.SemiBold,
                             Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                            TextWrapping = TextWrapping.Wrap,
                         },
                         new TextBlock
                         {
@@ -577,6 +690,7 @@ public static class OnboardingAndSettingsModalBuilder
                 async () => await onToggle(),
                 isActive: isEnabled
             );
+            btn.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(btn, 1);
             row.Children.Add(btn);
             return UiBuilder.Card(row, padding: new Thickness(12, 9));
@@ -609,57 +723,90 @@ public static class OnboardingAndSettingsModalBuilder
             )
         );
 
-        // Study Basin & Setup Wizard Footer
-        var vaultRow = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
-            ColumnSpacing = 10,
-        };
-        vaultRow.Children.Add(
-            new StackPanel
-            {
-                Spacing = 2,
-                Children =
+        // Active Basin Path Card
+        stack.Children.Add(
+            UiBuilder.Card(
+                new StackPanel
                 {
-                    new TextBlock
+                    Spacing = 2,
+                    Children =
                     {
-                        Text = "Active Basin Path",
-                        FontSize = 12.5,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                    },
-                    new TextBlock
-                    {
-                        Text = string.IsNullOrWhiteSpace(vm.BasinRoot)
-                            ? "Not configured"
-                            : vm.BasinRoot,
-                        FontSize = 11.5,
-                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        new TextBlock
+                        {
+                            Text = "Active Basin Path",
+                            FontSize = 12.5,
+                            FontWeight = FontWeight.SemiBold,
+                            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                        },
+                        new TextBlock
+                        {
+                            Text = string.IsNullOrWhiteSpace(vm.BasinRoot)
+                                ? "Not configured"
+                                : vm.BasinRoot,
+                            FontSize = 11.5,
+                            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                            TextWrapping = TextWrapping.Wrap,
+                        },
                     },
                 },
-            }
+                padding: new Thickness(12, 9)
+            )
         );
+
+        var scrollBody = new ScrollViewer
+        {
+            Content = stack,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, 4, 0),
+        };
+
+        // 3. Pinned Footer (Always Reachable)
+        var footerGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
+            ColumnSpacing = 8,
+        };
         var wizardBtn = UiBuilder.GhostButton(
             "New Basin Wizard",
             MaterialIconKind.WizardHat,
             vm.OpenOnboardingWizard
         );
-        Grid.SetColumn(wizardBtn, 1);
-        vaultRow.Children.Add(wizardBtn);
-        stack.Children.Add(UiBuilder.Card(vaultRow, padding: new Thickness(12, 9)));
+        ToolTip.SetTip(wizardBtn, "Create or connect another Study Basin folder");
+        footerGrid.Children.Add(wizardBtn);
+
+        var doneBtn = UiBuilder.PrimaryButton("Done", MaterialIconKind.Check, vm.ToggleSettingsModal);
+        Grid.SetColumn(doneBtn, 2);
+        footerGrid.Children.Add(doneBtn);
+
+        var footerBlock = new StackPanel
+        {
+            Spacing = 10,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children = { UiBuilder.HairlineDivider(), footerGrid },
+        };
+
+        var modalGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*,Auto") };
+        modalGrid.Children.Add(headerBlock);
+        Grid.SetRow(scrollBody, 1);
+        modalGrid.Children.Add(scrollBody);
+        Grid.SetRow(footerBlock, 2);
+        modalGrid.Children.Add(footerBlock);
 
         return new Border
         {
-            Width = 560,
-            Background = ThemeService.Brush(ThemeService.BgElevated),
-            BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+            MaxWidth = 600,
+            MaxHeight = 680,
+            Margin = new Thickness(24, 20),
+            Background = ThemeService.Brush(ThemeService.BgSurface),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(20, 18),
-            HorizontalAlignment = HorizontalAlignment.Center,
+            BoxShadow = BoxShadows.Parse("0 16 40 0 #66000000"),
+            Padding = new Thickness(18, 16),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Center,
-            Child = stack,
+            Child = modalGrid,
         };
     }
 
