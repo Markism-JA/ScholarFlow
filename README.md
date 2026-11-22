@@ -182,17 +182,19 @@ irm https://raw.githubusercontent.com/Markism-JA/ScholarFlow/master/scripts/unin
 
 ```mermaid
 flowchart LR
-  Desktop["ScholarFlow.Desktop\n(Avalonia UI · PDF Reader · Quiz Studio)"]
-  Core["ScholarFlow.Core\n(SQLite + FTS5 · Knowledge Hub · Quiz Engine · PDF Export)"]
-  Elms["ScholarFlow.Elms\n(Provider-Agnostic LMS SDK)"]
-  Sti["ScholarFlow.Elms.Sti\n(STI eLMS / CYPHER Plugin)"]
+  Desktop["ScholarFlow.Desktop<br/>Avalonia UI · PDF Reader · Quiz Studio"]
+  Core["ScholarFlow.Core<br/>SQLite + FTS5 · Knowledge Hub · Quiz Engine · PDF Export"]
+  Elms["ScholarFlow.Elms<br/>Provider-Agnostic LMS SDK"]
+  Sti["ScholarFlow.Elms.Sti<br/>STI eLMS / CYPHER Plugin"]
+  DB[("SQLite + FTS5<br/>.scholarflow.db")]
+  Render["PDFium · Mermaider + Svg.Skia<br/>CSharpMath · QuestPDF"]
 
   Desktop --> Core
   Desktop --> Elms
   Desktop --> Sti
   Sti --> Elms
-  Core --> DB[("SQLite + FTS5\n.scholarflow.db")]
-  Core --> Render["PDFium · Mermaider + Svg.Skia\nCSharpMath · QuestPDF"]
+  Core --> DB
+  Core --> Render
 ```
 
 ---
