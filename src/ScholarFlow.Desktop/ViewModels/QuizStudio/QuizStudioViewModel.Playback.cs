@@ -239,10 +239,138 @@ public sealed partial class QuizStudioViewModel
         StartQuizSession(deckSession);
     }
 
+    public bool IsRunnerQuickEditOpen { get; private set; }
+
+    public void OpenRunnerQuickEdit()
+    {
+        if (ActiveSession is null || CurrentQuestion is null)
+            return;
+        IsRunnerQuickEditOpen = true;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void CloseRunnerQuickEdit()
+    {
+        if (!IsRunnerQuickEditOpen)
+            return;
+        IsRunnerQuickEditOpen = false;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void ToggleRunnerQuestionFlagForAi(string questionId)
+    {
+        if (string.IsNullOrWhiteSpace(questionId))
+            return;
+        if (!DeckAiFixSelectedIds.Remove(questionId))
+            DeckAiFixSelectedIds.Add(questionId);
+        _mainVm.RequestUiRefresh();
+    }
+
+    public async Task SaveRunnerQuickEditAsync(
+        string prompt,
+        string correctAnswer,
+        List<string>? options,
+        string explanation,
+        string? hint,
+        string topicTag
+    )
+    {
+        var q = CurrentQuestion;
+        if (ActiveSession is null || q is null)
+            return;
+
+        static void ApplyEdits(
+            QuizQuestionRecord target,
+            string p,
+            string ans,
+            List<string>? opts,
+            string exp,
+            string? h,
+            string tag
+        )
+        {
+            if (!string.IsNullOrWhiteSpace(p))
+                target.Prompt = p.Trim();
+            if (!string.IsNullOrWhiteSpace(ans))
+                target.CorrectAnswer = ans.Trim();
+            if (opts is not null && opts.Count > 0)
+                target.Options = [.. opts];
+            target.Explanation = exp.Trim();
+            target.Hint = string.IsNullOrWhiteSpace(h) ? null : h.Trim();
+            target.TopicTag = string.IsNullOrWhiteSpace(tag) ? "general" : tag.Trim().TrimStart('@');
+        }
+
+        ApplyEdits(q, prompt, correctAnswer, options, explanation, hint, topicTag);
+
+        // If already answered in this session, re-evaluate against the updated answer key
+        if (IsAnswerRevealed && SessionResults.TryGetValue(q.Id, out var prev))
+        {
+            bool nowCorrect = q.EvaluateAnswer(prev.Answer);
+            IsCurrentAnswerCorrect = nowCorrect;
+            SessionResults[q.Id] = (prev.Answer, nowCorrect);
+        }
+
+        // Persist to backing saved quiz(zes) and organizer deck if loaded
+        if (OrganizerQuiz is not null)
+        {
+            var orgMatch = OrganizerQuiz.Questions.FirstOrDefault(x =>
+                string.Equals(x.Id, q.Id, StringComparison.OrdinalIgnoreCase)
+            );
+            if (orgMatch is not null && !ReferenceEquals(orgMatch, q))
+                ApplyEdits(orgMatch, prompt, correctAnswer, options, explanation, hint, topicTag);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_mainVm.BasinRoot))
+        {
+            foreach (var savedQuiz in SavedQuizzes)
+            {
+                var savedMatch = savedQuiz.Questions.FirstOrDefault(x =>
+                    string.Equals(x.Id, q.Id, StringComparison.OrdinalIgnoreCase)
+                );
+                if (savedMatch is null)
+                    continue;
+                if (!ReferenceEquals(savedMatch, q))
+                    ApplyEdits(savedMatch, prompt, correctAnswer, options, explanation, hint, topicTag);
+                await ScholarFlowDatabase.SaveQuizSessionAsync(_mainVm.BasinRoot, savedQuiz);
+            }
+        }
+
+        IsRunnerQuickEditOpen = false;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void RetryMissedQuestions()
+    {
+        if (ActiveSession is null)
+            return;
+
+        var missed = ActiveSession
+            .Questions.Where(qq =>
+                !SessionResults.TryGetValue(qq.Id, out var r) || !r.IsCorrect
+            )
+            .ToList();
+
+        if (missed.Count == 0)
+            return;
+
+        var missedSession = new QuizSessionRecord
+        {
+            Id = "srs-deck",
+            CourseFolder = ActiveSession.CourseFolder,
+            Term = ActiveSession.Term,
+            SourcePdfPath = ActiveSession.SourcePdfPath,
+            Title = $"{ActiveSession.Title} (Missed Review)",
+            CreatedAtUtc = DateTime.UtcNow,
+            Questions = missed,
+        };
+        StartQuizSession(missedSession, resumeSavedProgress: false);
+    }
+
     public void ExitActiveSession()
     {
         ActiveSession = null;
         IsShowingResultsSummary = false;
+        IsRunnerQuickEditOpen = false;
         ResetPerQuestionSuperEngineState();
         _mainVm.RequestUiRefresh();
     }

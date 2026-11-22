@@ -1,8 +1,12 @@
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Material.Icons;
 using ScholarFlow.Core.Quiz;
 using ScholarFlow.Desktop.Theme;
@@ -13,6 +17,48 @@ namespace ScholarFlow.Desktop.Views;
 
 public static partial class QuizStudioViewBuilder
 {
+    private static void AttachSmoothEntrance(
+        Control target,
+        double slideY = 8,
+        int durationMs = 160
+    )
+    {
+        var transform = new TranslateTransform(0, slideY)
+        {
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = TranslateTransform.YProperty,
+                    Duration = TimeSpan.FromMilliseconds(durationMs),
+                    Easing = new CubicEaseOut(),
+                },
+            ],
+        };
+        target.RenderTransform = transform;
+        target.Opacity = 0;
+        target.Transitions =
+        [
+            new DoubleTransition
+            {
+                Property = Visual.OpacityProperty,
+                Duration = TimeSpan.FromMilliseconds(durationMs),
+                Easing = new CubicEaseOut(),
+            },
+        ];
+        target.AttachedToVisualTree += (_, _) =>
+        {
+            Dispatcher.UIThread.Post(
+                () =>
+                {
+                    target.Opacity = 1;
+                    transform.Y = 0;
+                },
+                DispatcherPriority.Render
+            );
+        };
+    }
+
     private static Control BuildActiveQuestionRunnerView(
         MainWindowViewModel vm,
         QuizStudioViewModel studio
@@ -26,92 +72,93 @@ public static partial class QuizStudioViewBuilder
         var stack = new StackPanel
         {
             Spacing = 12,
+            MaxWidth = 820,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Margin = new Thickness(12, 8, 12, 28),
+            Margin = new Thickness(16, 10, 16, 28),
         };
 
+        // 1. Clean Minimal Top Bar (Exit | Title | Quick Edit + Flag + Restart)
         var topBar = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
-            ColumnSpacing = 12,
+            ColumnSpacing = 10,
         };
-        var topLeftActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        topLeftActions.Children.Add(
-            UiBuilder.GhostButton(
-                "Exit to Studio",
-                MaterialIconKind.ArrowLeft,
-                studio.ExitActiveSession
-            )
+
+        var exitBtn = UiBuilder.GhostButton(
+            "Exit",
+            MaterialIconKind.ArrowLeft,
+            studio.ExitActiveSession
         );
-        topLeftActions.Children.Add(
-            UiBuilder.GhostButton(
-                "Restart",
-                MaterialIconKind.Restart,
-                () => studio.StartQuizSession(session, resumeSavedProgress: false)
-            )
-        );
-        topBar.Children.Add(topLeftActions);
+        ToolTip.SetTip(exitBtn, "Exit back to Quiz Studio");
+        topBar.Children.Add(exitBtn);
 
         var centerTitle = new TextBlock
         {
-            Text =
-                $"{session.Title}  ·  Question {studio.CurrentQuestionIndex + 1} of {session.Questions.Count}",
-            FontSize = 13.5,
+            Text = session.Title,
+            FontSize = 14,
             FontWeight = FontWeight.SemiBold,
             Foreground = ThemeService.Brush(ThemeService.TextPrimary),
             VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
         Grid.SetColumn(centerTitle, 1);
         topBar.Children.Add(centerTitle);
 
-        var metaBadges = new StackPanel
+        bool isFlaggedForAi = studio.DeckAiFixSelectedIds.Contains(q.Id);
+        var topRightActions = new StackPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 6,
+            Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        metaBadges.Children.Add(
-            UiBuilder.PillBadge(
-                q.Kind.ToString(),
-                ThemeService.Brush(ThemeService.AccentPrimary),
-                ThemeService.Brush(ThemeService.AccentSoftBg)
-            )
-        );
-        metaBadges.Children.Add(
-            UiBuilder.PillBadge(
-                $"Cognitive: {q.CognitiveLevel}",
-                ThemeService.Brush(ThemeService.PriorityP3Fg),
-                ThemeService.Brush(ThemeService.PriorityP3Bg)
-            )
-        );
-        if (!string.IsNullOrWhiteSpace(q.Archetype))
-        {
-            metaBadges.Children.Add(
-                UiBuilder.PillBadge(
-                    QuizBlueprintBuilder.FormatArchetypeBadge(q.Archetype),
-                    ThemeService.Brush(ThemeService.PriorityP2Fg),
-                    ThemeService.Brush(ThemeService.PriorityP2Bg)
-                )
-            );
-        }
-        metaBadges.Children.Add(
-            UiBuilder.PillBadge(
-                $"@{q.TopicTag}",
-                ThemeService.Brush(ThemeService.TextSecondary),
-                ThemeService.Brush(ThemeService.BgElevated)
-            )
-        );
 
-        Grid.SetColumn(metaBadges, 2);
-        topBar.Children.Add(metaBadges);
+        var quickEditBtn = UiBuilder.GhostButton(
+            "Quick Edit",
+            MaterialIconKind.PencilOutline,
+            studio.OpenRunnerQuickEdit
+        );
+        ToolTip.SetTip(quickEditBtn, "Quickly edit prompt, answer, options, or explanation (E)");
+        topRightActions.Children.Add(quickEditBtn);
+
+        var flagAiBtn = UiBuilder.IconButton(
+            isFlaggedForAi ? MaterialIconKind.Flag : MaterialIconKind.FlagOutline,
+            () => studio.ToggleRunnerQuestionFlagForAi(q.Id),
+            15.5,
+            isFlaggedForAi
+                ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+                : ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(
+            flagAiBtn,
+            isFlaggedForAi
+                ? "Flagged for AI Fix in Deck Organizer — click to unflag"
+                : "Flag this question for AI Fix in Deck Organizer"
+        );
+        topRightActions.Children.Add(flagAiBtn);
+
+        var restartBtn = UiBuilder.IconButton(
+            MaterialIconKind.Restart,
+            () => studio.StartQuizSession(session, resumeSavedProgress: false),
+            15.5,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(restartBtn, "Restart session from question 1");
+        topRightActions.Children.Add(restartBtn);
+
+        Grid.SetColumn(topRightActions, 2);
+        topBar.Children.Add(topRightActions);
         stack.Children.Add(topBar);
 
-        // Progress Bar + Interactive Question Navigator Strip (1..N)
-        var progressCardStack = new StackPanel { Spacing = 8 };
+        // 2. Compact Progress Bar + Live Stats + Floating Question Map Popover (zero 50-button wall)
         int totalQ = Math.Max(1, session.Questions.Count);
         int answeredQ = session.Questions.Count(qq => studio.SessionResults.ContainsKey(qq.Id));
+        int correctQ = session.Questions.Count(qq =>
+            studio.SessionResults.TryGetValue(qq.Id, out var r) && r.IsCorrect
+        );
+        int missedQ = answeredQ - correctQ;
 
+        var progressCardStack = new StackPanel { Spacing = 6 };
         progressCardStack.Children.Add(
             new ProgressBar
             {
@@ -119,33 +166,176 @@ public static partial class QuizStudioViewBuilder
                 Maximum = totalQ,
                 Value = answeredQ,
                 Height = 4,
+                CornerRadius = new CornerRadius(2),
                 Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
                 Background = ThemeService.Brush(ThemeService.BgElevated),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
             }
         );
 
-        var qNavWrap = new WrapPanel { Orientation = Orientation.Horizontal };
-        for (int qi = 0; qi < session.Questions.Count; qi++)
+        var statsRow = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        var statsText = new TextBlock
         {
-            int capturedIndex = qi;
-            var itemQ = session.Questions[qi];
-            bool isCurrent = qi == studio.CurrentQuestionIndex;
-            bool hasRes = studio.SessionResults.TryGetValue(itemQ.Id, out var qRes);
+            Text =
+                answeredQ > 0
+                    ? $"{answeredQ} / {session.Questions.Count} answered  ·  {correctQ} correct  ·  {missedQ} missed"
+                    : $"0 / {session.Questions.Count} answered",
+            FontSize = 11.5,
+            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        statsRow.Children.Add(statsText);
 
-            var navBtn = UiBuilder.GhostButton(
-                $"{qi + 1}",
-                hasRes ? (qRes.IsCorrect ? MaterialIconKind.Check : MaterialIconKind.Close) : null,
-                () => studio.JumpToQuestion(capturedIndex),
-                isActive: isCurrent || hasRes
-            );
-            navBtn.Margin = new Thickness(0, 0, 4, 4);
-            qNavWrap.Children.Add(navBtn);
-        }
-        progressCardStack.Children.Add(qNavWrap);
+        // Floating Question Map Flyout (compact color-coded tiles 1..N)
+        var mapFlyoutHost = new Border
+        {
+            Background = Brushes.Transparent,
+            Padding = new Thickness(2),
+            Width = 312,
+            MaxHeight = 290,
+        };
+        var mapFlyout = new Flyout
+        {
+            Content = mapFlyoutHost,
+            Placement = PlacementMode.BottomEdgeAlignedRight,
+        };
+        mapFlyout.Opening += (_, _) =>
+        {
+            var mapWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            for (int qi = 0; qi < session.Questions.Count; qi++)
+            {
+                int capturedIndex = qi;
+                var itemQ = session.Questions[qi];
+                bool isCurrent = qi == studio.CurrentQuestionIndex;
+                bool hasRes = studio.SessionResults.TryGetValue(itemQ.Id, out var qRes);
+
+                var tileBg =
+                    hasRes
+                        ? (
+                            qRes.IsCorrect
+                                ? ThemeService.Brush(ThemeService.SuccessBg)
+                                : ThemeService.Brush(ThemeService.PriorityP1Bg)
+                        )
+                    : isCurrent ? ThemeService.Brush(ThemeService.BgElevated)
+                    : Brushes.Transparent;
+                var tileFg =
+                    hasRes
+                        ? (
+                            qRes.IsCorrect
+                                ? ThemeService.Brush(ThemeService.SuccessFg)
+                                : ThemeService.Brush(ThemeService.PriorityP1Fg)
+                        )
+                    : isCurrent ? ThemeService.Brush(ThemeService.TextPrimary)
+                    : ThemeService.Brush(ThemeService.TextSecondary);
+                var tileBorder =
+                    isCurrent ? ThemeService.Brush(ThemeService.TextPrimary)
+                    : hasRes ? tileFg
+                    : ThemeService.Brush(ThemeService.BorderSubtle);
+
+                var tileBtn = new Button
+                {
+                    Content = new TextBlock
+                    {
+                        Text = (qi + 1).ToString(),
+                        FontSize = 11,
+                        FontWeight = isCurrent || hasRes ? FontWeight.SemiBold : FontWeight.Normal,
+                        Foreground = tileFg,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                    Width = 32,
+                    Height = 28,
+                    Margin = new Thickness(2),
+                    Padding = new Thickness(0),
+                    CornerRadius = new CornerRadius(5),
+                    Background = tileBg,
+                    BorderBrush = tileBorder,
+                    BorderThickness = new Thickness(isCurrent ? 1.5 : 1),
+                    HorizontalContentAlignment = HorizontalAlignment.Center,
+                    VerticalContentAlignment = VerticalAlignment.Center,
+                    Cursor = new Cursor(StandardCursorType.Hand),
+                };
+                ToolTip.SetTip(
+                    tileBtn,
+                    $"Q{qi + 1}: {(hasRes ? (qRes.IsCorrect ? "Correct" : "Missed") : "Unanswered")}"
+                );
+                tileBtn.Click += (_, _) =>
+                {
+                    mapFlyout.Hide();
+                    studio.JumpToQuestion(capturedIndex);
+                };
+                mapWrap.Children.Add(tileBtn);
+            }
+
+            mapFlyoutHost.Child = new StackPanel
+            {
+                Spacing = 6,
+                Children =
+                {
+                    UiBuilder.SectionHeader($"Jump to Question (1–{session.Questions.Count})"),
+                    new ScrollViewer
+                    {
+                        Content = mapWrap,
+                        MaxHeight = 240,
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                    },
+                },
+            };
+        };
+
+        var jumpMapBtn = UiBuilder.GhostButton(
+            $"Q {studio.CurrentQuestionIndex + 1} / {session.Questions.Count} ▾",
+            MaterialIconKind.ViewGridOutline,
+            () => { }
+        );
+        jumpMapBtn.Flyout = mapFlyout;
+        ToolTip.SetTip(jumpMapBtn, "Open question map to jump to any question");
+        Grid.SetColumn(jumpMapBtn, 1);
+        statsRow.Children.Add(jumpMapBtn);
+
+        progressCardStack.Children.Add(statsRow);
         stack.Children.Add(UiBuilder.Card(progressCardStack, padding: new Thickness(12, 8)));
 
+        // 3. Main Question Card (with calm metadata strip + smooth entrance)
         var qCardStack = new StackPanel { Spacing = 14 };
+
+        var metaStrip = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        void AddCalmMetaPill(string text)
+        {
+            var pill = UiBuilder.Pill(
+                text,
+                ThemeService.Brush(ThemeService.TextSecondary),
+                ThemeService.Brush(ThemeService.BgElevated),
+                fontSize: 10.5
+            );
+            pill.Margin = new Thickness(0, 0, 5, 4);
+            metaStrip.Children.Add(pill);
+        }
+
+        AddCalmMetaPill(q.Kind.ToString());
+        AddCalmMetaPill($"Cognitive: {q.CognitiveLevel}");
+        if (!string.IsNullOrWhiteSpace(q.Archetype))
+            AddCalmMetaPill(QuizBlueprintBuilder.FormatArchetypeBadge(q.Archetype));
+        if (!string.IsNullOrWhiteSpace(q.TopicTag))
+            AddCalmMetaPill($"@{q.TopicTag}");
+        if (isFlaggedForAi)
+        {
+            var flagPill = UiBuilder.Pill(
+                "Flagged for AI Fix",
+                ThemeService.Brush(ThemeService.PriorityP2Fg),
+                ThemeService.Brush(ThemeService.PriorityP2Bg),
+                fontSize: 10.5
+            );
+            flagPill.Margin = new Thickness(0, 0, 5, 4);
+            metaStrip.Children.Add(flagPill);
+        }
+        qCardStack.Children.Add(metaStrip);
 
         if (!string.IsNullOrWhiteSpace(q.SectionTitle))
         {
@@ -157,6 +347,7 @@ public static partial class QuizStudioViewBuilder
                     FontSize = 11.5,
                     FontWeight = FontWeight.Medium,
                     Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                    Margin = new Thickness(0, -6, 0, 0),
                 }
             );
         }
@@ -293,6 +484,22 @@ public static partial class QuizStudioViewBuilder
                     HorizontalContentAlignment = HorizontalAlignment.Stretch,
                 };
 
+                if (!studio.IsAnswerRevealed)
+                {
+                    var capturedNormalBg = bgBrush;
+                    var capturedNormalBorder = borderBrush;
+                    optBtn.PointerEntered += (_, _) =>
+                    {
+                        optBtn.Background = ThemeService.Brush(ThemeService.BgHover);
+                        optBtn.BorderBrush = ThemeService.Brush(ThemeService.BorderStrong);
+                    };
+                    optBtn.PointerExited += (_, _) =>
+                    {
+                        optBtn.Background = capturedNormalBg;
+                        optBtn.BorderBrush = capturedNormalBorder;
+                    };
+                }
+
                 var capturedOpt = optText;
                 optBtn.Click += async (_, _) =>
                 {
@@ -351,10 +558,11 @@ public static partial class QuizStudioViewBuilder
                     ColumnSpacing = 10,
                 };
                 stepGrid.Children.Add(
-                    UiBuilder.PillBadge(
+                    UiBuilder.Pill(
                         $"Step {i + 1}",
-                        ThemeService.Brush(ThemeService.AccentPrimary),
-                        ThemeService.Brush(ThemeService.AccentSoftBg)
+                        ThemeService.Brush(ThemeService.TextSecondary),
+                        ThemeService.Brush(ThemeService.BgSurface),
+                        fontSize: 10.5
                     )
                 );
 
@@ -435,8 +643,8 @@ public static partial class QuizStudioViewBuilder
                 qCardStack.Children.Add(
                     new Border
                     {
-                        Background = ThemeService.Brush(ThemeService.AccentSoftBg),
-                        BorderBrush = ThemeService.Brush(ThemeService.AccentPrimary),
+                        Background = ThemeService.Brush(ThemeService.BgElevated),
+                        BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(6),
                         Padding = new Thickness(10, 6),
@@ -446,7 +654,7 @@ public static partial class QuizStudioViewBuilder
                                 "Fill in the missing term or phrase for the blank ( _____ ) above:",
                             FontSize = 12,
                             FontWeight = FontWeight.Medium,
-                            Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
+                            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                         },
                     }
                 );
@@ -495,7 +703,32 @@ public static partial class QuizStudioViewBuilder
             qCardStack.Children.Add(idRow);
         }
 
-        stack.Children.Add(UiBuilder.Card(qCardStack, padding: new Thickness(18, 16)));
+        var qCard = UiBuilder.Card(qCardStack, padding: new Thickness(18, 16));
+        AttachSmoothEntrance(qCard, slideY: 6, durationMs: 155);
+        stack.Children.Add(qCard);
+
+        if (!studio.IsAnswerRevealed)
+        {
+            // Always-accessible bottom Previous / Skip navigation bar
+            var preNavRow = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto") };
+            var prePrevBtn = UiBuilder.GhostButton(
+                "Previous",
+                MaterialIconKind.ChevronLeft,
+                studio.PreviousQuestion
+            );
+            prePrevBtn.IsEnabled = studio.CurrentQuestionIndex > 0;
+            preNavRow.Children.Add(prePrevBtn);
+
+            bool isLastPre = studio.CurrentQuestionIndex + 1 >= session.Questions.Count;
+            var skipBtn = UiBuilder.GhostButton(
+                isLastPre ? "Finish" : "Skip",
+                MaterialIconKind.ChevronRight,
+                async () => await studio.AdvanceNextQuestionAsync()
+            );
+            Grid.SetColumn(skipBtn, 2);
+            preNavRow.Children.Add(skipBtn);
+            stack.Children.Add(preNavRow);
+        }
 
         if (studio.IsAnswerRevealed)
         {
@@ -626,8 +859,8 @@ public static partial class QuizStudioViewBuilder
                 feedbackStack.Children.Add(
                     new Border
                     {
-                        Background = ThemeService.Brush(ThemeService.AccentSoftBg),
-                        BorderBrush = ThemeService.Brush(ThemeService.AccentPrimary),
+                        Background = ThemeService.Brush(ThemeService.BgElevated),
+                        BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
                         BorderThickness = new Thickness(1),
                         CornerRadius = new CornerRadius(5),
                         Padding = new Thickness(10, 5),
@@ -636,7 +869,7 @@ public static partial class QuizStudioViewBuilder
                             Text = studio.LastConfidenceFeedback,
                             FontSize = 11.5,
                             FontWeight = FontWeight.Medium,
-                            Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
+                            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                             TextWrapping = TextWrapping.Wrap,
                         },
                     }
@@ -758,7 +991,9 @@ public static partial class QuizStudioViewBuilder
             srsRow.Children.Add(nextBtn);
 
             feedbackStack.Children.Add(srsRow);
-            stack.Children.Add(UiBuilder.Card(feedbackStack, padding: new Thickness(16, 14)));
+            var feedbackCard = UiBuilder.Card(feedbackStack, padding: new Thickness(16, 14));
+            AttachSmoothEntrance(feedbackCard, slideY: 10, durationMs: 180);
+            stack.Children.Add(feedbackCard);
         }
 
         var scroll = UiBuilder.PersistentScrollViewer(
@@ -766,20 +1001,303 @@ public static partial class QuizStudioViewBuilder
             stack
         );
 
-        if (
+        bool hasImageLightbox =
             !string.IsNullOrWhiteSpace(studio.ZoomedImagePath)
-            && File.Exists(studio.ZoomedImagePath)
-        )
+            && File.Exists(studio.ZoomedImagePath);
+        if (hasImageLightbox || studio.IsRunnerQuickEditOpen)
         {
             var host = new Grid();
             host.Children.Add(scroll);
-            host.Children.Add(
-                BuildImageZoomLightbox(studio.ZoomedImagePath, studio.CloseImageZoom)
-            );
+            if (studio.IsRunnerQuickEditOpen)
+                host.Children.Add(BuildRunnerQuickEditOverlay(studio, q));
+            if (hasImageLightbox)
+                host.Children.Add(
+                    BuildImageZoomLightbox(studio.ZoomedImagePath!, studio.CloseImageZoom)
+                );
             return host;
         }
 
         return scroll;
+    }
+
+    private static Grid BuildRunnerQuickEditOverlay(
+        QuizStudioViewModel studio,
+        QuizQuestionRecord q
+    )
+    {
+        var overlay = new Grid();
+
+        var scrim = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#7A000000")),
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        scrim.PointerPressed += (_, _) => studio.CloseRunnerQuickEdit();
+        overlay.Children.Add(scrim);
+
+        static StackPanel FieldGroup(string label, Control input) =>
+            new()
+            {
+                Spacing = 4,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = label,
+                        FontSize = 11,
+                        FontWeight = FontWeight.Medium,
+                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    },
+                    input,
+                },
+            };
+
+        var headerGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
+            ColumnSpacing = 8,
+            Margin = new Thickness(0, 0, 0, 10),
+        };
+        headerGrid.Children.Add(
+            UiBuilder.Icon(
+                MaterialIconKind.PencilOutline,
+                17,
+                ThemeService.Brush(ThemeService.TextPrimary)
+            )
+        );
+        headerGrid.Children.Add(
+            new TextBlock
+            {
+                Text = $"Quick Edit Question ({q.Kind})",
+                FontSize = 14.5,
+                FontWeight = FontWeight.Bold,
+                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                VerticalAlignment = VerticalAlignment.Center,
+                [Grid.ColumnProperty] = 1,
+            }
+        );
+        var closeBtn = UiBuilder.IconButton(
+            MaterialIconKind.Close,
+            studio.CloseRunnerQuickEdit,
+            16,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(closeBtn, "Close (Esc)");
+        Grid.SetColumn(closeBtn, 2);
+        headerGrid.Children.Add(closeBtn);
+
+        var bodyStack = new StackPanel { Spacing = 10 };
+
+        var promptBox = new TextBox
+        {
+            Text = q.Prompt,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 64,
+            MaxHeight = 140,
+            FontSize = 12.5,
+        };
+        bodyStack.Children.Add(FieldGroup("Prompt", promptBox));
+
+        var correctBox = new TextBox
+        {
+            Text = q.CorrectAnswer,
+            Watermark = "Correct answer...",
+            FontSize = 12.5,
+        };
+
+        List<TextBox>? optionBoxes = null;
+        bool hasEditableOptions =
+            q.Kind
+                is QuizQuestionKind.MultipleChoice
+                    or QuizQuestionKind.Situational
+                    or QuizQuestionKind.TrueFalse
+                    or QuizQuestionKind.Ordering
+            && q.Options.Count > 0;
+
+        if (hasEditableOptions)
+        {
+            optionBoxes = [];
+            var optsList = new StackPanel { Spacing = 6 };
+            bool isChoiceKind = q.Kind != QuizQuestionKind.Ordering;
+
+            for (int i = 0; i < q.Options.Count; i++)
+            {
+                var optVal = q.Options[i];
+                var optBox = new TextBox
+                {
+                    Text = optVal,
+                    FontSize = 12,
+                    Watermark = isChoiceKind ? $"Option {(char)('A' + i)}" : $"Step {i + 1}",
+                };
+                optionBoxes.Add(optBox);
+
+                var row = new Grid
+                {
+                    ColumnDefinitions = isChoiceKind
+                        ? ColumnDefinitions.Parse("24,*,Auto")
+                        : ColumnDefinitions.Parse("44,*"),
+                    ColumnSpacing = 6,
+                };
+                row.Children.Add(
+                    new TextBlock
+                    {
+                        Text = isChoiceKind ? $"{(char)('A' + i)}." : $"#{i + 1}",
+                        FontSize = 11.5,
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                    }
+                );
+                Grid.SetColumn(optBox, 1);
+                row.Children.Add(optBox);
+
+                if (isChoiceKind)
+                {
+                    var capturedBox = optBox;
+                    var setCorrectBtn = UiBuilder.IconButton(
+                        MaterialIconKind.CheckCircleOutline,
+                        () =>
+                        {
+                            if (!string.IsNullOrWhiteSpace(capturedBox.Text))
+                                correctBox.Text = capturedBox.Text.Trim();
+                        },
+                        15,
+                        ThemeService.Brush(ThemeService.TextSecondary)
+                    );
+                    ToolTip.SetTip(setCorrectBtn, "Set this option as the Correct Answer");
+                    Grid.SetColumn(setCorrectBtn, 2);
+                    row.Children.Add(setCorrectBtn);
+                }
+
+                optsList.Children.Add(row);
+            }
+
+            bodyStack.Children.Add(
+                FieldGroup(
+                    q.Kind == QuizQuestionKind.Ordering ? "Correct Sequence Steps" : "Options",
+                    optsList
+                )
+            );
+        }
+
+        bodyStack.Children.Add(FieldGroup("Correct Answer", correctBox));
+
+        var explanationBox = new TextBox
+        {
+            Text = q.Explanation,
+            AcceptsReturn = true,
+            TextWrapping = TextWrapping.Wrap,
+            MinHeight = 56,
+            MaxHeight = 130,
+            FontSize = 12,
+            Watermark = "Explanation / rationale...",
+        };
+        bodyStack.Children.Add(FieldGroup("Explanation", explanationBox));
+
+        var metaRow = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("*,*"),
+            ColumnSpacing = 10,
+        };
+        var hintBox = new TextBox
+        {
+            Text = q.Hint ?? string.Empty,
+            Watermark = "Optional hint...",
+            FontSize = 12,
+        };
+        var tagBox = new TextBox
+        {
+            Text = q.TopicTag,
+            Watermark = "Topic tag (e.g. networking)",
+            FontSize = 12,
+        };
+        metaRow.Children.Add(FieldGroup("Hint (Optional)", hintBox));
+        var tagField = FieldGroup("Topic Tag", tagBox);
+        Grid.SetColumn(tagField, 1);
+        metaRow.Children.Add(tagField);
+        bodyStack.Children.Add(metaRow);
+
+        var scrollBody = new ScrollViewer
+        {
+            Content = bodyStack,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Padding = new Thickness(0, 0, 4, 0),
+        };
+
+        bool flagged = studio.DeckAiFixSelectedIds.Contains(q.Id);
+        var footerGrid = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
+            ColumnSpacing = 6,
+            Margin = new Thickness(0, 12, 0, 0),
+        };
+        var flagBtn = UiBuilder.GhostButton(
+            flagged ? "Flagged for AI" : "Flag for AI Fix",
+            flagged ? MaterialIconKind.Flag : MaterialIconKind.FlagOutline,
+            () => studio.ToggleRunnerQuestionFlagForAi(q.Id),
+            isActive: flagged
+        );
+        footerGrid.Children.Add(flagBtn);
+
+        var cancelBtn = UiBuilder.GhostButton("Cancel", null, studio.CloseRunnerQuickEdit);
+        Grid.SetColumn(cancelBtn, 2);
+        footerGrid.Children.Add(cancelBtn);
+
+        var saveBtn = UiBuilder.PrimaryButton(
+            "Save Changes",
+            MaterialIconKind.Check,
+            async () =>
+            {
+                var updatedOpts = optionBoxes
+                    ?.Select(b => b.Text?.Trim() ?? string.Empty)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .ToList();
+                string finalAns = correctBox.Text ?? string.Empty;
+                if (q.Kind == QuizQuestionKind.Ordering && updatedOpts is { Count: > 0 })
+                    finalAns = string.Join(" -> ", updatedOpts);
+
+                await studio.SaveRunnerQuickEditAsync(
+                    promptBox.Text ?? string.Empty,
+                    finalAns,
+                    updatedOpts,
+                    explanationBox.Text ?? string.Empty,
+                    hintBox.Text,
+                    tagBox.Text ?? string.Empty
+                );
+            }
+        );
+        Grid.SetColumn(saveBtn, 3);
+        footerGrid.Children.Add(saveBtn);
+
+        var modalGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*,Auto") };
+        modalGrid.Children.Add(headerGrid);
+        Grid.SetRow(scrollBody, 1);
+        modalGrid.Children.Add(scrollBody);
+        Grid.SetRow(footerGrid, 2);
+        modalGrid.Children.Add(footerGrid);
+
+        var modalCard = new Border
+        {
+            Background = ThemeService.Brush(ThemeService.BgSurface),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(18, 16),
+            MaxWidth = 560,
+            MaxHeight = 600,
+            Margin = new Thickness(20),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            BoxShadow = BoxShadows.Parse("0 12 36 0 #70000000"),
+            Child = modalGrid,
+        };
+        AttachSmoothEntrance(modalCard, slideY: 10, durationMs: 150);
+        overlay.Children.Add(modalCard);
+
+        return overlay;
     }
 
     private static Border BuildImageZoomLightbox(string fullImagePath, Action onClose)
@@ -836,44 +1354,67 @@ public static partial class QuizStudioViewBuilder
         );
         double pct = 100.0 * correct / total;
 
+        int missed = session.Questions.Count - correct;
+
         var stack = new StackPanel
         {
             Spacing = 14,
+            MaxWidth = 820,
             HorizontalAlignment = HorizontalAlignment.Stretch,
-            Margin = new Thickness(12, 8, 12, 28),
+            Margin = new Thickness(16, 10, 16, 28),
         };
 
         var headerRow = new Grid
         {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto"),
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
             ColumnSpacing = 8,
         };
         headerRow.Children.Add(
             new TextBlock
             {
-                Text = $"{session.Title} — Results & Evidence Review",
-                FontSize = 19,
+                Text = $"{session.Title} — Results",
+                FontSize = 18.5,
                 FontWeight = FontWeight.Bold,
                 Foreground = ThemeService.Brush(ThemeService.TextPrimary),
                 VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
 
+        var summaryActions = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        if (missed > 0)
+        {
+            var retryMissedBtn = UiBuilder.GhostButton(
+                $"Retry Missed ({missed})",
+                MaterialIconKind.Target,
+                studio.RetryMissedQuestions,
+                isActive: true
+            );
+            retryMissedBtn.Margin = new Thickness(0, 0, 6, 0);
+            summaryActions.Children.Add(retryMissedBtn);
+        }
+
         var retryBtn = UiBuilder.GhostButton(
-            "Retake Assessment",
+            "Retake All",
             MaterialIconKind.Restart,
-            () => studio.StartQuizSession(session)
+            () => studio.StartQuizSession(session, resumeSavedProgress: false)
         );
-        Grid.SetColumn(retryBtn, 1);
-        headerRow.Children.Add(retryBtn);
+        retryBtn.Margin = new Thickness(0, 0, 6, 0);
+        summaryActions.Children.Add(retryBtn);
 
         var doneBtn = UiBuilder.PrimaryButton(
             "Back to Studio",
             MaterialIconKind.Check,
             studio.ExitActiveSession
         );
-        Grid.SetColumn(doneBtn, 2);
-        headerRow.Children.Add(doneBtn);
+        summaryActions.Children.Add(doneBtn);
+
+        Grid.SetColumn(summaryActions, 1);
+        headerRow.Children.Add(summaryActions);
         stack.Children.Add(headerRow);
 
         stack.Children.Add(

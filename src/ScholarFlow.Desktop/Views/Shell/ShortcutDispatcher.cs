@@ -54,6 +54,12 @@ public static class ShortcutDispatcher
                     vm.QuizStudio.CloseImageZoom();
                     return;
                 }
+                if (vm.QuizStudio.IsRunnerQuickEditOpen)
+                {
+                    e.Handled = true;
+                    vm.QuizStudio.CloseRunnerQuickEdit();
+                    return;
+                }
                 if (vm.QuizStudio.IsAiSettingsOpen)
                 {
                     e.Handled = true;
@@ -225,14 +231,21 @@ public static class ShortcutDispatcher
         if (window.FocusManager?.GetFocusedElement() is TextBox)
             return;
 
-        // Active Quiz Runner hotkeys (1-4 option/SRS pick, Left/P prev, Right/N next)
+        // Active Quiz Runner hotkeys (E quick edit, 1-4 option/SRS pick, Left/P prev, Right/N next)
         if (
             vm.ActiveMode == WorkspaceTabMode.QuizStudio
             && vm.QuizStudio.ActiveSession is not null
             && !vm.QuizStudio.IsShowingResultsSummary
+            && !vm.QuizStudio.IsRunnerQuickEditOpen
             && !vm.IsSearchModalOpen
         )
         {
+            if (e.Key == Key.E)
+            {
+                e.Handled = true;
+                vm.QuizStudio.OpenRunnerQuickEdit();
+                return;
+            }
             var curQ = vm.QuizStudio.CurrentQuestion;
             if (e.Key is Key.D1 or Key.D2 or Key.D3 or Key.D4)
             {
