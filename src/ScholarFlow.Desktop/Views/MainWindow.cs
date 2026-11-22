@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Input;
@@ -28,6 +30,16 @@ public sealed partial class MainWindow : Window
     private readonly Border _inspectorContainer = new();
     private readonly Border _statusBarContainer = new();
     private readonly Border _modalOverlayContainer = new() { IsVisible = false };
+    private readonly Grid _floatingSidebarOverlay = new()
+    {
+        IsVisible = true,
+        IsHitTestVisible = false,
+        ClipToBounds = true,
+    };
+    private readonly Border _floatingSidebarScrim;
+    private readonly Border _floatingSidebarDrawer;
+    private readonly TranslateTransform _floatingSidebarTranslate;
+    private bool _isCompactSidebarOverlayOpen;
 
     private readonly TextBox _quickAddBox;
     private StackPanel _quickAddChipsContainer = new()
@@ -85,9 +97,26 @@ public sealed partial class MainWindow : Window
                 _vm.UpdateSearchQuery(_searchBox.Text ?? string.Empty);
         };
 
+        _sidebarContainer.Width = 225;
+        _sidebarContainer.ClipToBounds = true;
+        _sidebarContainer.Transitions =
+        [
+            new DoubleTransition
+            {
+                Property = Layoutable.WidthProperty,
+                Duration = TimeSpan.FromMilliseconds(185),
+                Easing = new CubicEaseOut(),
+            },
+            new DoubleTransition
+            {
+                Property = Visual.OpacityProperty,
+                Duration = TimeSpan.FromMilliseconds(140),
+            },
+        ];
+
         _shellGrid = new Grid
         {
-            ColumnDefinitions = ColumnDefinitions.Parse("225,*,0"),
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,0"),
             RowDefinitions = RowDefinitions.Parse("*,26"),
         };
 
@@ -103,8 +132,50 @@ public sealed partial class MainWindow : Window
         Grid.SetColumnSpan(_statusBarContainer, 3);
         _shellGrid.Children.Add(_statusBarContainer);
 
+        _floatingSidebarScrim = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#66000000")),
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Cursor = new Cursor(StandardCursorType.Hand),
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                },
+            ],
+        };
+        _floatingSidebarScrim.PointerPressed += (_, _) => SetCompactSidebarOverlayOpen(false);
+
+        _floatingSidebarTranslate = new TranslateTransform(-260, 0)
+        {
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = TranslateTransform.XProperty,
+                    Duration = TimeSpan.FromMilliseconds(190),
+                    Easing = new CubicEaseOut(),
+                },
+            ],
+        };
+        _floatingSidebarDrawer = new Border
+        {
+            Width = 245,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Stretch,
+            BoxShadow = BoxShadows.Parse("8 0 28 0 #70000000"),
+            RenderTransform = _floatingSidebarTranslate,
+            IsHitTestVisible = false,
+        };
+        _floatingSidebarOverlay.Children.Add(_floatingSidebarScrim);
+        _floatingSidebarOverlay.Children.Add(_floatingSidebarDrawer);
+
         _rootOverlayGrid = new Grid();
         _rootOverlayGrid.Children.Add(_shellGrid);
+        _rootOverlayGrid.Children.Add(_floatingSidebarOverlay);
         _rootOverlayGrid.Children.Add(_modalOverlayContainer);
 
         Content = _rootOverlayGrid;
@@ -128,6 +199,8 @@ public sealed partial class MainWindow : Window
         if (shouldAutoCollapse != _lastAutoSidebarCollapse)
         {
             _lastAutoSidebarCollapse = shouldAutoCollapse;
+            if (!shouldAutoCollapse && _isCompactSidebarOverlayOpen)
+                SetCompactSidebarOverlayOpen(false);
             RefreshSidebar();
         }
         UpdateResponsiveShellColumns(e.NewSize.Width);
@@ -135,8 +208,35 @@ public sealed partial class MainWindow : Window
             RefreshOverlayModal();
     }
 
+    private bool IsWindowConstrainedForSidebar => Bounds.Width is > 0 and < 860;
+
     private bool IsSidebarCurrentlyCompact =>
-        _vm.IsSidebarCollapsed || Bounds.Width is > 0 and < 860;
+        _vm.IsSidebarCollapsed || IsWindowConstrainedForSidebar;
+
+    private void SetCompactSidebarOverlayOpen(bool open)
+    {
+        _isCompactSidebarOverlayOpen = open && IsWindowConstrainedForSidebar;
+        if (_isCompactSidebarOverlayOpen)
+            _floatingSidebarDrawer.Child = BuildSidebar(forceExpandedOverlay: true);
+
+        // Fade out the docked 54px rail underneath so it feels like ONE single sidebar expanding cleanly
+        _sidebarContainer.Opacity = _isCompactSidebarOverlayOpen ? 0.0 : 1.0;
+        _floatingSidebarOverlay.IsHitTestVisible = _isCompactSidebarOverlayOpen;
+        _floatingSidebarScrim.IsHitTestVisible = _isCompactSidebarOverlayOpen;
+        _floatingSidebarScrim.Opacity = _isCompactSidebarOverlayOpen ? 1.0 : 0.0;
+        _floatingSidebarDrawer.IsHitTestVisible = _isCompactSidebarOverlayOpen;
+        _floatingSidebarTranslate.X = _isCompactSidebarOverlayOpen ? 0 : -260;
+    }
+
+    private void HandleSidebarToggle()
+    {
+        if (IsWindowConstrainedForSidebar)
+        {
+            SetCompactSidebarOverlayOpen(!_isCompactSidebarOverlayOpen);
+            return;
+        }
+        _vm.ToggleSidebar();
+    }
     private bool ShouldDockInspectorInline =>
         _vm.IsInspectorOpen
         && _vm.ActiveMode
@@ -160,7 +260,8 @@ public sealed partial class MainWindow : Window
 
     private void UpdateResponsiveShellColumns(double width)
     {
-        int sideW = (_vm.IsSidebarCollapsed || (width is > 0 and < 860)) ? 54 : 225;
+        double sideW = (_vm.IsSidebarCollapsed || (width is > 0 and < 860)) ? 54 : 225;
+        _sidebarContainer.Width = sideW;
         int inspW =
             (
                 _vm.IsInspectorOpen
@@ -176,7 +277,7 @@ public sealed partial class MainWindow : Window
                 ? 360
                 : 0;
 
-        _shellGrid.ColumnDefinitions = ColumnDefinitions.Parse($"{sideW},*,{inspW}");
+        _shellGrid.ColumnDefinitions = ColumnDefinitions.Parse($"Auto,*,{inspW}");
         _inspectorContainer.IsVisible = inspW > 0;
     }
 
@@ -220,8 +321,15 @@ public sealed partial class MainWindow : Window
                 break;
 
             case UiChangeKind.SidebarOnly:
-                UpdateResponsiveShellColumns(Bounds.Width);
-                RefreshSidebar();
+                if (IsWindowConstrainedForSidebar)
+                {
+                    SetCompactSidebarOverlayOpen(!_isCompactSidebarOverlayOpen);
+                }
+                else
+                {
+                    UpdateResponsiveShellColumns(Bounds.Width);
+                    RefreshSidebar();
+                }
                 break;
 
             case UiChangeKind.SearchOrTaskList:
@@ -240,6 +348,8 @@ public sealed partial class MainWindow : Window
 
     private void RebuildAllSections()
     {
+        if (_isCompactSidebarOverlayOpen)
+            SetCompactSidebarOverlayOpen(false);
         Background = ThemeService.Brush(ThemeService.BgBase);
         UpdateResponsiveShellColumns(Bounds.Width);
         SyncTextBoxesFromVm();

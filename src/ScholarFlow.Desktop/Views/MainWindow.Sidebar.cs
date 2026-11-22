@@ -18,9 +18,9 @@ namespace ScholarFlow.Desktop.Views;
 /// </summary>
 public sealed partial class MainWindow
 {
-    private Border BuildSidebar()
+    private Border BuildSidebar(bool forceExpandedOverlay = false)
     {
-        bool compact = IsSidebarCurrentlyCompact;
+        bool compact = !forceExpandedOverlay && IsSidebarCurrentlyCompact;
         var grid = new Grid
         {
             RowDefinitions = RowDefinitions.Parse("Auto,Auto,*,Auto"),
@@ -38,14 +38,59 @@ public sealed partial class MainWindow
 
         if (compact)
         {
+            var compactHeaderStack = new StackPanel
+            {
+                Spacing = 4,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
             var expandBtn = UiBuilder.IconButton(
-                MaterialIconKind.DockLeft,
-                _vm.ToggleSidebar,
+                MaterialIconKind.MenuOpen,
+                HandleSidebarToggle,
                 17,
                 ThemeService.Brush(ThemeService.TextPrimary)
             );
-            expandBtn.HorizontalAlignment = HorizontalAlignment.Center;
-            header.Children.Add(expandBtn);
+            ToolTip.SetTip(
+                expandBtn,
+                IsWindowConstrainedForSidebar
+                    ? "Open full sidebar drawer (Ctrl+B)"
+                    : "Expand sidebar (Ctrl+B)"
+            );
+            compactHeaderStack.Children.Add(expandBtn);
+
+            var compactBasinBtn = UiBuilder.IconButton(
+                MaterialIconKind.FolderOutline,
+                () => { },
+                16,
+                ThemeService.Brush(ThemeService.TextSecondary)
+            );
+            compactBasinBtn.Flyout = BuildBasinSwitcherFlyout();
+            ToolTip.SetTip(
+                compactBasinBtn,
+                $"{_vm.BasinConfig.Name} ({_vm.ActiveProviderName}) — Switch or configure basin"
+            );
+            compactHeaderStack.Children.Add(compactBasinBtn);
+
+            var compactBellIcon =
+                _vm.UnreadNotificationsCount > 0
+                    ? MaterialIconKind.BellBadgeOutline
+                    : MaterialIconKind.BellOutline;
+            var compactBellBtn = UiBuilder.IconButton(
+                compactBellIcon,
+                _vm.ToggleNotificationDrawer,
+                16,
+                _vm.UnreadNotificationsCount > 0
+                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    : ThemeService.Brush(ThemeService.TextSecondary)
+            );
+            ToolTip.SetTip(
+                compactBellBtn,
+                _vm.UnreadNotificationsCount > 0
+                    ? $"Notifications ({_vm.UnreadNotificationsCount} unread)"
+                    : "Notifications"
+            );
+            compactHeaderStack.Children.Add(compactBellBtn);
+
+            header.Children.Add(compactHeaderStack);
         }
         else
         {
@@ -98,20 +143,37 @@ public sealed partial class MainWindow
                     : MaterialIconKind.BellOutline;
             var notifBtn = UiBuilder.IconButton(
                 bellIcon,
-                _vm.ToggleNotificationDrawer,
+                () =>
+                {
+                    if (forceExpandedOverlay)
+                        SetCompactSidebarOverlayOpen(false);
+                    _vm.ToggleNotificationDrawer();
+                },
                 15.5,
                 _vm.UnreadNotificationsCount > 0
                     ? ThemeService.Brush(ThemeService.AccentPrimary)
                     : ThemeService.Brush(ThemeService.TextSecondary)
             );
+            ToolTip.SetTip(
+                notifBtn,
+                _vm.UnreadNotificationsCount > 0
+                    ? $"Notifications ({_vm.UnreadNotificationsCount} unread)"
+                    : "Notifications"
+            );
             Grid.SetColumn(notifBtn, 1);
             header.Children.Add(notifBtn);
 
             var collapseBtn = UiBuilder.IconButton(
-                MaterialIconKind.DockLeft,
-                _vm.ToggleSidebar,
+                forceExpandedOverlay ? MaterialIconKind.ChevronDoubleLeft : MaterialIconKind.DockLeft,
+                forceExpandedOverlay
+                    ? () => SetCompactSidebarOverlayOpen(false)
+                    : HandleSidebarToggle,
                 15.5,
                 ThemeService.Brush(ThemeService.TextSecondary)
+            );
+            ToolTip.SetTip(
+                collapseBtn,
+                forceExpandedOverlay ? "Close sidebar drawer (←)" : "Collapse sidebar (Ctrl+B)"
             );
             Grid.SetColumn(collapseBtn, 2);
             header.Children.Add(collapseBtn);
@@ -804,24 +866,18 @@ public sealed partial class MainWindow
     {
         var fg =
             customAccentFg
-            ?? (
-                isActive
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
-                    : ThemeService.Brush(ThemeService.TextPrimary)
-            );
+            ?? ThemeService.Brush(ThemeService.TextPrimary);
         var iconFg =
             customAccentFg
             ?? (
                 isActive
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    ? ThemeService.Brush(ThemeService.TextPrimary)
                     : ThemeService.Brush(ThemeService.TextSecondary)
             );
         var normalBg = isActive
-            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+            ? ThemeService.Brush(ThemeService.BgElevated)
             : Brushes.Transparent;
-        var hoverBg = isActive
-            ? ThemeService.Brush(ThemeService.AccentSoftBg)
-            : ThemeService.Brush(ThemeService.BgHover);
+        var hoverBg = ThemeService.Brush(ThemeService.BgHover);
 
         Control content;
         if (compact)
@@ -893,6 +949,13 @@ public sealed partial class MainWindow
                 ? HorizontalAlignment.Center
                 : HorizontalAlignment.Stretch,
         };
+        var tipParts = new List<string> { title };
+        if (badgeCount > 0)
+            tipParts.Add($"({badgeCount})");
+        if (!string.IsNullOrWhiteSpace(subtitleTag))
+            tipParts.Add($"[{subtitleTag}]");
+        ToolTip.SetTip(btn, string.Join(" ", tipParts));
+
         btn.PointerEntered += (_, _) => btn.Background = hoverBg;
         btn.PointerExited += (_, _) => btn.Background = normalBg;
         btn.Click += (_, _) => onClick();
