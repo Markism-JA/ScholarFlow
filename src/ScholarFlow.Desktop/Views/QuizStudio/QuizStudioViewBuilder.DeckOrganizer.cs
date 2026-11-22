@@ -2289,133 +2289,415 @@ public static partial class QuizStudioViewBuilder
         Grid.SetColumn(dockedOutlineSlot, 0);
         body.Children.Add(dockedOutlineSlot);
 
-        // Center Legible PDF Canvas with viewport-relative Ctrl+Scroll zoom (40%–350%)
+        // Center Legible Continuous-Scroll PDF Canvas powered by PdfReaderViewModel (100% parity with Built-in PDF Reader)
+        var snipReader = studio.SnipPdfReader;
         Control canvasContent;
-        if (studio.IsLoadingSnipPage)
+        if (snipReader.IsLoadingDocument)
         {
             canvasContent = new TextBlock
             {
-                Text = $"Rendering page {curPage}...",
+                Text = $"Loading PDF (Page {curPage})...",
                 FontSize = 13,
                 Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             };
         }
-        else if (studio.EditingSnipPageBitmap is not null)
+        else if (snipReader.PageCount > 0)
         {
-            var pageHighlights = draft
-                .EvidenceAnchors.Where(a => a.PageNumber == curPage)
-                .SelectMany(a => a.HighlightRects)
-                .ToList();
+            int snipTotalPages = snipReader.PageCount;
+            double pageTargetWidth =
+                snipReader.FitMode == PdfFitMode.FitWidth
+                    ? 840
+                    : 760 * (snipReader.ZoomPercent / 100.0);
+            double currentPageWidth = pageTargetWidth;
+            double GetSlotHeight(int pageNum) =>
+                Math.Max(120, currentPageWidth * snipReader.GetPageAspectRatio(pageNum));
+            const double pageGap = 14.0;
+            const double sheetChromeH = 10.0;
 
-            var img = new Image
+            var pagesStack = new StackPanel
             {
-                Source = studio.EditingSnipPageBitmap,
-                Stretch = Stretch.Uniform,
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Top,
+                Spacing = pageGap,
+                Margin = new Thickness(14, 12),
+                HorizontalAlignment =
+                    snipReader.FitMode == PdfFitMode.FitWidth
+                        ? HorizontalAlignment.Stretch
+                        : HorizontalAlignment.Center,
             };
 
-            var pageLayer = new Grid
+            var pageImages = new Image[snipTotalPages + 1];
+            var pageSheets = new Border[snipTotalPages + 1];
+            int initPage = Math.Clamp(snipReader.CurrentPage, 1, snipTotalPages);
+
+            for (int p = 1; p <= snipTotalPages; p++)
             {
-                HorizontalAlignment = HorizontalAlignment.Stretch,
-                VerticalAlignment = VerticalAlignment.Top,
-            };
-            pageLayer.Children.Add(img);
-            pageLayer.Children.Add(
-                new PdfVisualSnipperControl(
-                    pageHighlights,
-                    async (rect, additive) =>
-                    {
-                        if (studio.SnipMode == SnipCaptureMode.CaptureImage)
-                            await studio.CaptureQuestionImageFromSnipperAsync(rect);
-                        else
-                            await studio.ApplyVisualSnipRegionAsync(rect, additive);
-                    }
-                )
+                int capturedPage = p;
+                bool preloadNow = Math.Abs(p - initPage) <= 1;
+                var initialBmp = preloadNow ? snipReader.GetPageBitmap(p) : null;
+
+                var img = new Image
                 {
+                    Source = initialBmp,
+                    Stretch = Stretch.Uniform,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Stretch,
-                }
-            );
+                    VerticalAlignment = VerticalAlignment.Top,
+                };
+                if (snipReader.FitMode == PdfFitMode.Custom)
+                    img.Width = pageTargetWidth;
+                pageImages[p] = img;
 
-            var sheet = new Border
-            {
-                Background = Brushes.White,
-                BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
-                BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(6),
-                Margin = new Thickness(12),
-                Padding = new Thickness(4),
-                HorizontalAlignment = studio.SnipFitToWidth
-                    ? HorizontalAlignment.Stretch
-                    : HorizontalAlignment.Center,
-                VerticalAlignment = VerticalAlignment.Top,
-                Child = pageLayer,
-            };
-
-            var snipScroll = UiBuilder.PersistentScrollViewer(
-                $"snip-pdf-canvas:{studio.EditingQuestionDraft?.SourcePdfPath}:{curPage}",
-                sheet,
-                horizontalVisibility: studio.SnipFitToWidth
-                    ? ScrollBarVisibility.Disabled
-                    : ScrollBarVisibility.Auto
-            );
-
-            int snipLocalZoom = studio.SnipFitToWidth
-                ? 100
-                : Math.Clamp(studio.SnipZoomPercent, 40, 350);
-
-            void ApplySnipCanvasZoom(int zoomPercent)
-            {
-                if (zoomPercent == 100 && studio.SnipFitToWidth)
+                var pageLayer = new Grid
                 {
-                    img.Width = double.NaN;
-                    sheet.HorizontalAlignment = HorizontalAlignment.Stretch;
-                    snipScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
-                }
-                else
+                    MinHeight = initialBmp is null ? GetSlotHeight(p) : 0,
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    VerticalAlignment = VerticalAlignment.Top,
+                };
+                pageLayer.Children.Add(img);
+
+                var pageHighlights = draft
+                    .EvidenceAnchors.Where(a => a.PageNumber == capturedPage)
+                    .SelectMany(a => a.HighlightRects)
+                    .ToList();
+
+                pageLayer.Children.Add(
+                    new PdfVisualSnipperControl(
+                        pageHighlights,
+                        async (rect, additive) =>
+                        {
+                            if (studio.SnipMode == SnipCaptureMode.CaptureImage)
+                                await studio.CaptureQuestionImageFromSnipperAsync(
+                                    rect,
+                                    capturedPage
+                                );
+                            else
+                                await studio.ApplyVisualSnipRegionAsync(
+                                    rect,
+                                    additive,
+                                    capturedPage
+                                );
+                        }
+                    )
+                    {
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        VerticalAlignment = VerticalAlignment.Stretch,
+                    }
+                );
+
+                var sheet = new Border
                 {
-                    double viewportBase = Math.Max(360, snipScroll.Bounds.Width - 36);
-                    img.Width = Math.Max(160, viewportBase * (zoomPercent / 100.0));
-                    sheet.HorizontalAlignment = HorizontalAlignment.Center;
-                    snipScroll.HorizontalScrollBarVisibility =
-                        zoomPercent > 100
-                            ? ScrollBarVisibility.Auto
-                            : ScrollBarVisibility.Disabled;
-                }
+                    Background = Brushes.White,
+                    BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Padding = new Thickness(4),
+                    HorizontalAlignment =
+                        snipReader.FitMode == PdfFitMode.FitWidth
+                            ? HorizontalAlignment.Stretch
+                            : HorizontalAlignment.Center,
+                    MaxWidth =
+                        snipReader.FitMode == PdfFitMode.FitWidth ? 900 : double.PositiveInfinity,
+                    Child = pageLayer,
+                };
+                pageSheets[p] = sheet;
+                pagesStack.Children.Add(sheet);
             }
 
-            snipScroll.SizeChanged += (_, e) =>
+            var snipScroll = new ScrollViewer
             {
-                if (e.NewSize.Width > 0 && !studio.SnipFitToWidth)
-                    ApplySnipCanvasZoom(snipLocalZoom);
+                HorizontalScrollBarVisibility =
+                    snipReader.FitMode == PdfFitMode.FitWidth
+                        ? ScrollBarVisibility.Disabled
+                        : ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = pagesStack,
             };
 
             UiBuilder.AttachPdfWheelAndPan(
                 snipScroll,
                 delta =>
                 {
-                    int oldZ = snipLocalZoom;
-                    snipLocalZoom = Math.Clamp(snipLocalZoom + delta, 40, 350);
-                    if (snipLocalZoom == oldZ)
-                        return;
-                    studio.SetSnipZoomPercentQuiet(snipLocalZoom);
-                    double ratio = snipLocalZoom / (double)oldZ;
-                    ApplySnipCanvasZoom(snipLocalZoom);
-                    snipScroll.Offset = new Vector(
-                        Math.Max(0, snipScroll.Offset.X * ratio),
-                        Math.Max(0, snipScroll.Offset.Y * ratio)
-                    );
-                },
-                onEdgePageFlip: dir =>
-                {
-                    int nextP = Math.Clamp(curPage + dir, 1, totalPages);
-                    if (nextP != curPage)
-                        _ = studio.LoadEditorSnipPageAsync(nextP);
+                    if (delta > 0)
+                        snipReader.ZoomIn(Math.Abs(delta));
+                    else
+                        snipReader.ZoomOut(Math.Abs(delta));
                 }
             );
+
+            bool isApplyingZoom = false;
+            Avalonia.Threading.DispatcherTimer? zoomSharpenTimer = null;
+            int lastReportedPage = initPage;
+
+            void SyncVisiblePages()
+            {
+                if (isApplyingZoom)
+                    return;
+
+                double viewTop = snipScroll.Offset.Y;
+                double viewH = snipScroll.Viewport.Height > 0 ? snipScroll.Viewport.Height : 650;
+                double viewBottom = viewTop + viewH;
+                double viewCenter = viewTop + (viewH * 0.45);
+
+                double y = 12.0;
+                int centerPage = lastReportedPage;
+                int firstVis = snipTotalPages;
+                int lastVis = 1;
+
+                for (int p = 1; p <= snipTotalPages; p++)
+                {
+                    double h = pageSheets[p].Bounds.Height > 10
+                        ? pageSheets[p].Bounds.Height
+                        : (GetSlotHeight(p) + sheetChromeH);
+                    double pBottom = y + h;
+
+                    if (pBottom >= viewTop - 250 && y <= viewBottom + 350)
+                    {
+                        if (p < firstVis)
+                            firstVis = p;
+                        if (p > lastVis)
+                            lastVis = p;
+                    }
+                    if (viewCenter >= y && viewCenter <= pBottom + pageGap)
+                        centerPage = p;
+                    y = pBottom + pageGap;
+                }
+
+                if (firstVis <= lastVis)
+                {
+                    int loadFrom = Math.Max(1, firstVis - 1);
+                    int loadTo = Math.Min(snipTotalPages, lastVis + 1);
+                    for (int p = loadFrom; p <= loadTo; p++)
+                    {
+                        if (pageImages[p].Source is null)
+                        {
+                            var b = snipReader.GetPageBitmap(p);
+                            if (b is not null)
+                                pageImages[p].Source = b;
+                        }
+                    }
+
+                    for (int p = 1; p <= snipTotalPages; p++)
+                    {
+                        if ((p < loadFrom - 8 || p > loadTo + 8) && pageImages[p].Source is not null)
+                        {
+                            double curH = pageSheets[p].Bounds.Height;
+                            if (curH > 10 && pageSheets[p].Child is Grid g)
+                                g.MinHeight = curH;
+                            pageImages[p].Source = null;
+                        }
+                    }
+                }
+
+                if (centerPage != lastReportedPage)
+                {
+                    lastReportedPage = centerPage;
+                    snipReader.SetCurrentPageQuietly(centerPage);
+                    if (!pageJumpBox.IsFocused)
+                        pageJumpBox.Text = centerPage.ToString();
+                }
+            }
+
+            void ScrollToPageInPlace(int targetPage)
+            {
+                int clamped = Math.Clamp(targetPage, 1, snipTotalPages);
+                if (pageImages[clamped].Source is null)
+                {
+                    var pre = snipReader.GetPageBitmap(clamped);
+                    if (pre is not null)
+                    {
+                        pageImages[clamped].Source = pre;
+                        if (pageSheets[clamped].Child is Grid g)
+                            g.MinHeight = 0;
+                    }
+                }
+
+                double targetY = 12.0;
+                for (int p = 1; p < clamped; p++)
+                {
+                    double h = pageSheets[p].Bounds.Height > 10
+                        ? pageSheets[p].Bounds.Height
+                        : (GetSlotHeight(p) + sheetChromeH);
+                    targetY += h + pageGap;
+                }
+
+                lastReportedPage = clamped;
+                if (!pageJumpBox.IsFocused)
+                    pageJumpBox.Text = clamped.ToString();
+                snipScroll.Offset = new Vector(snipScroll.Offset.X, targetY);
+                SyncVisiblePages();
+            }
+
+            void ApplyZoomInPlace()
+            {
+                isApplyingZoom = true;
+
+                double viewH = snipScroll.Viewport.Height > 100 ? snipScroll.Viewport.Height : 650.0;
+                double anchorOffsetInViewport = viewH * 0.40;
+                double anchorViewY = snipScroll.Offset.Y + anchorOffsetInViewport;
+
+                int anchorPage = Math.Clamp(lastReportedPage, 1, snipTotalPages);
+                double anchorFraction = 0.0;
+                double scanY = 12.0;
+                for (int p = 1; p <= snipTotalPages; p++)
+                {
+                    double h = pageSheets[p].Bounds.Height > 10
+                        ? pageSheets[p].Bounds.Height
+                        : (GetSlotHeight(p) + sheetChromeH);
+                    double pBottom = scanY + h;
+                    if (anchorViewY <= pBottom + (pageGap * 0.5) || p == snipTotalPages)
+                    {
+                        anchorPage = p;
+                        anchorFraction = Math.Clamp(
+                            (anchorViewY - scanY) / Math.Max(1.0, h),
+                            0.0,
+                            1.0
+                        );
+                        break;
+                    }
+                    scanY = pBottom + pageGap;
+                }
+
+                bool isFitW = snipReader.FitMode == PdfFitMode.FitWidth;
+                double viewportW = snipScroll.Viewport.Width > 100
+                    ? Math.Min(900, snipScroll.Viewport.Width - 36)
+                    : 840;
+                double newWidth = isFitW ? viewportW : 760 * (snipReader.ZoomPercent / 100.0);
+                currentPageWidth = newWidth;
+
+                pagesStack.HorizontalAlignment = isFitW
+                    ? HorizontalAlignment.Stretch
+                    : HorizontalAlignment.Center;
+                snipScroll.HorizontalScrollBarVisibility = isFitW
+                    ? ScrollBarVisibility.Disabled
+                    : ScrollBarVisibility.Auto;
+
+                for (int p = 1; p <= snipTotalPages; p++)
+                {
+                    pageImages[p].Width = isFitW ? double.NaN : newWidth;
+                    pageSheets[p].HorizontalAlignment = isFitW
+                        ? HorizontalAlignment.Stretch
+                        : HorizontalAlignment.Center;
+                    pageSheets[p].MaxWidth = isFitW ? 900 : double.PositiveInfinity;
+                    if (pageImages[p].Source is null && pageSheets[p].Child is Grid g)
+                        g.MinHeight = GetSlotHeight(p);
+                }
+
+                if (zoomLabelBtn.Content is StackPanel zsp)
+                {
+                    foreach (var child in zsp.Children)
+                    {
+                        if (child is TextBlock ztb)
+                        {
+                            ztb.Text = isFitW ? "Fit" : $"{snipReader.ZoomPercent}%";
+                            break;
+                        }
+                    }
+                }
+                else if (zoomLabelBtn.Content is TextBlock directTb)
+                {
+                    directTb.Text = isFitW ? "Fit" : $"{snipReader.ZoomPercent}%";
+                }
+
+                double newTopY = 12.0;
+                for (int p = 1; p < anchorPage; p++)
+                    newTopY += GetSlotHeight(p) + sheetChromeH + pageGap;
+                double newAnchorH = GetSlotHeight(anchorPage) + sheetChromeH;
+                double targetY = Math.Max(
+                    0.0,
+                    newTopY + (anchorFraction * newAnchorH) - anchorOffsetInViewport
+                );
+
+                snipScroll.Offset = new Vector(snipScroll.Offset.X, targetY);
+
+                Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () =>
+                    {
+                        snipScroll.Offset = new Vector(snipScroll.Offset.X, targetY);
+                        isApplyingZoom = false;
+                        SyncVisiblePages();
+                    },
+                    Avalonia.Threading.DispatcherPriority.Render
+                );
+
+                zoomSharpenTimer?.Stop();
+                var sharpenTimer = new Avalonia.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(120),
+                };
+                zoomSharpenTimer = sharpenTimer;
+                int capturedAnchor = anchorPage;
+                sharpenTimer.Tick += (_, _) =>
+                {
+                    sharpenTimer.Stop();
+                    int cur = Math.Clamp(capturedAnchor, 1, snipTotalPages);
+                    for (int p = Math.Max(1, cur - 1); p <= Math.Min(snipTotalPages, cur + 1); p++)
+                        snipReader.GetPageBitmap(p);
+                };
+                sharpenTimer.Start();
+            }
+
+            Action<int, Avalonia.Media.Imaging.Bitmap> onSnipBmp = (pg, newBmp) =>
+            {
+                if (pg >= 1 && pg <= snipTotalPages)
+                {
+                    pageImages[pg].Source = newBmp;
+                    if (pageSheets[pg].Child is Grid g)
+                        g.MinHeight = 0;
+                }
+            };
+            Action<int> onSnipNav = ScrollToPageInPlace;
+            Action onSnipZoom = ApplyZoomInPlace;
+
+            snipReader.PageBitmapReady += onSnipBmp;
+            snipReader.NavigationRequested += onSnipNav;
+            snipReader.ZoomChangedInPlace += onSnipZoom;
+            snipScroll.DetachedFromVisualTree += (_, _) =>
+            {
+                zoomSharpenTimer?.Stop();
+                snipReader.PageBitmapReady -= onSnipBmp;
+                snipReader.NavigationRequested -= onSnipNav;
+                snipReader.ZoomChangedInPlace -= onSnipZoom;
+            };
+
+            snipScroll.ScrollChanged += (_, _) => SyncVisiblePages();
+
+            if (initPage > 1)
+            {
+                isApplyingZoom = true;
+                snipScroll.Opacity = 0.0;
+            }
+
+            snipScroll.AttachedToVisualTree += (_, _) =>
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () =>
+                    {
+                        if (snipReader.FitMode == PdfFitMode.FitWidth && snipScroll.Viewport.Width > 100)
+                        {
+                            currentPageWidth = Math.Min(900, snipScroll.Viewport.Width - 36);
+                            for (int p = 1; p <= snipTotalPages; p++)
+                            {
+                                if (pageImages[p].Source is null && pageSheets[p].Child is Grid g)
+                                    g.MinHeight = GetSlotHeight(p);
+                            }
+                        }
+
+                        if (initPage > 1)
+                        {
+                            ScrollToPageInPlace(initPage);
+                            isApplyingZoom = false;
+                            SyncVisiblePages();
+                            snipScroll.Opacity = 1.0;
+                        }
+                        else
+                        {
+                            SyncVisiblePages();
+                        }
+                    },
+                    Avalonia.Threading.DispatcherPriority.Loaded
+                );
+            };
+
             canvasContent = snipScroll;
         }
         else

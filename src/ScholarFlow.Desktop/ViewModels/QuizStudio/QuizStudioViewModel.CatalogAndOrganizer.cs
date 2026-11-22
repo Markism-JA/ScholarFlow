@@ -845,16 +845,30 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
-    public async Task OpenDedicatedSnipperAsync()
+    private void EnsureSnipReaderHooked()
+    {
+        if (_snipReaderHooked)
+            return;
+        _snipReaderHooked = true;
+        SnipPdfReader.Changed += (_, _) =>
+        {
+            if (IsDedicatedSnipperOpen)
+                _mainVm.RequestUiRefresh();
+        };
+    }
+
+    public Task OpenDedicatedSnipperAsync()
     {
         if (EditingQuestionDraft is null)
-            return;
+            return Task.CompletedTask;
+
+        EnsureSnipReaderHooked();
         IsDedicatedSnipperOpen = true;
         int startPage =
             EditingSnipPageNumber > 0
                 ? EditingSnipPageNumber
                 : Math.Max(1, EditingQuestionDraft.SourcePage);
-        await LoadEditorSnipPageAsync(startPage);
+        return LoadEditorSnipPageAsync(startPage);
     }
 
     public void CloseDedicatedSnipper()
@@ -941,7 +955,10 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
-    public async Task CaptureQuestionImageFromSnipperAsync(NormalizedHighlightRect region)
+    public async Task CaptureQuestionImageFromSnipperAsync(
+        NormalizedHighlightRect region,
+        int? targetPage = null
+    )
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
@@ -951,7 +968,11 @@ public sealed partial class QuizStudioViewModel
             return;
 
         int page =
-            EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
+            targetPage is > 0 ? targetPage.Value
+            : EditingSnipPageNumber > 0 ? EditingSnipPageNumber
+            : Math.Max(1, draft.SourcePage);
+        EditingSnipPageNumber = page;
+        SnipPdfReader.SetCurrentPageQuietly(page);
         var mediaDir = !string.IsNullOrWhiteSpace(_mainVm.BasinRoot)
             ? Path.Combine(
                 _mainVm.BasinRoot,
@@ -1035,14 +1056,13 @@ public sealed partial class QuizStudioViewModel
 
     public void SetSnipZoomPercentQuiet(int percent)
     {
-        SnipFitToWidth = percent == 100;
-        SnipZoomPercent = Math.Clamp(percent, 40, 350);
+        // Zoom state is now owned directly by SnipPdfReader
+        _ = percent;
     }
 
     public void ToggleSnipOutlineNodeExpanded(PdfBookmarkNode node)
     {
-        node.IsExpanded = !node.IsExpanded;
-        _mainVm.RequestUiRefresh();
+        SnipPdfReader.ToggleNodeExpanded(node);
     }
 
     public PdfBookmarkNode? FindActiveSnipBookmarkNode(int currentPage)
@@ -1065,14 +1085,9 @@ public sealed partial class QuizStudioViewModel
         return best;
     }
 
-    private readonly Dictionary<
-        (string Path, int Page, int Dpi),
-        Avalonia.Media.Imaging.Bitmap
-    > _snipBitmapCache = [];
-
     public void ZoomPreview(int delta)
     {
-        PreviewZoomPercent = Math.Clamp(PreviewZoomPercent + delta, 60, 225);
+        PreviewZoomPercent = Math.Clamp(PreviewZoomPercent + delta, 40, 350);
         _mainVm.RequestUiRefresh();
     }
 
@@ -1082,36 +1097,33 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
-    public async Task ToggleSnipFitToWidthAsync()
+    public Task ToggleSnipFitToWidthAsync()
     {
-        SnipFitToWidth = !SnipFitToWidth;
-        if (SnipFitToWidth)
-            SnipZoomPercent = 100;
-        _mainVm.RequestUiRefresh();
-        if (EditingSnipPageNumber > 0 && !SnipFitToWidth && SnipZoomPercent > 150)
-            await LoadEditorSnipPageAsync(EditingSnipPageNumber, showLoading: false);
+        SnipPdfReader.ToggleFitToWidth();
+        return Task.CompletedTask;
     }
 
-    public async Task ZoomSnipAsync(int delta)
+    public Task ZoomSnipAsync(int delta)
     {
-        SnipFitToWidth = false;
-        SnipZoomPercent = Math.Clamp(SnipZoomPercent + delta, 50, 300);
-        _mainVm.RequestUiRefresh();
-        if (EditingSnipPageNumber > 0 && SnipZoomPercent > 150)
-            await LoadEditorSnipPageAsync(EditingSnipPageNumber, showLoading: false);
+        if (delta > 0)
+            SnipPdfReader.ZoomIn(delta);
+        else if (delta < 0)
+            SnipPdfReader.ZoomOut(Math.Abs(delta));
+        return Task.CompletedTask;
     }
 
-    public async Task RotateSnipAsync(int deltaDegrees)
+    public Task RotateSnipAsync(int deltaDegrees)
     {
-        SnipRotationDegrees = ((SnipRotationDegrees + deltaDegrees) % 360 + 360) % 360;
-        if (EditingSnipPageNumber > 0)
-            await LoadEditorSnipPageAsync(EditingSnipPageNumber, showLoading: false);
-        else
-            _mainVm.RequestUiRefresh();
+        if (deltaDegrees > 0)
+            SnipPdfReader.RotateRight();
+        else if (deltaDegrees < 0)
+            SnipPdfReader.RotateLeft();
+        return Task.CompletedTask;
     }
 
-    public async Task LoadEditorSnipPageAsync(int oneBasedPage, bool showLoading = true)
+    public Task LoadEditorSnipPageAsync(int oneBasedPage, bool showLoading = true)
     {
+        _ = showLoading;
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
             ? draft.SourcePdfPath
@@ -1120,102 +1132,39 @@ public sealed partial class QuizStudioViewModel
         {
             EditingGroundStatus = "⚠ Source PDF not found for visual snipping.";
             _mainVm.RequestUiRefresh();
-            return;
+            return Task.CompletedTask;
         }
 
-        int targetDpi = (!SnipFitToWidth && SnipZoomPercent > 150) ? 280 : 180;
-        int rot = SnipRotationDegrees;
-        int cacheDpiKey = targetDpi * 10 + (rot / 90);
-        int clampedReq = Math.Max(1, oneBasedPage);
+        EnsureSnipReaderHooked();
+        draft.SourcePdfPath = pdfPath;
+        int targetPage = Math.Max(1, oneBasedPage);
+        EditingSnipPageNumber = targetPage;
+
         if (
-            EditingSnipTotalPages > 0
-            && _snipBitmapCache.TryGetValue(
-                (pdfPath, Math.Clamp(clampedReq, 1, EditingSnipTotalPages), cacheDpiKey),
-                out var cachedBmp
+            !string.Equals(
+                SnipPdfReader.CurrentFilePath,
+                pdfPath,
+                StringComparison.OrdinalIgnoreCase
             )
-            && string.Equals(_snipOutlinePdfPath, pdfPath, StringComparison.OrdinalIgnoreCase)
         )
         {
-            EditingSnipPageNumber = Math.Clamp(clampedReq, 1, EditingSnipTotalPages);
-            EditingSnipPageBitmap = cachedBmp;
-            _mainVm.RequestUiRefresh();
-            return;
-        }
-
-        if (showLoading)
-        {
-            IsLoadingSnipPage = true;
+            SnipPdfReader.LoadPdf(pdfPath, _mainVm.BasinRoot);
+            SnipPdfReader.JumpToPage(targetPage);
             _mainVm.RequestUiRefresh();
         }
-
-        bool needOutline = !string.Equals(
-            _snipOutlinePdfPath,
-            pdfPath,
-            StringComparison.OrdinalIgnoreCase
-        );
-
-        try
+        else
         {
-            var (pixels, totalPages, resolvedPage, outlineRoots) = await Task.Run(() =>
-            {
-                using var doc = UglyToad.PdfPig.PdfDocument.Open(pdfPath);
-                int total = doc.NumberOfPages;
-                int clamped = total > 0 ? Math.Clamp(oneBasedPage, 1, total) : 1;
-                IReadOnlyList<PdfBookmarkNode>? roots = needOutline
-                    ? PdfReaderViewModel.ExtractBookmarkRoots(doc)
-                    : null;
+            SnipPdfReader.JumpToPage(targetPage);
+        }
 
-                byte[] pdfBytes;
-                lock (_pendingPreviewRenders)
-                {
-                    if (
-                        !string.Equals(
-                            _cachedBytesPath,
-                            pdfPath,
-                            StringComparison.OrdinalIgnoreCase
-                        ) || _cachedPdfBytes is null
-                    )
-                    {
-                        _cachedPdfBytes = File.ReadAllBytes(pdfPath);
-                        _cachedBytesPath = pdfPath;
-                    }
-                    pdfBytes = _cachedPdfBytes;
-                }
-                var rendered = Services.PdfBitmapRenderer.RenderPagePixels(
-                    pdfBytes,
-                    clamped - 1,
-                    dpi: targetDpi,
-                    rotationDegrees: rot
-                );
-                return (rendered, total, clamped, roots);
-            });
-
-            draft.SourcePdfPath = pdfPath;
-            if (outlineRoots is not null)
-            {
-                SnipOutlineRoots = outlineRoots;
-                _snipOutlinePdfPath = pdfPath;
-            }
-            var bmp = Services.PdfBitmapRenderer.CreateWriteableBitmap(pixels);
-            if (_snipBitmapCache.Count >= 24)
-                _snipBitmapCache.Clear();
-            _snipBitmapCache[(pdfPath, resolvedPage, cacheDpiKey)] = bmp;
-            EditingSnipPageNumber = resolvedPage;
-            EditingSnipTotalPages = totalPages;
-            EditingSnipPageBitmap = bmp;
-        }
-        catch (Exception ex)
-        {
-            EditingGroundStatus = $"⚠ Failed to render page: {ex.Message}";
-        }
-        finally
-        {
-            IsLoadingSnipPage = false;
-            _mainVm.RequestUiRefresh();
-        }
+        return Task.CompletedTask;
     }
 
-    public async Task ApplyVisualSnipRegionAsync(NormalizedHighlightRect region, bool additive)
+    public async Task ApplyVisualSnipRegionAsync(
+        NormalizedHighlightRect region,
+        bool additive,
+        int? targetPage = null
+    )
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
@@ -1225,7 +1174,11 @@ public sealed partial class QuizStudioViewModel
             return;
 
         int page =
-            EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
+            targetPage is > 0 ? targetPage.Value
+            : EditingSnipPageNumber > 0 ? EditingSnipPageNumber
+            : Math.Max(1, draft.SourcePage);
+        EditingSnipPageNumber = page;
+        SnipPdfReader.SetCurrentPageQuietly(page);
         draft.SourcePdfPath = pdfPath;
 
         var (quote, sectionTitle, _) = await Task.Run(() =>

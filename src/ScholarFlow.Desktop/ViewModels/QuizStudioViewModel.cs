@@ -275,21 +275,27 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public string? EditingPageTextPreview { get; private set; }
     public string? EditingGroundStatus { get; private set; }
     public bool IsDedicatedSnipperOpen { get; private set; }
-    public bool IsLoadingSnipPage { get; private set; }
+    public PdfReaderViewModel SnipPdfReader { get; } = new();
+    private bool _snipReaderHooked;
+    public bool IsLoadingSnipPage => SnipPdfReader.IsLoadingDocument;
     public Bitmap? EditingSnipPageBitmap { get; private set; }
-    public int EditingSnipPageNumber { get; private set; }
-    public int EditingSnipTotalPages { get; private set; }
-    public bool SnipFitToWidth { get; private set; } = true;
-    public int SnipZoomPercent { get; private set; } = 100;
-    public int SnipRotationDegrees { get; private set; }
+    public int EditingSnipPageNumber
+    {
+        get => SnipPdfReader.PageCount > 0 ? SnipPdfReader.CurrentPage : _editingSnipPageNumber;
+        private set => _editingSnipPageNumber = value;
+    }
+    private int _editingSnipPageNumber;
+    public int EditingSnipTotalPages => SnipPdfReader.PageCount;
+    public bool SnipFitToWidth => SnipPdfReader.FitToWidth;
+    public int SnipZoomPercent => SnipPdfReader.ZoomPercent;
+    public int SnipRotationDegrees => SnipPdfReader.RotationDegrees;
     public int PreviewZoomPercent { get; private set; } = 100;
     public bool IsSnipOutlineOpen { get; private set; } = true;
     public bool IsSnipAnchorsOpen { get; private set; } = true;
     public SnipCaptureMode SnipMode { get; private set; } = SnipCaptureMode.PinHighlight;
     public IReadOnlyList<string> SnipExtractedFigures { get; private set; } = [];
     public string? ZoomedImagePath { get; private set; }
-    public IReadOnlyList<PdfBookmarkNode> SnipOutlineRoots { get; private set; } = [];
-    private string? _snipOutlinePdfPath;
+    public IReadOnlyList<PdfBookmarkNode> SnipOutlineRoots => SnipPdfReader.BookmarkRoots;
     public string? FlaggingQuestionId { get; private set; }
     public bool IsDeckAiFixModalOpen { get; private set; }
     public HashSet<string> DeckAiFixSelectedIds { get; } = new(StringComparer.OrdinalIgnoreCase);
@@ -587,9 +593,6 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
             bmp.Dispose();
         _thumbnailBitmapCache.Clear();
         _pendingThumbnailBatches.Clear();
-        foreach (var bmp in _snipBitmapCache.Values)
-            bmp.Dispose();
-        _snipBitmapCache.Clear();
         _pendingPreviewRenders.Clear();
 
         _cachedBytesPath = null;
@@ -645,14 +648,11 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         EditingPageTextPreview = null;
         EditingGroundStatus = null;
         IsDedicatedSnipperOpen = false;
-        IsLoadingSnipPage = false;
         EditingSnipPageBitmap = null;
         EditingSnipPageNumber = 0;
-        EditingSnipTotalPages = 0;
         SnipExtractedFigures = [];
         ZoomedImagePath = null;
-        SnipOutlineRoots = [];
-        _snipOutlinePdfPath = null;
+        SnipPdfReader.ClearEvidenceHighlight(notify: false);
 
         // AI Fix / Import Modals
         FlaggingQuestionId = null;
