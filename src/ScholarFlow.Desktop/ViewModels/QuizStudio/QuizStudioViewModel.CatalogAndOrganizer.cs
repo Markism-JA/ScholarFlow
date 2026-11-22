@@ -615,6 +615,20 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
+    public void SetOrganizerTocOpenQuiet(bool isOpen)
+    {
+        IsOrganizerTocOpen = isOpen;
+    }
+
+    public void ClearAllOrganizerFilters()
+    {
+        OrganizerKindFilter = null;
+        OrganizerTopicFilter = null;
+        OrganizerHealthFilter = OrganizerHealthFilter.All;
+        OrganizerSearchQuery = string.Empty;
+        _mainVm.RequestUiRefresh();
+    }
+
     public void ToggleOrganizerFilters()
     {
         IsOrganizerFiltersOpen = !IsOrganizerFiltersOpen;

@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
@@ -58,8 +60,6 @@ public static partial class QuizStudioViewBuilder
             studio.OrganizerTopicFilter ?? "",
             studio.OrganizerHealthFilter.ToString(),
             studio.OrganizerSearchQuery,
-            studio.IsOrganizerTocOpen,
-            studio.IsOrganizerFiltersOpen,
             studio.IsOrganizerDirty,
             studio.DeckAiFixSelectedIds.Count
         );
@@ -222,7 +222,7 @@ public static partial class QuizStudioViewBuilder
             actionsWrap.Children.Add(dirtyPill);
         }
 
-        // Quick Jump to Card # input (# [ 1 ] / N)
+        // Quick Jump to Card # pill (# [ 1 ] / N) — centered inline input with arrow & wheel stepping
         int initialSelectedIdx = Math.Max(
             0,
             deck.Questions.FindIndex(q =>
@@ -236,51 +236,90 @@ public static partial class QuizStudioViewBuilder
         var cardJumpBox = new TextBox
         {
             Text = deck.Questions.Count > 0 ? (initialSelectedIdx + 1).ToString() : "0",
-            Width = 46,
+            Width = 34,
+            Height = 22,
+            MinHeight = 22,
             FontSize = 11.5,
             FontWeight = FontWeight.SemiBold,
-            Padding = new Thickness(4, 2),
+            Padding = new Thickness(1, 0),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+            TextAlignment = TextAlignment.Center,
             HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
         };
+
+        void JumpToCardIndex(int targetIdx)
+        {
+            if (deck.Questions.Count == 0)
+                return;
+            int clampedIdx = Math.Clamp(targetIdx, 0, deck.Questions.Count - 1);
+            var target = deck.Questions[clampedIdx];
+            cardJumpBox.Text = (clampedIdx + 1).ToString();
+            studio.SelectOrganizerQuestion(
+                target.Id,
+                notify: false,
+                scrollCardIntoView: true,
+                scrollTocIntoView: true
+            );
+        }
+
+        int GetCurrentCardIndex()
+        {
+            int idx = deck.Questions.FindIndex(q =>
+                string.Equals(
+                    q.Id,
+                    studio.SelectedOrganizerQuestionId,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            );
+            return idx >= 0 ? idx : 0;
+        }
+
         ToolTip.SetTip(
             cardJumpBox,
-            $"Jump to card number (1–{Math.Max(1, deck.Questions.Count)}) and press Enter"
+            $"Jump to card (1–{Math.Max(1, deck.Questions.Count)}) · Enter, ↑/↓, or scroll"
         );
         cardJumpBox.KeyDown += (_, e) =>
         {
+            if (deck.Questions.Count == 0)
+                return;
             if (
                 e.Key == Avalonia.Input.Key.Enter
-                && deck.Questions.Count > 0
                 && int.TryParse(cardJumpBox.Text?.Trim(), out int num)
             )
             {
                 e.Handled = true;
-                int clampedIdx = Math.Clamp(num - 1, 0, deck.Questions.Count - 1);
-                var target = deck.Questions[clampedIdx];
-                cardJumpBox.Text = (clampedIdx + 1).ToString();
-                studio.SelectOrganizerQuestion(
-                    target.Id,
-                    notify: false,
-                    scrollCardIntoView: true,
-                    scrollTocIntoView: true
-                );
+                JumpToCardIndex(num - 1);
+            }
+            else if (e.Key == Avalonia.Input.Key.Up)
+            {
+                e.Handled = true;
+                JumpToCardIndex(GetCurrentCardIndex() - 1);
+            }
+            else if (e.Key == Avalonia.Input.Key.Down)
+            {
+                e.Handled = true;
+                JumpToCardIndex(GetCurrentCardIndex() + 1);
             }
         };
 
         var jumpPill = new Border
         {
+            Height = 28,
             Background = ThemeService.Brush(ThemeService.BgBase),
             BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
             BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(5),
-            Padding = new Thickness(6, 2),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(7, 0),
             Margin = new Thickness(0, 0, 6, 3),
             VerticalAlignment = VerticalAlignment.Center,
             Child = new StackPanel
             {
                 Orientation = Orientation.Horizontal,
-                Spacing = 4,
+                Spacing = 3,
                 VerticalAlignment = VerticalAlignment.Center,
                 Children =
                 {
@@ -303,30 +342,214 @@ public static partial class QuizStudioViewBuilder
                 },
             },
         };
+        cardJumpBox.GotFocus += (_, _) =>
+        {
+            cardJumpBox.SelectAll();
+            jumpPill.BorderBrush = ThemeService.Brush(ThemeService.BorderStrong);
+        };
+        cardJumpBox.LostFocus += (_, _) =>
+        {
+            jumpPill.BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle);
+        };
+        jumpPill.PointerWheelChanged += (_, e) =>
+        {
+            if (deck.Questions.Count == 0)
+                return;
+            e.Handled = true;
+            JumpToCardIndex(GetCurrentCardIndex() + (e.Delta.Y > 0 ? -1 : 1));
+        };
         actionsWrap.Children.Add(jumpPill);
 
+        Action<bool>? setTocOpenAction = null;
         var tocToggleBtn = UiBuilder.GhostButton(
             "TOC",
             MaterialIconKind.FormatListBulleted,
-            studio.ToggleOrganizerToc,
+            () => setTocOpenAction?.Invoke(!studio.IsOrganizerTocOpen),
             isActive: studio.IsOrganizerTocOpen
         );
         ToolTip.SetTip(tocToggleBtn, "Toggle question table of contents");
         tocToggleBtn.Margin = new Thickness(0, 0, 5, 3);
         actionsWrap.Children.Add(tocToggleBtn);
 
-        bool hasActiveFilters =
-            studio.OrganizerKindFilter.HasValue
-            || !string.IsNullOrWhiteSpace(studio.OrganizerTopicFilter)
-            || studio.OrganizerHealthFilter != OrganizerHealthFilter.All
-            || !string.IsNullOrWhiteSpace(studio.OrganizerSearchQuery);
+        int activeFilterCount =
+            (studio.OrganizerKindFilter.HasValue ? 1 : 0)
+            + (!string.IsNullOrWhiteSpace(studio.OrganizerTopicFilter) ? 1 : 0)
+            + (studio.OrganizerHealthFilter != OrganizerHealthFilter.All ? 1 : 0)
+            + (!string.IsNullOrWhiteSpace(studio.OrganizerSearchQuery) ? 1 : 0);
+        bool hasActiveFilters = activeFilterCount > 0;
+
+        var filterFlyoutHost = new Border
+        {
+            Background = Brushes.Transparent,
+            Padding = new Thickness(2),
+            Width = 324,
+            MaxHeight = 360,
+        };
+        var filterFlyout = new Flyout
+        {
+            Content = filterFlyoutHost,
+            Placement = PlacementMode.BottomEdgeAlignedLeft,
+        };
+
+        void RebuildFilterFlyout()
+        {
+            var filtersStack = new StackPanel { Spacing = 10 };
+
+            // Flyout header + Clear all
+            var hdrGrid = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+            hdrGrid.Children.Add(
+                new TextBlock
+                {
+                    Text = "Filter Questions",
+                    FontSize = 13,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                    VerticalAlignment = VerticalAlignment.Center,
+                }
+            );
+            if (hasActiveFilters)
+            {
+                var clearAllBtn = UiBuilder.GhostButton(
+                    "Clear all",
+                    MaterialIconKind.Close,
+                    () =>
+                    {
+                        filterFlyout.Hide();
+                        studio.ClearAllOrganizerFilters();
+                    }
+                );
+                Grid.SetColumn(clearAllBtn, 1);
+                hdrGrid.Children.Add(clearAllBtn);
+            }
+            filtersStack.Children.Add(hdrGrid);
+
+            // Kind Pills
+            filtersStack.Children.Add(UiBuilder.SectionHeader("Question Kind"));
+            var kindWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            var allKindBtn = UiBuilder.GhostButton(
+                $"All ({deck.Questions.Count})",
+                studio.OrganizerKindFilter is null ? MaterialIconKind.Check : null,
+                () =>
+                {
+                    filterFlyout.Hide();
+                    studio.SetOrganizerKindFilter(null);
+                },
+                isActive: studio.OrganizerKindFilter is null
+            );
+            allKindBtn.Margin = new Thickness(0, 0, 4, 4);
+            kindWrap.Children.Add(allKindBtn);
+
+            foreach (var kind in Enum.GetValues<QuizQuestionKind>())
+            {
+                var capturedKind = kind;
+                int cnt = deck.Questions.Count(q => q.Kind == kind);
+                if (cnt == 0 && studio.OrganizerKindFilter != kind)
+                    continue;
+                bool isFilterActive = studio.OrganizerKindFilter == kind;
+                var kBtn = UiBuilder.GhostButton(
+                    $"{kind} ({cnt})",
+                    isFilterActive ? MaterialIconKind.Check : null,
+                    () =>
+                    {
+                        filterFlyout.Hide();
+                        studio.SetOrganizerKindFilter(capturedKind);
+                    },
+                    isActive: isFilterActive
+                );
+                kBtn.Margin = new Thickness(0, 0, 4, 4);
+                kindWrap.Children.Add(kBtn);
+            }
+            filtersStack.Children.Add(kindWrap);
+
+            // Quality & Health Pills
+            filtersStack.Children.Add(UiBuilder.SectionHeader("Quality & Health"));
+            var deckQualityReport = studio.GetCachedOrganizerQualityReport();
+            var healthWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            foreach (
+                var (hf, hLabel) in new[]
+                {
+                    (
+                        OrganizerHealthFilter.QualityIssues,
+                        deckQualityReport.HasIssues
+                            ? $"Quality Issues ({deckQualityReport.FlaggedQuestionIds.Count})"
+                            : "Quality Issues (0)"
+                    ),
+                    (OrganizerHealthFilter.MissingEvidence, "Missing Evidence"),
+                    (OrganizerHealthFilter.HasRichMedia, "Code / Math / Diagram"),
+                    (OrganizerHealthFilter.FlaggedForAi, "Flagged for AI"),
+                }
+            )
+            {
+                var capturedHf = hf;
+                var hBtn = UiBuilder.GhostButton(
+                    hLabel,
+                    studio.OrganizerHealthFilter == capturedHf ? MaterialIconKind.Check : null,
+                    () =>
+                    {
+                        filterFlyout.Hide();
+                        studio.SetOrganizerHealthFilter(capturedHf);
+                    },
+                    isActive: studio.OrganizerHealthFilter == capturedHf
+                );
+                hBtn.Margin = new Thickness(0, 0, 4, 4);
+                healthWrap.Children.Add(hBtn);
+            }
+            filtersStack.Children.Add(healthWrap);
+
+            // Topic Tags
+            var distinctTags = deck
+                .Questions.Select(q => q.TopicTag?.Trim())
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .Take(20)
+                .ToList();
+
+            if (distinctTags.Count > 0)
+            {
+                filtersStack.Children.Add(UiBuilder.SectionHeader("Topic Tags"));
+                var tagWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+                foreach (var tag in distinctTags)
+                {
+                    var capturedTag = tag;
+                    bool isTagActive = string.Equals(
+                        studio.OrganizerTopicFilter,
+                        capturedTag,
+                        StringComparison.OrdinalIgnoreCase
+                    );
+                    var tBtn = UiBuilder.GhostButton(
+                        $"@{capturedTag}",
+                        isTagActive ? MaterialIconKind.Check : null,
+                        () =>
+                        {
+                            filterFlyout.Hide();
+                            studio.SetOrganizerTopicFilter(capturedTag);
+                        },
+                        isActive: isTagActive
+                    );
+                    tBtn.Margin = new Thickness(0, 0, 4, 4);
+                    tagWrap.Children.Add(tBtn);
+                }
+                filtersStack.Children.Add(tagWrap);
+            }
+
+            filterFlyoutHost.Child = new ScrollViewer
+            {
+                Content = filtersStack,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            };
+        }
+
+        filterFlyout.Opening += (_, _) => RebuildFilterFlyout();
 
         var filterToggleBtn = UiBuilder.GhostButton(
-            hasActiveFilters ? "Filters ●" : "Filters",
+            hasActiveFilters ? $"Filters ({activeFilterCount})" : "Filters",
             MaterialIconKind.FilterOutline,
-            studio.ToggleOrganizerFilters,
-            isActive: studio.IsOrganizerFiltersOpen || hasActiveFilters
+            () => { },
+            isActive: hasActiveFilters
         );
+        filterToggleBtn.Flyout = filterFlyout;
         ToolTip.SetTip(filterToggleBtn, "Filter questions by kind, topic tag, or quality health");
         filterToggleBtn.Margin = new Thickness(0, 0, 5, 3);
         actionsWrap.Children.Add(filterToggleBtn);
@@ -652,96 +875,114 @@ public static partial class QuizStudioViewBuilder
         ApplyOrgHeaderLayout(false);
         metaCard.Children.Add(headerHost);
 
-        // Collapsible Multi-Facet Filter Bar (Kind + @TopicTag + Health)
-        if (studio.IsOrganizerFiltersOpen)
+        // Slim 1-line Active Filter Chips Strip (only shown when at least 1 filter is active)
+        if (hasActiveFilters)
         {
-            var filtersStack = new StackPanel { Spacing = 6 };
-
-            // Kind Pills
-            var kindWrap = new WrapPanel { Orientation = Orientation.Horizontal };
-            var allKindBtn = UiBuilder.GhostButton(
-                $"All Kinds ({deck.Questions.Count})",
-                studio.OrganizerKindFilter is null ? MaterialIconKind.Check : null,
-                () => studio.SetOrganizerKindFilter(null),
-                isActive: studio.OrganizerKindFilter is null
-            );
-            allKindBtn.Margin = new Thickness(0, 0, 4, 4);
-            kindWrap.Children.Add(allKindBtn);
-
-            foreach (var kind in Enum.GetValues<QuizQuestionKind>())
+            var activeStrip = new WrapPanel
             {
-                var capturedKind = kind;
-                int cnt = deck.Questions.Count(q => q.Kind == kind);
-                if (cnt == 0 && studio.OrganizerKindFilter != kind)
-                    continue;
-                bool isFilterActive = studio.OrganizerKindFilter == kind;
-                var kBtn = UiBuilder.GhostButton(
-                    $"{kind} ({cnt})",
-                    isFilterActive ? MaterialIconKind.Check : null,
-                    () => studio.SetOrganizerKindFilter(capturedKind),
-                    isActive: isFilterActive
-                );
-                kBtn.Margin = new Thickness(0, 0, 4, 4);
-                kindWrap.Children.Add(kBtn);
-            }
-            filtersStack.Children.Add(kindWrap);
+                Orientation = Orientation.Horizontal,
+                Margin = new Thickness(0, -2, 0, 0),
+            };
 
-            // Health & @TopicTag Pills
-            var deckQualityReport = studio.GetCachedOrganizerQualityReport();
-            var tagHealthWrap = new WrapPanel { Orientation = Orientation.Horizontal };
-            foreach (
-                var (hf, hLabel) in new[]
+            static Button BuildDismissChip(string label, Action onRemove)
+            {
+                var chip = new Button
                 {
-                    (
-                        OrganizerHealthFilter.QualityIssues,
-                        deckQualityReport.HasIssues
-                            ? $"Quality Issues ({deckQualityReport.FlaggedQuestionIds.Count})"
-                            : "Quality Issues (0)"
-                    ),
-                    (OrganizerHealthFilter.MissingEvidence, "Missing Evidence"),
-                    (OrganizerHealthFilter.HasRichMedia, "Code / Math / Diagram"),
-                    (OrganizerHealthFilter.FlaggedForAi, "Flagged for AI"),
-                }
-            )
-            {
-                var capturedHf = hf;
-                var hBtn = UiBuilder.GhostButton(
-                    hLabel,
-                    studio.OrganizerHealthFilter == capturedHf ? MaterialIconKind.Check : null,
-                    () => studio.SetOrganizerHealthFilter(capturedHf),
-                    isActive: studio.OrganizerHealthFilter == capturedHf
-                );
-                hBtn.Margin = new Thickness(0, 0, 4, 4);
-                tagHealthWrap.Children.Add(hBtn);
+                    Background = ThemeService.Brush(ThemeService.BgElevated),
+                    BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(7, 2),
+                    Margin = new Thickness(0, 0, 5, 3),
+                    Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+                    Content = new StackPanel
+                    {
+                        Orientation = Orientation.Horizontal,
+                        Spacing = 4,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Children =
+                        {
+                            new TextBlock
+                            {
+                                Text = label,
+                                FontSize = 11,
+                                FontWeight = FontWeight.Medium,
+                                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                                VerticalAlignment = VerticalAlignment.Center,
+                            },
+                            UiBuilder.Icon(
+                                MaterialIconKind.Close,
+                                11,
+                                ThemeService.Brush(ThemeService.TextMuted)
+                            ),
+                        },
+                    },
+                };
+                ToolTip.SetTip(chip, $"Remove filter: {label}");
+                chip.PointerEntered += (_, _) =>
+                    chip.Background = ThemeService.Brush(ThemeService.BgHover);
+                chip.PointerExited += (_, _) =>
+                    chip.Background = ThemeService.Brush(ThemeService.BgElevated);
+                chip.Click += (_, _) => onRemove();
+                return chip;
             }
 
-            var distinctTags = deck
-                .Questions.Select(q => q.TopicTag?.Trim())
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
-                .Take(12)
-                .ToList();
-
-            foreach (var tag in distinctTags)
+            if (studio.OrganizerKindFilter is { } activeKind)
             {
-                var capturedTag = tag;
-                bool isTagActive = string.Equals(
-                    studio.OrganizerTopicFilter,
-                    capturedTag,
-                    StringComparison.OrdinalIgnoreCase
+                activeStrip.Children.Add(
+                    BuildDismissChip(activeKind.ToString(), () => studio.SetOrganizerKindFilter(null))
                 );
-                var tBtn = UiBuilder.GhostButton(
-                    $"@{capturedTag}",
-                    isTagActive ? MaterialIconKind.Check : null,
-                    () => studio.SetOrganizerTopicFilter(capturedTag),
-                    isActive: isTagActive
-                );
-                tBtn.Margin = new Thickness(0, 0, 4, 4);
-                tagHealthWrap.Children.Add(tBtn);
             }
-            filtersStack.Children.Add(tagHealthWrap);
-            metaCard.Children.Add(filtersStack);
+            if (studio.OrganizerHealthFilter != OrganizerHealthFilter.All)
+            {
+                var hfText = studio.OrganizerHealthFilter switch
+                {
+                    OrganizerHealthFilter.QualityIssues => "Quality Issues",
+                    OrganizerHealthFilter.MissingEvidence => "Missing Evidence",
+                    OrganizerHealthFilter.HasRichMedia => "Code / Math / Diagram",
+                    OrganizerHealthFilter.FlaggedForAi => "Flagged for AI",
+                    _ => studio.OrganizerHealthFilter.ToString(),
+                };
+                activeStrip.Children.Add(
+                    BuildDismissChip(
+                        hfText,
+                        () => studio.SetOrganizerHealthFilter(studio.OrganizerHealthFilter)
+                    )
+                );
+            }
+            if (!string.IsNullOrWhiteSpace(studio.OrganizerTopicFilter))
+            {
+                var capturedTopic = studio.OrganizerTopicFilter;
+                activeStrip.Children.Add(
+                    BuildDismissChip(
+                        $"@{capturedTopic}",
+                        () => studio.SetOrganizerTopicFilter(capturedTopic)
+                    )
+                );
+            }
+            if (!string.IsNullOrWhiteSpace(studio.OrganizerSearchQuery))
+            {
+                activeStrip.Children.Add(
+                    BuildDismissChip(
+                        $"\"{studio.OrganizerSearchQuery}\"",
+                        () =>
+                        {
+                            studio.SetOrganizerSearchQueryQuiet(string.Empty);
+                            vm.RequestUiRefresh();
+                        }
+                    )
+                );
+            }
+
+            var clearStripBtn = UiBuilder.GhostButton(
+                "Clear",
+                null,
+                studio.ClearAllOrganizerFilters
+            );
+            clearStripBtn.Margin = new Thickness(0, 0, 0, 3);
+            activeStrip.Children.Add(clearStripBtn);
+
+            metaCard.Children.Add(activeStrip);
         }
 
         rootGrid.Children.Add(UiBuilder.Card(metaCard, padding: new Thickness(12, 8)));
@@ -749,12 +990,10 @@ public static partial class QuizStudioViewBuilder
         // 2. Filtered Question Set
         var visibleQuestions = studio.GetVisibleOrganizerQuestions();
 
-        // 3. Virtualized Split Body (Collapsible Left TOC + Virtualized Question Cards)
+        // 3. Virtualized Split Body (Animated Docked / Floating TOC + Virtualized Question Cards)
         var splitBody = new Grid
         {
-            ColumnDefinitions = studio.IsOrganizerTocOpen
-                ? ColumnDefinitions.Parse("235,10,*")
-                : ColumnDefinitions.Parse("*"),
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*"),
         };
 
         var expandedCardTarget = visibleQuestions.FirstOrDefault(q =>
@@ -769,189 +1008,252 @@ public static partial class QuizStudioViewBuilder
         );
         cardListBox.Padding = new Thickness(0, 0, 0, 72);
 
-        ListBox? tocListBox = null;
-        Action<QuizQuestionRecord>? scrollTocToItem = null;
+        ListBox tocListBox = null!;
+        Action<QuizQuestionRecord> scrollTocToItem = null!;
 
-        Border? tocCardContainer = null;
-        Border? tocFloatingScrim = null;
-        if (studio.IsOrganizerTocOpen)
+        var tocPanel = new Grid
         {
-            var tocPanel = new Grid
-            {
-                RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
-                RowSpacing = 6,
-            };
-            var tocHeaderRow = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
-            var tocHeaderText = new TextBlock
-            {
-                Text = $"QUESTIONS ({visibleQuestions.Count})",
-                FontSize = 11,
-                FontWeight = FontWeight.SemiBold,
-                LetterSpacing = 0.6,
-                Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(2, 0, 0, 2),
-            };
-            tocHeaderRow.Children.Add(tocHeaderText);
-            var closeTocBtn = UiBuilder.IconButton(
-                MaterialIconKind.ChevronDoubleLeft,
-                studio.ToggleOrganizerToc,
-                14,
-                ThemeService.Brush(ThemeService.TextSecondary)
-            );
-            ToolTip.SetTip(closeTocBtn, "Close TOC");
-            Grid.SetColumn(closeTocBtn, 1);
-            tocHeaderRow.Children.Add(closeTocBtn);
-            tocPanel.Children.Add(tocHeaderRow);
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
+            RowSpacing = 6,
+        };
+        var tocHeaderRow = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        var tocHeaderText = new TextBlock
+        {
+            Text = $"QUESTIONS ({visibleQuestions.Count})",
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            LetterSpacing = 0.6,
+            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(2, 0, 0, 2),
+        };
+        tocHeaderRow.Children.Add(tocHeaderText);
+        var closeTocBtn = UiBuilder.IconButton(
+            MaterialIconKind.ChevronDoubleLeft,
+            () => setTocOpenAction?.Invoke(false),
+            14,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(closeTocBtn, "Close TOC");
+        Grid.SetColumn(closeTocBtn, 1);
+        tocHeaderRow.Children.Add(closeTocBtn);
+        tocPanel.Children.Add(tocHeaderRow);
 
-            var searchBox = new TextBox
+        var searchBox = new TextBox
+        {
+            Text = studio.OrganizerSearchQuery,
+            Watermark = "Search prompt, answer, @tag...",
+            FontSize = 11.5,
+        };
+        searchBox.TextChanged += (_, _) =>
+        {
+            studio.SetOrganizerSearchQueryQuiet(searchBox.Text ?? string.Empty);
+            var updated = studio.GetVisibleOrganizerQuestions();
+            visibleQuestions = updated;
+            tocHeaderText.Text = $"QUESTIONS ({updated.Count})";
+            cardListBox.ItemsSource = updated;
+            tocListBox.ItemsSource = updated;
+            _cachedOrganizerSignature = ComputeOrganizerStructuralSignature(vm, studio);
+        };
+        searchBox.KeyDown += (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Escape && !string.IsNullOrEmpty(searchBox.Text))
             {
-                Text = studio.OrganizerSearchQuery,
-                Watermark = "Search prompt, answer, @tag...",
-                FontSize = 11.5,
-            };
-            searchBox.TextChanged += (_, _) =>
+                e.Handled = true;
+                searchBox.Text = string.Empty;
+            }
+        };
+        Grid.SetRow(searchBox, 1);
+        tocPanel.Children.Add(searchBox);
+
+        (tocListBox, scrollTocToItem) = CreateCleanVirtualizedListBox(
+            $"quiz-organizer-toc:{deck.Id}",
+            visibleQuestions,
+            q =>
             {
-                studio.SetOrganizerSearchQueryQuiet(searchBox.Text ?? string.Empty);
-                var updated = studio.GetVisibleOrganizerQuestions();
-                visibleQuestions = updated;
-                tocHeaderText.Text = $"QUESTIONS ({updated.Count})";
-                cardListBox.ItemsSource = updated;
-                tocListBox?.ItemsSource = updated;
-                _cachedOrganizerSignature = ComputeOrganizerStructuralSignature(vm, studio);
-            };
-            searchBox.KeyDown += (_, e) =>
-            {
-                if (e.Key == Avalonia.Input.Key.Escape && !string.IsNullOrEmpty(searchBox.Text))
+                int deckIdx = deck.Questions.IndexOf(q);
+                bool isSelected = string.Equals(
+                    studio.SelectedOrganizerQuestionId,
+                    q.Id,
+                    StringComparison.OrdinalIgnoreCase
+                );
+
+                var tocRowBtn = new Button
                 {
-                    e.Handled = true;
-                    searchBox.Text = string.Empty;
-                }
-            };
-            Grid.SetRow(searchBox, 1);
-            tocPanel.Children.Add(searchBox);
-
-            (tocListBox, scrollTocToItem) = CreateCleanVirtualizedListBox(
-                $"quiz-organizer-toc:{deck.Id}",
-                visibleQuestions,
-                q =>
-                {
-                    int deckIdx = deck.Questions.IndexOf(q);
-                    bool isSelected = string.Equals(
-                        studio.SelectedOrganizerQuestionId,
-                        q.Id,
-                        StringComparison.OrdinalIgnoreCase
-                    );
-
-                    var tocRowBtn = new Button
+                    Tag = $"org-toc:{q.Id}",
+                    Background = isSelected
+                        ? ThemeService.Brush(ThemeService.BgElevated)
+                        : Brushes.Transparent,
+                    BorderBrush = isSelected
+                        ? ThemeService.Brush(ThemeService.BorderStrong)
+                        : Brushes.Transparent,
+                    BorderThickness = new Thickness(isSelected ? 1 : 0),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(7, 5),
+                    Margin = new Thickness(0, 1),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                    Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+                    Content = new Grid
                     {
-                        Tag = $"org-toc:{q.Id}",
-                        Background = isSelected
-                            ? ThemeService.Brush(ThemeService.AccentSoftBg)
-                            : Brushes.Transparent,
-                        BorderBrush = isSelected
-                            ? ThemeService.Brush(ThemeService.AccentPrimary)
-                            : Brushes.Transparent,
-                        BorderThickness = new Thickness(isSelected ? 1.5 : 1),
-                        CornerRadius = new CornerRadius(5),
-                        Padding = new Thickness(7, 5),
-                        Margin = new Thickness(0, 1),
-                        HorizontalAlignment = HorizontalAlignment.Stretch,
-                        HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                        Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
-                        Content = new Grid
+                        ColumnDefinitions = ColumnDefinitions.Parse("Auto,*"),
+                        ColumnSpacing = 6,
+                        Children =
                         {
-                            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*"),
-                            ColumnSpacing = 6,
-                            Children =
+                            UiBuilder.Pill(
+                                $"#{deckIdx + 1}",
+                                isSelected
+                                    ? ThemeService.Brush(ThemeService.TextPrimary)
+                                    : ThemeService.Brush(ThemeService.TextSecondary),
+                                ThemeService.Brush(ThemeService.BgElevated),
+                                fontSize: 10
+                            ),
+                            new StackPanel
                             {
-                                UiBuilder.Pill(
-                                    $"#{deckIdx + 1}",
-                                    isSelected
-                                        ? ThemeService.Brush(ThemeService.AccentPrimary)
-                                        : ThemeService.Brush(ThemeService.TextSecondary),
-                                    ThemeService.Brush(ThemeService.BgElevated),
-                                    fontSize: 10
-                                ),
-                                new StackPanel
+                                Spacing = 1,
+                                [Grid.ColumnProperty] = 1,
+                                Children =
                                 {
-                                    Spacing = 1,
-                                    [Grid.ColumnProperty] = 1,
-                                    Children =
+                                    new TextBlock
                                     {
-                                        new TextBlock
-                                        {
-                                            Text = q.Prompt,
-                                            FontSize = 11.5,
-                                            FontWeight = isSelected
-                                                ? FontWeight.SemiBold
-                                                : FontWeight.Normal,
-                                            Foreground = ThemeService.Brush(
-                                                ThemeService.TextPrimary
-                                            ),
-                                            TextTrimming = TextTrimming.CharacterEllipsis,
-                                            MaxLines = 1,
-                                        },
-                                        new TextBlock
-                                        {
-                                            Text = $"{q.Kind} · {q.EvidenceChipLabel}",
-                                            FontSize = 10,
-                                            Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                                        },
+                                        Text = q.Prompt,
+                                        FontSize = 11.5,
+                                        FontWeight = isSelected
+                                            ? FontWeight.SemiBold
+                                            : FontWeight.Normal,
+                                        Foreground = ThemeService.Brush(
+                                            ThemeService.TextPrimary
+                                        ),
+                                        TextTrimming = TextTrimming.CharacterEllipsis,
+                                        MaxLines = 1,
+                                    },
+                                    new TextBlock
+                                    {
+                                        Text = $"{q.Kind} · {q.EvidenceChipLabel}",
+                                        FontSize = 10,
+                                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
                                     },
                                 },
                             },
                         },
-                    };
-                    tocRowBtn.PointerEntered += (_, _) =>
-                    {
-                        if (
-                            !string.Equals(
-                                studio.SelectedOrganizerQuestionId,
-                                q.Id,
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        )
-                            tocRowBtn.Background = ThemeService.Brush(ThemeService.BgHover);
-                    };
-                    tocRowBtn.PointerExited += (_, _) =>
-                    {
-                        if (
-                            !string.Equals(
-                                studio.SelectedOrganizerQuestionId,
-                                q.Id,
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                        )
-                            tocRowBtn.Background = Brushes.Transparent;
-                    };
-                    tocRowBtn.Click += (_, _) =>
-                    {
-                        studio.SelectOrganizerQuestion(
+                    },
+                };
+                tocRowBtn.PointerEntered += (_, _) =>
+                {
+                    if (
+                        !string.Equals(
+                            studio.SelectedOrganizerQuestionId,
                             q.Id,
-                            notify: false,
-                            scrollCardIntoView: true,
-                            scrollTocIntoView: false
-                        );
-                    };
-                    return tocRowBtn;
-                }
-            );
-            Grid.SetRow(tocListBox, 2);
-            tocPanel.Children.Add(tocListBox);
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                        tocRowBtn.Background = ThemeService.Brush(ThemeService.BgHover);
+                };
+                tocRowBtn.PointerExited += (_, _) =>
+                {
+                    if (
+                        !string.Equals(
+                            studio.SelectedOrganizerQuestionId,
+                            q.Id,
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
+                        tocRowBtn.Background = Brushes.Transparent;
+                };
+                tocRowBtn.Click += (_, _) =>
+                {
+                    studio.SelectOrganizerQuestion(
+                        q.Id,
+                        notify: false,
+                        scrollCardIntoView: true,
+                        scrollTocIntoView: false
+                    );
+                };
+                return tocRowBtn;
+            }
+        );
+        Grid.SetRow(tocListBox, 2);
+        tocPanel.Children.Add(tocListBox);
 
-            tocCardContainer = UiBuilder.Card(tocPanel, padding: new Thickness(8, 8));
-            splitBody.Children.Add(tocCardContainer);
-            Grid.SetColumn(cardListBox, 2);
+        var tocCardContainer = UiBuilder.Card(tocPanel, padding: new Thickness(8, 8));
 
-            tocFloatingScrim = new Border
-            {
-                Background = new SolidColorBrush(Color.Parse("#66000000")),
-                IsVisible = false,
-                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
-            };
-            tocFloatingScrim.PointerPressed += (_, _) => studio.ToggleOrganizerToc();
-        }
+        // Docked animated TOC container (smooth 185ms width-shift when >= 900px)
+        var dockedTocSlot = new Border
+        {
+            ClipToBounds = true,
+            Padding = new Thickness(0, 0, 10, 0),
+            Width = studio.IsOrganizerTocOpen ? 245 : 0,
+            Opacity = studio.IsOrganizerTocOpen ? 1.0 : 0.0,
+            IsHitTestVisible = studio.IsOrganizerTocOpen,
+            Child = tocCardContainer,
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = Layoutable.WidthProperty,
+                    Duration = TimeSpan.FromMilliseconds(185),
+                    Easing = new CubicEaseOut(),
+                },
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(150),
+                    Easing = new CubicEaseOut(),
+                },
+            ],
+        };
+        splitBody.Children.Add(dockedTocSlot);
+        Grid.SetColumn(cardListBox, 1);
+
+        // Floating animated TOC drawer + scrim (smooth 190ms slide-in when < 900px)
+        var tocFloatingScrim = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#66000000")),
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                    Easing = new CubicEaseOut(),
+                },
+            ],
+        };
+        tocFloatingScrim.PointerPressed += (_, _) => setTocOpenAction?.Invoke(false);
+
+        var tocDrawerTransform = new TranslateTransform(-268, 0)
+        {
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = TranslateTransform.XProperty,
+                    Duration = TimeSpan.FromMilliseconds(190),
+                    Easing = new CubicEaseOut(),
+                },
+            ],
+        };
+        var tocFloatingDrawer = new Border
+        {
+            Width = 256,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            BoxShadow = BoxShadows.Parse("8 0 28 0 #70000000"),
+            RenderTransform = tocDrawerTransform,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(160),
+                    Easing = new CubicEaseOut(),
+                },
+            ],
+        };
 
         // Hook lightweight in-place selection sync between TOC, Question Cards, and Keyboard Nav (zero rebuilds)
         if (_selectionHookStudio is not null && _selectionHookHandler is not null)
@@ -1110,6 +1412,15 @@ public static partial class QuizStudioViewBuilder
             Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
             Content = UiBuilder.Icon(MaterialIconKind.Plus, 22, Brushes.White),
             Flyout = fabMenu,
+            Transitions =
+            [
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(120),
+                    Easing = new CubicEaseOut(),
+                },
+            ],
         };
         fabBtn.PointerEntered += (_, _) => fabBtn.Opacity = 0.88;
         fabBtn.PointerExited += (_, _) => fabBtn.Opacity = 1.0;
@@ -1135,11 +1446,67 @@ public static partial class QuizStudioViewBuilder
         Grid.SetRow(fabHost, 1);
         rootGrid.Children.Add(fabHost);
 
-        if (tocFloatingScrim is not null && tocCardContainer is not null)
+        Grid.SetRow(tocFloatingScrim, 1);
+        rootGrid.Children.Insert(rootGrid.Children.IndexOf(fabHost), tocFloatingScrim);
+        Grid.SetRow(tocFloatingDrawer, 1);
+        rootGrid.Children.Insert(rootGrid.Children.IndexOf(fabHost), tocFloatingDrawer);
+
+        void ApplyTocState(double containerWidth)
         {
-            Grid.SetRow(tocFloatingScrim, 1);
-            rootGrid.Children.Insert(rootGrid.Children.IndexOf(fabHost), tocFloatingScrim);
+            bool isNarrow = containerWidth > 0 && containerWidth < 900;
+            bool isOpen = studio.IsOrganizerTocOpen;
+
+            tocToggleBtn.Background = isOpen
+                ? ThemeService.Brush(ThemeService.BgElevated)
+                : Brushes.Transparent;
+            tocToggleBtn.BorderBrush = isOpen
+                ? ThemeService.Brush(ThemeService.BorderStrong)
+                : Brushes.Transparent;
+            tocToggleBtn.BorderThickness = new Thickness(isOpen ? 1 : 0);
+
+            if (isNarrow)
+            {
+                dockedTocSlot.Width = 0;
+                dockedTocSlot.Opacity = 0;
+                dockedTocSlot.IsHitTestVisible = false;
+
+                if (tocCardContainer.Parent == dockedTocSlot)
+                {
+                    dockedTocSlot.Child = null;
+                    tocFloatingDrawer.Child = tocCardContainer;
+                }
+
+                tocFloatingScrim.Opacity = isOpen ? 1.0 : 0.0;
+                tocFloatingScrim.IsHitTestVisible = isOpen;
+                tocDrawerTransform.X = isOpen ? 0 : -268;
+                tocFloatingDrawer.Opacity = isOpen ? 1.0 : 0.0;
+                tocFloatingDrawer.IsHitTestVisible = isOpen;
+            }
+            else
+            {
+                tocFloatingScrim.Opacity = 0;
+                tocFloatingScrim.IsHitTestVisible = false;
+                tocDrawerTransform.X = -268;
+                tocFloatingDrawer.Opacity = 0;
+                tocFloatingDrawer.IsHitTestVisible = false;
+
+                if (tocCardContainer.Parent == tocFloatingDrawer)
+                {
+                    tocFloatingDrawer.Child = null;
+                    dockedTocSlot.Child = tocCardContainer;
+                }
+
+                dockedTocSlot.Width = isOpen ? 245 : 0;
+                dockedTocSlot.Opacity = isOpen ? 1.0 : 0.0;
+                dockedTocSlot.IsHitTestVisible = isOpen;
+            }
         }
+
+        setTocOpenAction = open =>
+        {
+            studio.SetOrganizerTocOpenQuiet(open);
+            ApplyTocState(rootGrid.Bounds.Width);
+        };
 
         rootGrid.SizeChanged += (_, e) =>
         {
@@ -1147,42 +1514,7 @@ public static partial class QuizStudioViewBuilder
                 return;
 
             ApplyOrgHeaderLayout(e.NewSize.Width < 960);
-
-            if (tocCardContainer is not null && tocFloatingScrim is not null)
-            {
-                bool floatToc = e.NewSize.Width < 900;
-                tocFloatingScrim.IsVisible = floatToc;
-                if (floatToc)
-                {
-                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse("0,0,*");
-                    Grid.SetColumn(cardListBox, 2);
-                    if (tocCardContainer.Parent == splitBody)
-                    {
-                        splitBody.Children.Remove(tocCardContainer);
-                        tocCardContainer.Width = 250;
-                        tocCardContainer.HorizontalAlignment = HorizontalAlignment.Left;
-                        tocCardContainer.BoxShadow = BoxShadows.Parse("8 0 28 0 #70000000");
-                        Grid.SetRow(tocCardContainer, 1);
-                        Grid.SetColumn(tocCardContainer, 0);
-                        rootGrid.Children.Insert(rootGrid.Children.IndexOf(fabHost), tocCardContainer);
-                    }
-                }
-                else
-                {
-                    if (tocCardContainer.Parent == rootGrid)
-                    {
-                        rootGrid.Children.Remove(tocCardContainer);
-                        tocCardContainer.Width = double.NaN;
-                        tocCardContainer.HorizontalAlignment = HorizontalAlignment.Stretch;
-                        tocCardContainer.BoxShadow = default;
-                        Grid.SetRow(tocCardContainer, 0);
-                        Grid.SetColumn(tocCardContainer, 0);
-                        splitBody.Children.Insert(0, tocCardContainer);
-                    }
-                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse("235,10,*");
-                    Grid.SetColumn(cardListBox, 2);
-                }
-            }
+            ApplyTocState(e.NewSize.Width);
         };
 
         return rootGrid;
