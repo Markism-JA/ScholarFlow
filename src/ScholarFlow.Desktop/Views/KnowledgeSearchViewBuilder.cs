@@ -159,7 +159,7 @@ public static class KnowledgeSearchViewBuilder
         var icon = UiBuilder.Icon(
             MaterialIconKind.TextBoxSearchOutline,
             18,
-            ThemeService.Brush(ThemeService.AccentPrimary)
+            ThemeService.Brush(ThemeService.TextSecondary)
         );
         icon.Margin = new Thickness(4, 0, 8, 0);
         searchHeader.Children.Add(icon);
@@ -357,10 +357,10 @@ public static class KnowledgeSearchViewBuilder
     private static void ApplyCardSelectionVisual(Border card, bool isSelected, bool isWeakSpot)
     {
         card.Background = isSelected
-            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+            ? ThemeService.Brush(ThemeService.BgElevated)
             : Brushes.Transparent;
         card.BorderBrush =
-            isSelected ? ThemeService.Brush(ThemeService.AccentPrimary)
+            isSelected ? ThemeService.Brush(ThemeService.TextSecondary)
             : isWeakSpot ? ThemeService.Brush(ThemeService.PriorityP2Fg)
             : Brushes.Transparent;
         card.BorderThickness = new Thickness(isSelected || isWeakSpot ? 2.5 : 0, 0, 0, 0);
@@ -389,7 +389,7 @@ public static class KnowledgeSearchViewBuilder
                 UiBuilder.Icon(
                     MaterialIconKind.TextBoxSearchOutline,
                     20,
-                    ThemeService.Brush(ThemeService.AccentPrimary)
+                    ThemeService.Brush(ThemeService.TextSecondary)
                 ),
                 new TextBlock
                 {
@@ -466,8 +466,8 @@ public static class KnowledgeSearchViewBuilder
             row.Children.Add(
                 UiBuilder.Pill(
                     countLabel,
-                    ThemeService.Brush(ThemeService.AccentPrimary),
-                    ThemeService.Brush(ThemeService.AccentSoftBg),
+                    ThemeService.Brush(ThemeService.TextPrimary),
+                    ThemeService.Brush(ThemeService.BgElevated),
                     MaterialIconKind.FlashOutline,
                     fontSize: 10.5
                 )
@@ -574,7 +574,7 @@ public static class KnowledgeSearchViewBuilder
             UiBuilder.Icon(
                 MaterialIconKind.Magnify,
                 18,
-                ThemeService.Brush(ThemeService.AccentPrimary)
+                ThemeService.Brush(ThemeService.TextSecondary)
             )
         );
 
@@ -917,9 +917,9 @@ public static class KnowledgeSearchViewBuilder
                 {
                     Text = $"›  {item.SectionTitle}",
                     FontSize = 12.5,
-                    FontWeight = FontWeight.SemiBold,
+                    FontWeight = FontWeight.Medium,
                     FontFamily = item.SourceKind == "code" ? MonoFont : FontFamily.Default,
-                    Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                     VerticalAlignment = VerticalAlignment.Center,
                 }
             );
@@ -939,8 +939,8 @@ public static class KnowledgeSearchViewBuilder
             AddMetaControl(
                 UiBuilder.Pill(
                     $"#{item.CourseAlias}",
-                    ThemeService.Brush(ThemeService.AccentPrimary),
-                    ThemeService.Brush(ThemeService.AccentSoftBg),
+                    ThemeService.Brush(ThemeService.TextSecondary),
+                    ThemeService.Brush(ThemeService.BgElevated),
                     fontSize: 10
                 )
             );
@@ -1010,11 +1010,11 @@ public static class KnowledgeSearchViewBuilder
         outerGrid.Children.Add(actionsCol);
 
         var normalBg = isSelected
-            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+            ? ThemeService.Brush(ThemeService.BgElevated)
             : Brushes.Transparent;
         var hoverBg = ThemeService.Brush(ThemeService.BgHover);
         var normalBorder =
-            isSelected ? ThemeService.Brush(ThemeService.AccentPrimary)
+            isSelected ? ThemeService.Brush(ThemeService.TextSecondary)
             : item.IsWeakSpot ? ThemeService.Brush(ThemeService.PriorityP2Fg)
             : Brushes.Transparent;
 
@@ -1038,7 +1038,7 @@ public static class KnowledgeSearchViewBuilder
         card.PointerExited += (_, _) =>
             card.Background =
                 index == ks.SelectedResultIndex
-                    ? ThemeService.Brush(ThemeService.AccentSoftBg)
+                    ? ThemeService.Brush(ThemeService.BgElevated)
                     : Brushes.Transparent;
         card.PointerPressed += (_, e) =>
         {
@@ -1091,8 +1091,8 @@ public static class KnowledgeSearchViewBuilder
             return;
 
         var normalFg = ThemeService.Brush(ThemeService.TextSecondary);
-        var highlightFg = ThemeService.Brush(ThemeService.AccentPrimary);
-        var highlightBg = ThemeService.Brush(ThemeService.AccentSoftBg);
+        var highlightFg = ThemeService.Brush(ThemeService.PriorityP2Fg);
+        var highlightBg = ThemeService.Brush(ThemeService.PriorityP2Bg);
 
         int pos = 0;
         while (pos < snippet.Length)
@@ -1137,50 +1137,22 @@ public static class KnowledgeSearchViewBuilder
         string sourceKind
     )
     {
+        var calmFg = ThemeService.Brush(ThemeService.TextSecondary);
+        var calmBg = ThemeService.Brush(ThemeService.BgElevated);
         return sourceKind.ToLowerInvariant() switch
         {
-            "pdf" => (
-                MaterialIconKind.FilePdfBox,
-                "PDF",
-                ThemeService.Brush(ThemeService.PriorityP1Fg),
-                ThemeService.Brush(ThemeService.PriorityP1Bg)
-            ),
-            "code" => (
-                MaterialIconKind.CodeBraces,
-                "CODE",
-                ThemeService.Brush(ThemeService.AccentPrimary),
-                ThemeService.Brush(ThemeService.AccentSoftBg)
-            ),
-            "md" => (
-                MaterialIconKind.LanguageMarkdownOutline,
-                "MD",
-                ThemeService.Brush(ThemeService.PriorityP3Fg),
-                ThemeService.Brush(ThemeService.PriorityP3Bg)
-            ),
-            "text" => (
-                MaterialIconKind.FileDocumentOutline,
-                "TEXT",
-                ThemeService.Brush(ThemeService.TextSecondary),
-                ThemeService.Brush(ThemeService.BgElevated)
-            ),
-            "image" => (
-                MaterialIconKind.FileImageOutline,
-                "IMAGE",
-                ThemeService.Brush(ThemeService.PriorityP2Fg),
-                ThemeService.Brush(ThemeService.PriorityP2Bg)
-            ),
+            "pdf" => (MaterialIconKind.FilePdfBox, "PDF", calmFg, calmBg),
+            "code" => (MaterialIconKind.CodeBraces, "CODE", calmFg, calmBg),
+            "md" => (MaterialIconKind.LanguageMarkdownOutline, "MD", calmFg, calmBg),
+            "text" => (MaterialIconKind.FileDocumentOutline, "TEXT", calmFg, calmBg),
+            "image" => (MaterialIconKind.FileImageOutline, "IMAGE", calmFg, calmBg),
             "quiz" => (
                 MaterialIconKind.HeadLightbulbOutline,
                 "QUIZ",
                 ThemeService.Brush(ThemeService.SuccessFg),
                 ThemeService.Brush(ThemeService.SuccessBg)
             ),
-            _ => (
-                MaterialIconKind.FileOutline,
-                sourceKind.ToUpperInvariant(),
-                ThemeService.Brush(ThemeService.TextSecondary),
-                ThemeService.Brush(ThemeService.BgElevated)
-            ),
+            _ => (MaterialIconKind.FileOutline, sourceKind.ToUpperInvariant(), calmFg, calmBg),
         };
     }
 
@@ -1247,12 +1219,12 @@ public static class KnowledgeSearchViewBuilder
                 Width = 44,
                 Height = 44,
                 CornerRadius = new CornerRadius(22),
-                Background = ThemeService.Brush(ThemeService.AccentSoftBg),
+                Background = ThemeService.Brush(ThemeService.BgElevated),
                 HorizontalAlignment = HorizontalAlignment.Center,
                 Child = UiBuilder.Icon(
                     MaterialIconKind.TextBoxSearchOutline,
                     22,
-                    ThemeService.Brush(ThemeService.AccentPrimary)
+                    ThemeService.Brush(ThemeService.TextSecondary)
                 ),
             }
         );
