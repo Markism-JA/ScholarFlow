@@ -993,7 +993,7 @@ public static partial class QuizStudioViewBuilder
         splitGrid.Children.Add(UiBuilder.PersistentScrollViewer("quiz-builder-left", leftStack));
 
         // RIGHT COLUMN: LIVE VISUAL PDF SCOPE PREVIEWER / FILE SOURCES PREVIEWER
-        var previewPane =
+        Control previewPane =
             studio.IsMixedSourceMode ? BuildMixedPreviewPane(vm, studio)
             : studio.IsFileSourceMode ? BuildFileSourcesPreviewPane(vm, studio)
             : BuildLivePdfPreviewPane(vm, studio);
