@@ -209,6 +209,15 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
+    public void SetBuilderCompactPreviewOpen(bool open)
+    {
+        if (IsBuilderCompactPreviewOpen == open)
+            return;
+
+        IsBuilderCompactPreviewOpen = open;
+        _mainVm.RequestUiRefresh();
+    }
+
     public (int StartPage, int EndPage, int TotalBatches) GetPageGridBatchRange()
     {
         if (PdfTotalPages <= 0)

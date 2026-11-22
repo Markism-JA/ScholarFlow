@@ -89,10 +89,11 @@ public static partial class QuizStudioViewBuilder
         var colsGrid = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("*,8,*"),
-            RowDefinitions = RowDefinitions.Parse("Auto,Auto"),
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,Auto,Auto"),
             RowSpacing = 6,
         };
 
+        var cogCells = new List<Border>(4);
         var levels = new[]
         {
             (CognitiveLevel.Recall, "Recall"),
@@ -211,8 +212,24 @@ public static partial class QuizStudioViewBuilder
             };
             Grid.SetRow(cellBorder, i / 2);
             Grid.SetColumn(cellBorder, i % 2 * 2);
+            cogCells.Add(cellBorder);
             colsGrid.Children.Add(cellBorder);
         }
+
+        colsGrid.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width <= 0)
+                return;
+            bool singleCol = e.NewSize.Width < 430;
+            colsGrid.ColumnDefinitions = singleCol
+                ? ColumnDefinitions.Parse("*,0,0")
+                : ColumnDefinitions.Parse("*,8,*");
+            for (int idx = 0; idx < cogCells.Count; idx++)
+            {
+                Grid.SetRow(cogCells[idx], singleCol ? idx : idx / 2);
+                Grid.SetColumn(cogCells[idx], singleCol ? 0 : (idx % 2) * 2);
+            }
+        };
 
         stack.Children.Add(colsGrid);
         return stack;
@@ -484,23 +501,31 @@ public static partial class QuizStudioViewBuilder
         // 2. Question Archetypes + Active Recall Toggles in one unified row
         var stylesWrap = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (
-            var (arch, label, icon) in new[]
+            var (arch, label, icon, tip) in new[]
             {
-                (QuestionArchetype.FarTransfer, "Far-Transfer Scenarios", MaterialIconKind.Earth),
+                (
+                    QuestionArchetype.FarTransfer,
+                    "Far-Transfer Scenarios",
+                    MaterialIconKind.Earth,
+                    "Apply principles to novel real-world scenarios outside the textbook examples"
+                ),
                 (
                     QuestionArchetype.DiscriminativeContrast,
                     "Contrast X vs Y",
-                    MaterialIconKind.CompareHorizontal
+                    MaterialIconKind.CompareHorizontal,
+                    "Compare closely related concepts, theorems, or algorithms to prevent confusion"
                 ),
                 (
                     QuestionArchetype.CausalPerturbation,
                     "What-If / Causal",
-                    MaterialIconKind.SourceBranch
+                    MaterialIconKind.SourceBranch,
+                    "Predict what breaks or changes when a constraint, parameter, or step is altered"
                 ),
                 (
                     QuestionArchetype.SpotTheFlaw,
                     "Spot-the-Flaw / Debug",
-                    MaterialIconKind.BugOutline
+                    MaterialIconKind.BugOutline,
+                    "Identify subtle bugs, invalid proof steps, or flawed reasoning"
                 ),
             }
         )
@@ -513,6 +538,7 @@ public static partial class QuizStudioViewBuilder
                 () => studio.ToggleArchetype(capturedArch),
                 isActive: active
             );
+            ToolTip.SetTip(btn, tip);
             btn.Margin = new Thickness(0, 0, 5, 4);
             stylesWrap.Children.Add(btn);
         }
@@ -524,6 +550,7 @@ public static partial class QuizStudioViewBuilder
                 MaterialIconKind.Refresh,
                 studio.ClearArchetypes
             );
+            ToolTip.SetTip(resetArchBtn, "Clear style filters to allow all question archetypes");
             resetArchBtn.Margin = new Thickness(0, 0, 6, 4);
             stylesWrap.Children.Add(resetArchBtn);
         }
@@ -541,6 +568,10 @@ public static partial class QuizStudioViewBuilder
             studio.ToggleFocusWeakSpots,
             isActive: studio.FocusWeakSpots
         );
+        ToolTip.SetTip(
+            weakBtn,
+            "Bias generated questions toward topics you previously answered incorrectly"
+        );
         weakBtn.Margin = new Thickness(0, 0, 5, 4);
         recallWrap.Children.Add(weakBtn);
 
@@ -552,6 +583,10 @@ public static partial class QuizStudioViewBuilder
             studio.ToggleContrastiveExplanations,
             isActive: studio.EnableContrastiveExplanations
         );
+        ToolTip.SetTip(
+            contrastiveBtn,
+            "Explain both why the correct answer holds AND why each distractor fails"
+        );
         contrastiveBtn.Margin = new Thickness(0, 0, 5, 4);
         recallWrap.Children.Add(contrastiveBtn);
 
@@ -562,6 +597,10 @@ public static partial class QuizStudioViewBuilder
                 : MaterialIconKind.CheckboxBlankOutline,
             studio.ToggleProgressiveHints,
             isActive: studio.IncludeProgressiveHints
+        );
+        ToolTip.SetTip(
+            hintsBtn,
+            "Include closed-book guiding hints that nudge reasoning without giving away the answer"
         );
         hintsBtn.Margin = new Thickness(0, 0, 5, 4);
         recallWrap.Children.Add(hintsBtn);

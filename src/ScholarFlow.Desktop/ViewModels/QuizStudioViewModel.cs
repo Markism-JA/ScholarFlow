@@ -174,6 +174,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public bool IsBuilderPageTocOpen { get; private set; }
     public bool IsStudioPageTocOpen { get; private set; } = true;
     public bool IsStudioCompactInspectorOpen { get; private set; }
+    public bool IsBuilderCompactPreviewOpen { get; private set; }
     public PageTocFilterMode PageTocFilter { get; private set; } = PageTocFilterMode.All;
     public int PageTocWindowIndex { get; private set; }
     public const int PageTocWindowSize = 80;

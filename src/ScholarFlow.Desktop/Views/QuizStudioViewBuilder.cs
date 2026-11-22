@@ -60,30 +60,32 @@ public static partial class QuizStudioViewBuilder
         // Top Fixed Header & Subject / Sub-Tab Strip (fully responsive, wraps cleanly on narrow windows)
         var topStack = new StackPanel { Spacing = 8, Margin = new Thickness(0, 0, 0, 10) };
 
-        var titleLeft = new StackPanel { Spacing = 3 };
+        var titleLeft = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         var titleLine = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        titleLine.Children.Add(
-            new TextBlock
-            {
-                Text = "Test & Active Recall",
-                FontSize = 19,
-                FontWeight = FontWeight.Bold,
-                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(0, 0, 8, 2),
-            }
-        );
+        var titleHeading = new TextBlock
+        {
+            Text = "Test & Active Recall",
+            FontSize = 18.5,
+            FontWeight = FontWeight.Bold,
+            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 8, 2),
+        };
+        titleLine.Children.Add(titleHeading);
+
+        Border? coursePill = null;
         if (studio.SelectedCourse is not null)
         {
-            var coursePill = UiBuilder.Pill(
+            coursePill = UiBuilder.Pill(
                 $"#{studio.SelectedCourse.EffectiveAlias} · {studio.SelectedCourse.DisplayTitle}",
                 ThemeService.Brush(ThemeService.AccentPrimary),
                 ThemeService.Brush(ThemeService.AccentSoftBg)
             );
+            coursePill.MaxWidth = 280;
             coursePill.Margin = new Thickness(0, 0, 6, 2);
             titleLine.Children.Add(coursePill);
         }
@@ -108,18 +110,17 @@ public static partial class QuizStudioViewBuilder
                 ? $"Sources: {studio.SelectedFileSourcePaths.Count} study file(s) selected"
             : $"Source: {pdfFileName} ({studio.ScopePreviewPageCount}/{studio.PdfTotalPages} page(s) in scope)";
 
-        titleLeft.Children.Add(
-            new TextBlock
-            {
-                Text =
-                    studio.ActiveSubTab == QuizStudioSubTab.Builder
-                        ? builderScopeSubtitle
-                        : $"{courseQuizCount} saved quiz(zes) in subject  ·  {studio.AllDueReviewQuestions.Count} due card(s) across basin",
-                FontSize = 11.5,
-                Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            }
-        );
+        var subtitleBlock = new TextBlock
+        {
+            Text =
+                studio.ActiveSubTab == QuizStudioSubTab.Builder
+                    ? builderScopeSubtitle
+                    : $"{courseQuizCount} saved quiz(zes) in subject  ·  {studio.AllDueReviewQuestions.Count} due card(s) across basin",
+            FontSize = 11.5,
+            Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+        };
+        titleLeft.Children.Add(subtitleBlock);
 
         var utilityWrap = new WrapPanel
         {
@@ -134,6 +135,10 @@ public static partial class QuizStudioViewBuilder
             () => studio.StartDueSpacedRepetitionDeck(studio.SelectedCourse?.FolderName),
             isActive: dueCount > 0
         );
+        ToolTip.SetTip(
+            dueBtn,
+            "Start a spaced-repetition review session for due or previously missed cards"
+        );
         dueBtn.Margin = new Thickness(0, 0, 6, 4);
         utilityWrap.Children.Add(dueBtn);
 
@@ -143,10 +148,19 @@ public static partial class QuizStudioViewBuilder
             studio.ToggleAiSettings,
             isActive: studio.IsAiSettingsOpen
         );
+        ToolTip.SetTip(
+            aiEngineBtn,
+            "Configure AI provider endpoint, model, API key, or saved profiles"
+        );
         aiEngineBtn.Margin = new Thickness(0, 0, 0, 4);
         utilityWrap.Children.Add(aiEngineBtn);
 
-        var subjectWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+        var subjectStrip = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         foreach (var c in vm.Courses.Where(x => !x.IsArchived))
         {
             var captured = c;
@@ -157,9 +171,15 @@ public static partial class QuizStudioViewBuilder
                 () => studio.SelectCourseScope(captured),
                 isActive: isSelected
             );
-            btn.Margin = new Thickness(0, 0, 5, 4);
-            subjectWrap.Children.Add(btn);
+            ToolTip.SetTip(btn, c.DisplayTitle);
+            subjectStrip.Children.Add(btn);
         }
+        var subjectScroller = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+            Content = subjectStrip,
+        };
 
         var subTabWrap = new WrapPanel
         {
@@ -172,6 +192,7 @@ public static partial class QuizStudioViewBuilder
             () => studio.SetSubTab(QuizStudioSubTab.Builder),
             isActive: studio.ActiveSubTab == QuizStudioSubTab.Builder
         );
+        ToolTip.SetTip(buildTabBtn, "Scope study sources and generate new evidence-grounded quizzes");
         buildTabBtn.Margin = new Thickness(0, 0, 5, 4);
         subTabWrap.Children.Add(buildTabBtn);
 
@@ -180,6 +201,10 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.LibraryShelves,
             () => studio.SetSubTab(QuizStudioSubTab.Catalog),
             isActive: studio.ActiveSubTab == QuizStudioSubTab.Catalog
+        );
+        ToolTip.SetTip(
+            catalogTabBtn,
+            "Browse saved quizzes, launch practice runs, merge decks, or export printable exam PDFs"
         );
         catalogTabBtn.Margin = new Thickness(0, 0, 5, 4);
         subTabWrap.Children.Add(catalogTabBtn);
@@ -229,10 +254,14 @@ public static partial class QuizStudioViewBuilder
             },
             isActive: studio.ActiveSubTab == QuizStudioSubTab.Organizer
         );
+        ToolTip.SetTip(
+            organizerTabBtn,
+            "Edit questions, audit quality issues, crop PDF figures, and pin highlight evidence"
+        );
         organizerTabBtn.Margin = new Thickness(0, 0, 0, 4);
         subTabWrap.Children.Add(organizerTabBtn);
 
-        // Responsive header host: switches cleanly between 2-column (>= 820px) and stacked (< 820px)
+        // Responsive header host: switches cleanly between wide (>= 960px) and compact (< 960px)
         var responsiveHeaderHost = new Border();
         bool? lastCompactHeader = null;
 
@@ -252,17 +281,34 @@ public static partial class QuizStudioViewBuilder
 
             Detach(titleLeft);
             Detach(utilityWrap);
-            Detach(subjectWrap);
+            Detach(subjectScroller);
             Detach(subTabWrap);
 
-            var hdrStack = new StackPanel { Spacing = 8 };
+            titleHeading.FontSize = compact ? 16.5 : 18.5;
+            subtitleBlock.IsVisible = !compact;
+            if (coursePill is not null)
+                coursePill.IsVisible = !compact;
+
+            var hdrStack = new StackPanel { Spacing = compact ? 6 : 8 };
             if (compact)
             {
-                hdrStack.Children.Add(titleLeft);
-                hdrStack.Children.Add(utilityWrap);
+                // Compact Row 1: Title + Utility buttons side-by-side (never 4 bloated stacked rows)
+                var compactTop = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+                    ColumnSpacing = 8,
+                };
+                compactTop.Children.Add(titleLeft);
+                Grid.SetColumn(utilityWrap, 1);
+                compactTop.Children.Add(utilityWrap);
+                hdrStack.Children.Add(compactTop);
+
+                // Compact Row 2: Sub-tabs (Build / Catalog / Organizer)
                 hdrStack.Children.Add(subTabWrap);
-                if (subjectWrap.Children.Count > 0)
-                    hdrStack.Children.Add(subjectWrap);
+
+                // Compact Row 3: Single-line horizontally scrollable course chips (if >1 course)
+                if (subjectStrip.Children.Count > 1)
+                    hdrStack.Children.Add(subjectScroller);
             }
             else
             {
@@ -281,7 +327,7 @@ public static partial class QuizStudioViewBuilder
                     ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
                     ColumnSpacing = 12,
                 };
-                row2.Children.Add(subjectWrap);
+                row2.Children.Add(subjectScroller);
                 Grid.SetColumn(subTabWrap, 1);
                 row2.Children.Add(subTabWrap);
                 hdrStack.Children.Add(row2);
@@ -294,7 +340,7 @@ public static partial class QuizStudioViewBuilder
         root.SizeChanged += (_, e) =>
         {
             if (e.NewSize.Width > 0)
-                ApplyHeaderLayout(e.NewSize.Width < 820);
+                ApplyHeaderLayout(e.NewSize.Width < 960);
         };
 
         topStack.Children.Add(responsiveHeaderHost);

@@ -68,6 +68,7 @@ public static partial class QuizStudioViewBuilder
                 () => studio.SetPreviewBrowseMode(false),
                 isActive: !studio.IsPageGridOpen && !studio.PreviewBrowseAllPages
             );
+            ToolTip.SetTip(scopeModeBtn, "Step only through pages currently included in scope");
             scopeModeBtn.Margin = new Thickness(0, 0, 4, 2);
             headerActions.Children.Add(scopeModeBtn);
 
@@ -77,6 +78,7 @@ public static partial class QuizStudioViewBuilder
                 () => studio.SetPreviewBrowseMode(true),
                 isActive: !studio.IsPageGridOpen && studio.PreviewBrowseAllPages
             );
+            ToolTip.SetTip(allModeBtn, "Browse every page of the PDF without changing your selected scope");
             allModeBtn.Margin = new Thickness(0, 0, 4, 2);
             headerActions.Children.Add(allModeBtn);
 
@@ -210,6 +212,7 @@ public static partial class QuizStudioViewBuilder
                 MaterialIconKind.PageFirst,
                 studio.MarkCurrentPreviewPageAsStart
             );
+            ToolTip.SetTip(setStartBtn, $"Start the selected page range at page {studio.CurrentPreviewPdfPage}");
             setStartBtn.Margin = new Thickness(0, 0, 5, 2);
             manipWrap.Children.Add(setStartBtn);
 
@@ -218,6 +221,7 @@ public static partial class QuizStudioViewBuilder
                 MaterialIconKind.PageLast,
                 studio.MarkCurrentPreviewPageAsEnd
             );
+            ToolTip.SetTip(setEndBtn, $"End the selected page range at page {studio.CurrentPreviewPdfPage}");
             setEndBtn.Margin = new Thickness(0, 0, 5, 2);
             manipWrap.Children.Add(setEndBtn);
 
@@ -229,6 +233,12 @@ public static partial class QuizStudioViewBuilder
                 inScope ? MaterialIconKind.MinusCircleOutline : MaterialIconKind.PlusCircleOutline,
                 studio.ToggleCurrentPreviewPageInScope,
                 isActive: !inScope
+            );
+            ToolTip.SetTip(
+                togglePageBtn,
+                inScope
+                    ? $"Remove page {studio.CurrentPreviewPdfPage} from the quiz scope"
+                    : $"Add page {studio.CurrentPreviewPdfPage} back into the quiz scope"
             );
             togglePageBtn.Margin = new Thickness(0, 0, 0, 2);
             manipWrap.Children.Add(togglePageBtn);

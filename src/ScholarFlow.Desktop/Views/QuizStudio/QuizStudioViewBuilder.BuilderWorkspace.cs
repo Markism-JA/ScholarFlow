@@ -13,11 +13,12 @@ namespace ScholarFlow.Desktop.Views;
 
 public static partial class QuizStudioViewBuilder
 {
-    private static Grid BuildSplitBuilderAndPreviewView(
+    private static Control BuildSplitBuilderAndPreviewView(
         MainWindowViewModel vm,
         QuizStudioViewModel studio
     )
     {
+        var outerHost = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*"), RowSpacing = 8 };
         var splitGrid = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("1.1*,14,0.9*") };
 
         // LEFT COLUMN: Scope, Outline Tree Picker, Mode & Question Count
@@ -25,25 +26,22 @@ public static partial class QuizStudioViewBuilder
 
         // 1. Unified Study Sources & Scope (PDFs + Course Files + Page/Section Scope Picker)
         var sourceAndScopeCard = new StackPanel { Spacing = 9 };
-        var sourceHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        var sourceHeader = new WrapPanel { Orientation = Orientation.Horizontal };
         var scopeBadgeText =
             studio.IsMixedSourceMode
                 ? $"{studio.ScopePreviewPageCount} PDF pages + {studio.SelectedFileSourcePaths.Count} file(s)"
             : studio.IsFileSourceMode ? $"{studio.SelectedFileSourcePaths.Count} file(s) selected"
             : $"{studio.ScopePreviewPageCount} pages in scope";
 
-        sourceHeader.Children.Add(
-            UiBuilder.SectionHeader($"1. Study Sources & Scope ({scopeBadgeText})")
-        );
+        var sourceTitle = UiBuilder.SectionHeader($"Study Sources & Scope ({scopeBadgeText})");
+        sourceTitle.Margin = new Thickness(0, 0, 10, 4);
+        sourceTitle.VerticalAlignment = VerticalAlignment.Center;
+        sourceHeader.Children.Add(sourceTitle);
 
         var masterPdfs = studio.AvailablePdfs.Where(p => p.IsMaster).ToList();
         var handoutPdfs = studio.AvailablePdfs.Where(p => !p.IsMaster).ToList();
 
-        var sourceRightActions = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 5,
-        };
+        var sourceRightActions = new WrapPanel { Orientation = Orientation.Horizontal };
         if (
             studio.StartPage.HasValue
             || studio.EndPage.HasValue
@@ -52,13 +50,14 @@ public static partial class QuizStudioViewBuilder
             || !string.IsNullOrEmpty(studio.SelectedTerm)
         )
         {
-            sourceRightActions.Children.Add(
-                UiBuilder.GhostButton(
-                    "Reset Scope",
-                    MaterialIconKind.Refresh,
-                    studio.ClearScopeFilters
-                )
+            var resetBtn = UiBuilder.GhostButton(
+                "Reset Scope",
+                MaterialIconKind.Refresh,
+                studio.ClearScopeFilters
             );
+            ToolTip.SetTip(resetBtn, "Clear all term, section, and page range filters");
+            resetBtn.Margin = new Thickness(0, 0, 5, 4);
+            sourceRightActions.Children.Add(resetBtn);
         }
         bool canTogglePdfList =
             (masterPdfs.Count > 0 && handoutPdfs.Count > 0)
@@ -84,9 +83,9 @@ public static partial class QuizStudioViewBuilder
                 pdfToggleBtn,
                 "Show or hide individual PDF files (textbooks, lectures, handouts) in this course"
             );
+            pdfToggleBtn.Margin = new Thickness(0, 0, 0, 4);
             sourceRightActions.Children.Add(pdfToggleBtn);
         }
-        Grid.SetColumn(sourceRightActions, 1);
         sourceHeader.Children.Add(sourceRightActions);
         sourceAndScopeCard.Children.Add(sourceHeader);
 
@@ -557,9 +556,9 @@ public static partial class QuizStudioViewBuilder
         }
         leftStack.Children.Add(UiBuilder.Card(sourceAndScopeCard, padding: new Thickness(12, 10)));
 
-        // 2. Unified Assessment Blueprint & Generator Engine
+        // Unified Assessment Blueprint & Generator Engine
         var configCard = new StackPanel { Spacing = 10 };
-        configCard.Children.Add(UiBuilder.SectionHeader("2. Assessment Blueprint & Generator"));
+        configCard.Children.Add(UiBuilder.SectionHeader("Assessment Blueprint & Generator"));
 
         if (!string.IsNullOrWhiteSpace(studio.AppendTargetQuizId))
         {
@@ -603,18 +602,44 @@ public static partial class QuizStudioViewBuilder
         // Unified Preset Templates Row (configures Question Types, Cognitive Depth & Focus together)
         var modeWrap = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (
-            var (preset, label, icon) in new[]
+            var (preset, label, icon, tip) in new[]
             {
                 (
                     QuizPresetMode.ExamSimulator,
                     "Exam Simulator",
-                    MaterialIconKind.ClipboardTextOutline
+                    MaterialIconKind.ClipboardTextOutline,
+                    "Balanced exam mix of Multiple Choice, Identification, Situational, and True/False"
                 ),
-                (QuizPresetMode.QuickReview, "Quick Review", MaterialIconKind.FlashOutline),
-                (QuizPresetMode.WeakTopicDrill, "Weak-Topic Drill", MaterialIconKind.Target),
-                (QuizPresetMode.DeepMastery, "Deep Mastery", MaterialIconKind.Brain),
-                (QuizPresetMode.CodeLab, "Code Lab", MaterialIconKind.CodeBraces),
-                (QuizPresetMode.Custom, "Custom Mix", MaterialIconKind.TuneVariant),
+                (
+                    QuizPresetMode.QuickReview,
+                    "Quick Review",
+                    MaterialIconKind.FlashOutline,
+                    "Fast recall-focused drill for rapid concept checks"
+                ),
+                (
+                    QuizPresetMode.WeakTopicDrill,
+                    "Weak-Topic Drill",
+                    MaterialIconKind.Target,
+                    "Prioritizes topics you previously missed and emphasizes applied exam questions"
+                ),
+                (
+                    QuizPresetMode.DeepMastery,
+                    "Deep Mastery",
+                    MaterialIconKind.Brain,
+                    "Heavy on Analysis, Situational reasoning, and deep conceptual transfer"
+                ),
+                (
+                    QuizPresetMode.CodeLab,
+                    "Code Lab",
+                    MaterialIconKind.CodeBraces,
+                    "Tailored for code tracing, debugging, output prediction, and algorithm ordering"
+                ),
+                (
+                    QuizPresetMode.Custom,
+                    "Custom Mix",
+                    MaterialIconKind.TuneVariant,
+                    "Manually fine-tune question type weights or exact counts below"
+                ),
             }
         )
         {
@@ -625,18 +650,14 @@ public static partial class QuizStudioViewBuilder
                 () => studio.SetPreset(capturedPreset),
                 isActive: studio.SelectedPreset == capturedPreset
             );
+            ToolTip.SetTip(pBtn, tip);
             pBtn.Margin = new Thickness(0, 0, 6, 4);
             modeWrap.Children.Add(pBtn);
         }
         configCard.Children.Add(modeWrap);
 
-        // Total Item Count + Allocation Mode Switcher (Weights % vs Exact Counts #)
-        var countAndModeHeader = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
-            ColumnSpacing = 8,
-        };
-        var countWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+        // Total Item Count + Allocation Mode Switcher (wraps cleanly on narrow windows)
+        var countAndModeHeader = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (int cnt in new[] { 10, 20, 30, 50, 60, 100 })
         {
             int capturedCnt = cnt;
@@ -647,7 +668,7 @@ public static partial class QuizStudioViewBuilder
                 isActive: studio.QuestionCount == capturedCnt
             );
             cBtn.Margin = new Thickness(0, 0, 4, 4);
-            countWrap.Children.Add(cBtn);
+            countAndModeHeader.Children.Add(cBtn);
         }
 
         var customCountBox = new TextBox
@@ -656,7 +677,7 @@ public static partial class QuizStudioViewBuilder
             Watermark = "Items (1-150)",
             Width = 78,
             FontSize = 12,
-            Margin = new Thickness(4, 0, 4, 4),
+            Margin = new Thickness(4, 0, 8, 4),
         };
         customCountBox.PropertyChanged += (_, e) =>
         {
@@ -681,33 +702,27 @@ public static partial class QuizStudioViewBuilder
                 studio.SetQuestionCount(parsed, notify: true);
             }
         };
-        countWrap.Children.Add(customCountBox);
-        countAndModeHeader.Children.Add(countWrap);
+        countAndModeHeader.Children.Add(customCountBox);
 
-        var allocModeRow = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        allocModeRow.Children.Add(
-            UiBuilder.GhostButton(
-                "Weights (%)",
-                MaterialIconKind.PercentOutline,
-                () => studio.SetAllocationMode(QuestionAllocationMode.Percentages),
-                isActive: studio.AllocationMode == QuestionAllocationMode.Percentages
-            )
+        var pctBtn = UiBuilder.GhostButton(
+            "Weights (%)",
+            MaterialIconKind.PercentOutline,
+            () => studio.SetAllocationMode(QuestionAllocationMode.Percentages),
+            isActive: studio.AllocationMode == QuestionAllocationMode.Percentages
         );
-        allocModeRow.Children.Add(
-            UiBuilder.GhostButton(
-                "Exact Counts (#)",
-                MaterialIconKind.Pound,
-                () => studio.SetAllocationMode(QuestionAllocationMode.ExactCounts),
-                isActive: studio.AllocationMode == QuestionAllocationMode.ExactCounts
-            )
+        pctBtn.Margin = new Thickness(0, 0, 4, 4);
+        ToolTip.SetTip(pctBtn, "Allocate question types by relative percentage weights");
+        countAndModeHeader.Children.Add(pctBtn);
+
+        var exactBtn = UiBuilder.GhostButton(
+            "Exact Counts (#)",
+            MaterialIconKind.Pound,
+            () => studio.SetAllocationMode(QuestionAllocationMode.ExactCounts),
+            isActive: studio.AllocationMode == QuestionAllocationMode.ExactCounts
         );
-        Grid.SetColumn(allocModeRow, 1);
-        countAndModeHeader.Children.Add(allocModeRow);
+        exactBtn.Margin = new Thickness(0, 0, 4, 4);
+        ToolTip.SetTip(exactBtn, "Specify exact item counts for each question type");
+        countAndModeHeader.Children.Add(exactBtn);
         configCard.Children.Add(countAndModeHeader);
 
         // Per-Question-Kind Interactive Allocation Grid
@@ -1142,7 +1157,8 @@ public static partial class QuizStudioViewBuilder
             leftStack.Children.Add(UiBuilder.Card(recentStack, padding: new Thickness(12, 8)));
         }
 
-        splitGrid.Children.Add(UiBuilder.PersistentScrollViewer("quiz-builder-left", leftStack));
+        var leftScroll = UiBuilder.PersistentScrollViewer("quiz-builder-left", leftStack);
+        splitGrid.Children.Add(leftScroll);
 
         // RIGHT COLUMN: LIVE VISUAL PDF SCOPE PREVIEWER / FILE SOURCES PREVIEWER
         Control previewPane =
@@ -1152,6 +1168,70 @@ public static partial class QuizStudioViewBuilder
         Grid.SetColumn(previewPane, 2);
         splitGrid.Children.Add(previewPane);
 
-        return splitGrid;
+        // Compact mode switcher bar (only visible when window width < 940px)
+        var compactSwitchBar = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            IsVisible = false,
+        };
+        var cfgTabBtn = UiBuilder.GhostButton(
+            "Configure Quiz",
+            MaterialIconKind.TuneVariant,
+            () => studio.SetBuilderCompactPreviewOpen(false),
+            isActive: !studio.IsBuilderCompactPreviewOpen
+        );
+        cfgTabBtn.Margin = new Thickness(0, 0, 6, 2);
+        compactSwitchBar.Children.Add(cfgTabBtn);
+
+        var prevTabBtn = UiBuilder.GhostButton(
+            $"Live Preview ({scopeBadgeText})",
+            MaterialIconKind.EyeOutline,
+            () => studio.SetBuilderCompactPreviewOpen(true),
+            isActive: studio.IsBuilderCompactPreviewOpen
+        );
+        prevTabBtn.Margin = new Thickness(0, 0, 6, 2);
+        compactSwitchBar.Children.Add(prevTabBtn);
+
+        if (studio.PdfTotalPages > 0 && (!studio.IsFileSourceMode || studio.IsMixedSourceMode))
+        {
+            var studioBtn = UiBuilder.GhostButton(
+                "Page Studio",
+                MaterialIconKind.ViewGridOutline,
+                studio.OpenPageGrid
+            );
+            studioBtn.Margin = new Thickness(0, 0, 0, 2);
+            compactSwitchBar.Children.Add(studioBtn);
+        }
+
+        outerHost.Children.Add(compactSwitchBar);
+        Grid.SetRow(splitGrid, 1);
+        outerHost.Children.Add(splitGrid);
+
+        void ApplyBuilderResponsiveLayout(double width)
+        {
+            if (width <= 0)
+                return;
+
+            bool isCompact = width < 940;
+            compactSwitchBar.IsVisible = isCompact;
+            if (isCompact)
+            {
+                bool showPreview = studio.IsBuilderCompactPreviewOpen;
+                leftScroll.IsVisible = !showPreview;
+                previewPane.IsVisible = showPreview;
+                splitGrid.ColumnDefinitions = ColumnDefinitions.Parse(
+                    showPreview ? "0,0,*" : "*,0,0"
+                );
+            }
+            else
+            {
+                leftScroll.IsVisible = true;
+                previewPane.IsVisible = true;
+                splitGrid.ColumnDefinitions = ColumnDefinitions.Parse("1.1*,14,0.9*");
+            }
+        }
+
+        outerHost.SizeChanged += (_, e) => ApplyBuilderResponsiveLayout(e.NewSize.Width);
+        return outerHost;
     }
 }
