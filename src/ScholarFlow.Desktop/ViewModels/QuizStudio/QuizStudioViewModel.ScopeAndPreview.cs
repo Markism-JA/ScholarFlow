@@ -1182,11 +1182,11 @@ public sealed partial class QuizStudioViewModel
             );
         }
 
-        _mainVm.OpenPdfWithQuizEvidence(
+        var anchors = BuildPdfEvidenceAnchors(question);
+        _mainVm.OpenPdfWithQuizEvidenceAnchors(
             question.SourcePdfPath,
-            question.SourcePage,
-            question.HighlightRects,
-            question.VerbatimQuote,
+            anchors,
+            initialIndex: 0,
             question.Prompt
         );
     }
@@ -1210,13 +1210,59 @@ public sealed partial class QuizStudioViewModel
             return;
         }
 
-        _mainVm.OpenPdfWithQuizEvidence(
+        var anchors = BuildPdfEvidenceAnchors(question);
+        int targetIdx = anchors.FindIndex(a =>
+            ReferenceEquals(a, anchor)
+            || (
+                a.PageNumber == anchor.PageNumber
+                && string.Equals(a.VerbatimQuote, anchor.VerbatimQuote, StringComparison.Ordinal)
+            )
+        );
+        if (targetIdx < 0)
+        {
+            anchors.Insert(
+                0,
+                new GroundedEvidenceAnchor(
+                    anchor.PageNumber > 0 ? anchor.PageNumber : Math.Max(1, question.SourcePage),
+                    anchor.SectionTitle,
+                    anchor.VerbatimQuote,
+                    anchor.HighlightRects
+                )
+            );
+            targetIdx = 0;
+        }
+
+        _mainVm.OpenPdfWithQuizEvidenceAnchors(
             question.SourcePdfPath,
-            anchor.PageNumber > 0 ? anchor.PageNumber : question.SourcePage,
-            anchor.HighlightRects,
-            anchor.VerbatimQuote,
+            anchors,
+            initialIndex: targetIdx,
             question.Prompt
         );
+    }
+
+    private static List<GroundedEvidenceAnchor> BuildPdfEvidenceAnchors(QuizQuestionRecord question)
+    {
+        if (question.EvidenceAnchors.Count > 0)
+        {
+            return question
+                .EvidenceAnchors.Select(a => new GroundedEvidenceAnchor(
+                    a.PageNumber > 0 ? a.PageNumber : Math.Max(1, question.SourcePage),
+                    a.SectionTitle,
+                    a.VerbatimQuote,
+                    a.HighlightRects.Count > 0 ? a.HighlightRects : question.HighlightRects
+                ))
+                .ToList();
+        }
+
+        return
+        [
+            new GroundedEvidenceAnchor(
+                Math.Max(1, question.SourcePage),
+                question.SectionTitle ?? string.Empty,
+                question.VerbatimQuote ?? string.Empty,
+                [.. question.HighlightRects]
+            ),
+        ];
     }
 
     private List<PdfPageRange> GetSelectedPageRanges()

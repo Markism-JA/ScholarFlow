@@ -43,6 +43,7 @@ public sealed class PdfReaderViewModel : IDisposable
     private CancellationTokenSource? _searchCts;
     private int? _pendingJumpPage;
     private byte[]? _pdfBytes;
+    private double[] _pageAspectRatios = [];
 
     public string? CurrentFilePath { get; private set; }
     public string Title =>
@@ -59,9 +60,18 @@ public sealed class PdfReaderViewModel : IDisposable
     public IReadOnlyList<PdfBookmarkNode> BookmarkRoots { get; private set; } = [];
     public string? ErrorMessage { get; private set; }
 
-    public int? ActiveHighlightPage { get; private set; }
-    public IReadOnlyList<NormalizedHighlightRect> ActiveHighlights { get; private set; } = [];
-    public string? ActiveEvidenceQuote { get; private set; }
+    // Multi-highlight grounded evidence anchors (supports 1 or many highlights across pages)
+    public IReadOnlyList<GroundedEvidenceAnchor> EvidenceAnchors { get; private set; } = [];
+    public int ActiveEvidenceIndex { get; private set; } = -1;
+    public GroundedEvidenceAnchor? ActiveEvidenceAnchor =>
+        ActiveEvidenceIndex >= 0 && ActiveEvidenceIndex < EvidenceAnchors.Count
+            ? EvidenceAnchors[ActiveEvidenceIndex]
+            : null;
+    public int? ActiveHighlightPage => ActiveEvidenceAnchor?.PageNumber;
+    public IReadOnlyList<NormalizedHighlightRect> ActiveHighlights =>
+        ActiveEvidenceAnchor?.HighlightRects ?? [];
+    public string? ActiveEvidenceQuote => ActiveEvidenceAnchor?.VerbatimQuote;
+    public string? ActiveEvidenceSectionTitle => ActiveEvidenceAnchor?.SectionTitle;
     public string? ActiveEvidenceQuestionPrompt { get; private set; }
 
     // In-PDF Text Search (Ctrl+F)
@@ -78,8 +88,43 @@ public sealed class PdfReaderViewModel : IDisposable
     public event EventHandler? Changed;
     public event Action<int, Bitmap>? PageBitmapReady;
     public event Action<int>? NavigationRequested;
+    public event Action<int, NormalizedHighlightRect?>? HighlightFocusRequested;
+    public event Action? EvidenceSelectionChangedInPlace;
     public event Action? ZoomChangedInPlace;
     public event Action<bool>? OutlineVisibilityChanged;
+
+    public double GetPageAspectRatio(int oneBasedPage)
+    {
+        double baseRatio = 1.294;
+        if (oneBasedPage >= 1 && oneBasedPage < _pageAspectRatios.Length && _pageAspectRatios[oneBasedPage] > 0.1)
+            baseRatio = _pageAspectRatios[oneBasedPage];
+        return RotationDegrees is 90 or 270 ? (1.0 / baseRatio) : baseRatio;
+    }
+
+    public (
+        IReadOnlyList<NormalizedHighlightRect> Primary,
+        IReadOnlyList<NormalizedHighlightRect> Secondary
+    ) GetPageEvidenceHighlights(int oneBasedPage)
+    {
+        if (EvidenceAnchors.Count == 0)
+            return ([], []);
+
+        var primary = new List<NormalizedHighlightRect>();
+        var secondary = new List<NormalizedHighlightRect>();
+
+        for (int i = 0; i < EvidenceAnchors.Count; i++)
+        {
+            var anchor = EvidenceAnchors[i];
+            if (anchor.PageNumber != oneBasedPage || anchor.HighlightRects.Count == 0)
+                continue;
+            if (i == ActiveEvidenceIndex)
+                primary.AddRange(anchor.HighlightRects);
+            else
+                secondary.AddRange(anchor.HighlightRects);
+        }
+
+        return (primary, secondary);
+    }
 
     public void SetCurrentPageQuietly(int oneBasedPage)
     {
@@ -113,6 +158,7 @@ public sealed class PdfReaderViewModel : IDisposable
         _pendingPageRenders.Clear();
         _pendingJumpPage = null;
         _pdfBytes = null;
+        _pageAspectRatios = [];
         RotationDegrees = 0;
         SearchMatches = [];
         ActiveSearchMatchIndex = -1;
@@ -150,7 +196,7 @@ public sealed class PdfReaderViewModel : IDisposable
         var token = cts.Token;
         try
         {
-            var (bytes, pageCount, roots, initialPageZeroBased, initialPreviewPixels) =
+            var (bytes, pageCount, aspectRatios, roots, initialPageZeroBased, initialPreviewPixels) =
                 await Task.Run(
                     () =>
                     {
@@ -159,6 +205,22 @@ public sealed class PdfReaderViewModel : IDisposable
                         token.ThrowIfCancellationRequested();
                         using var doc = PdfDocument.Open(data);
                         int pages = doc.NumberOfPages;
+                        var ratios = new double[pages + 1];
+                        for (int p = 1; p <= pages; p++)
+                        {
+                            try
+                            {
+                                var pg = doc.GetPage(p);
+                                double w = pg.Width > 1 ? pg.Width : 612.0;
+                                double h = pg.Height > 1 ? pg.Height : 792.0;
+                                ratios[p] = Math.Clamp(h / w, 0.35, 3.0);
+                            }
+                            catch
+                            {
+                                ratios[p] = 1.294;
+                            }
+                        }
+
                         var tree = ExtractBookmarkRoots(doc);
                         MergeCustomSavedSectionsIntoBookmarks(tree, basinRoot, filePath, pages);
 
@@ -184,7 +246,7 @@ public sealed class PdfReaderViewModel : IDisposable
                             }
                         }
 
-                        return (data, pages, tree, zPage, previewPx);
+                        return (data, pages, ratios, tree, zPage, previewPx);
                     },
                     token
                 );
@@ -199,6 +261,7 @@ public sealed class PdfReaderViewModel : IDisposable
 
                 _pdfBytes = bytes;
                 PageCount = pageCount;
+                _pageAspectRatios = aspectRatios;
                 BookmarkRoots = roots;
                 int target = _pendingJumpPage ?? CurrentPage;
                 _pendingJumpPage = null;
@@ -489,6 +552,72 @@ public sealed class PdfReaderViewModel : IDisposable
             Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public void SetEvidenceAnchors(
+        IReadOnlyList<GroundedEvidenceAnchor> anchors,
+        int initialIndex = 0,
+        string? questionPrompt = null
+    )
+    {
+        var list = (anchors ?? [])
+            .Where(a => a is not null)
+            .Select(a =>
+            {
+                int page = a.PageNumber > 0 ? a.PageNumber : 1;
+                if (!IsLoadingDocument && PageCount > 0)
+                    page = Math.Clamp(page, 1, PageCount);
+                return new GroundedEvidenceAnchor(
+                    page,
+                    a.SectionTitle ?? string.Empty,
+                    a.VerbatimQuote ?? string.Empty,
+                    a.HighlightRects ?? []
+                );
+            })
+            .ToList();
+
+        if (list.Count == 0)
+        {
+            ClearEvidenceHighlight(notify: true);
+            return;
+        }
+
+        int prevAnchorCount = EvidenceAnchors.Count;
+        int clampedIdx = Math.Clamp(initialIndex, 0, list.Count - 1);
+        var active = list[clampedIdx];
+
+        EvidenceAnchors = list;
+        ActiveEvidenceIndex = clampedIdx;
+        ActiveEvidenceQuestionPrompt = questionPrompt;
+
+        if (IsLoadingDocument || PageCount <= 0)
+        {
+            _pendingJumpPage = active.PageNumber;
+            CurrentPage = active.PageNumber;
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        CurrentPage = Math.Clamp(active.PageNumber, 1, PageCount);
+
+        // If the evidence banner already has the same pill structure (e.g. async Knowledge Search rects arriving
+        // for an already-open PDF), update overlays + banner in-place and glide smoothly without ScrollViewer teardown!
+        bool canUpdateInPlace =
+            EvidenceSelectionChangedInPlace is not null
+            && FitMode != PdfFitMode.FitPage
+            && prevAnchorCount == list.Count
+            && prevAnchorCount > 0;
+
+        if (canUpdateInPlace)
+        {
+            EvidenceSelectionChangedInPlace!.Invoke();
+            HighlightFocusRequested?.Invoke(CurrentPage, GetPrimaryFocusRect(active));
+        }
+        else
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+            HighlightFocusRequested?.Invoke(CurrentPage, GetPrimaryFocusRect(active));
+        }
+    }
+
     public void SetEvidenceHighlight(
         int oneBasedPage,
         IReadOnlyList<NormalizedHighlightRect> highlights,
@@ -496,28 +625,102 @@ public sealed class PdfReaderViewModel : IDisposable
         string? questionPrompt = null
     )
     {
+        var anchor = new GroundedEvidenceAnchor(
+            Math.Max(1, oneBasedPage),
+            string.Empty,
+            verbatimQuote ?? string.Empty,
+            [.. (highlights ?? [])]
+        );
+        SetEvidenceAnchors([anchor], 0, questionPrompt);
+    }
+
+    public void SelectEvidenceAnchor(int index)
+    {
+        if (EvidenceAnchors.Count == 0)
+            return;
+
+        int clampedIdx = Math.Clamp(index, 0, EvidenceAnchors.Count - 1);
+        ActiveEvidenceIndex = clampedIdx;
+        var active = EvidenceAnchors[clampedIdx];
+
         if (IsLoadingDocument || PageCount <= 0)
         {
-            _pendingJumpPage = Math.Max(1, oneBasedPage);
-            CurrentPage = _pendingJumpPage.Value;
+            _pendingJumpPage = active.PageNumber;
+            CurrentPage = active.PageNumber;
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        CurrentPage = Math.Clamp(active.PageNumber, 1, PageCount);
+        if (EvidenceSelectionChangedInPlace is not null && FitMode != PdfFitMode.FitPage)
+        {
+            // Fast in-place update: ZERO ScrollViewer teardown or toolbar rebuild!
+            EvidenceSelectionChangedInPlace.Invoke();
+            HighlightFocusRequested?.Invoke(CurrentPage, GetPrimaryFocusRect(active));
         }
         else
         {
-            CurrentPage = Math.Clamp(oneBasedPage, 1, PageCount);
+            Changed?.Invoke(this, EventArgs.Empty);
+            HighlightFocusRequested?.Invoke(CurrentPage, GetPrimaryFocusRect(active));
+        }
+    }
+
+    public void NextEvidenceAnchor()
+    {
+        if (EvidenceAnchors.Count <= 1)
+        {
+            FocusActiveEvidence();
+            return;
+        }
+        SelectEvidenceAnchor((ActiveEvidenceIndex + 1) % EvidenceAnchors.Count);
+    }
+
+    public void PreviousEvidenceAnchor()
+    {
+        if (EvidenceAnchors.Count <= 1)
+        {
+            FocusActiveEvidence();
+            return;
+        }
+        SelectEvidenceAnchor(
+            (ActiveEvidenceIndex - 1 + EvidenceAnchors.Count) % EvidenceAnchors.Count
+        );
+    }
+
+    public void FocusActiveEvidence()
+    {
+        var active = ActiveEvidenceAnchor;
+        if (active is null)
+            return;
+
+        if (IsLoadingDocument || PageCount <= 0)
+        {
+            _pendingJumpPage = active.PageNumber;
+            CurrentPage = active.PageNumber;
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
         }
 
-        ActiveHighlightPage = CurrentPage;
-        ActiveHighlights = highlights ?? [];
-        ActiveEvidenceQuote = verbatimQuote;
-        ActiveEvidenceQuestionPrompt = questionPrompt;
-        Changed?.Invoke(this, EventArgs.Empty);
+        CurrentPage = Math.Clamp(active.PageNumber, 1, PageCount);
+        if (HighlightFocusRequested is not null)
+            HighlightFocusRequested.Invoke(CurrentPage, GetPrimaryFocusRect(active));
+        else if (NavigationRequested is not null)
+            NavigationRequested.Invoke(CurrentPage);
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public static NormalizedHighlightRect? GetPrimaryFocusRect(GroundedEvidenceAnchor? anchor)
+    {
+        if (anchor is null || anchor.HighlightRects.Count == 0)
+            return null;
+        return anchor.HighlightRects.OrderBy(r => r.Y).First();
     }
 
     public void ClearEvidenceHighlight(bool notify = true)
     {
-        ActiveHighlightPage = null;
-        ActiveHighlights = [];
-        ActiveEvidenceQuote = null;
+        EvidenceAnchors = [];
+        ActiveEvidenceIndex = -1;
         ActiveEvidenceQuestionPrompt = null;
         if (notify)
             Changed?.Invoke(this, EventArgs.Empty);
@@ -794,8 +997,11 @@ public sealed class PdfReaderViewModel : IDisposable
         if (SearchMatches.Count == 0)
             return;
         ActiveSearchMatchIndex = (ActiveSearchMatchIndex + 1) % SearchMatches.Count;
-        CurrentPage = SearchMatches[ActiveSearchMatchIndex].PageNumber;
-        if (NavigationRequested is not null)
+        var match = SearchMatches[ActiveSearchMatchIndex];
+        CurrentPage = match.PageNumber;
+        if (HighlightFocusRequested is not null)
+            HighlightFocusRequested.Invoke(match.PageNumber, match.Rect);
+        else if (NavigationRequested is not null)
             NavigationRequested.Invoke(CurrentPage);
         else
             Changed?.Invoke(this, EventArgs.Empty);
@@ -807,8 +1013,11 @@ public sealed class PdfReaderViewModel : IDisposable
             return;
         ActiveSearchMatchIndex =
             (ActiveSearchMatchIndex - 1 + SearchMatches.Count) % SearchMatches.Count;
-        CurrentPage = SearchMatches[ActiveSearchMatchIndex].PageNumber;
-        if (NavigationRequested is not null)
+        var match = SearchMatches[ActiveSearchMatchIndex];
+        CurrentPage = match.PageNumber;
+        if (HighlightFocusRequested is not null)
+            HighlightFocusRequested.Invoke(match.PageNumber, match.Rect);
+        else if (NavigationRequested is not null)
             NavigationRequested.Invoke(CurrentPage);
         else
             Changed?.Invoke(this, EventArgs.Empty);
@@ -991,6 +1200,7 @@ public sealed class PdfReaderViewModel : IDisposable
         _pendingPageRenders.Clear();
         _pendingJumpPage = null;
         _pdfBytes = null;
+        _pageAspectRatios = [];
         RotationDegrees = 0;
         IsSearchBarOpen = false;
         SearchQuery = string.Empty;

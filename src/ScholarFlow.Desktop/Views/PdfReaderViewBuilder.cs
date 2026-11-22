@@ -367,9 +367,13 @@ public static class PdfReaderViewBuilder
             root.Children.Add(searchBorder);
         }
 
-        // 1b. Grounded Quiz Evidence Banner (when viewing highlighted proof from a Quiz Question)
+        // 1b. Grounded Quiz Evidence Banner (supports 1 or multiple highlight anchors across pages)
+        Action? syncEvidenceBannerInPlace = null;
         if (reader.ActiveHighlightPage.HasValue)
         {
+            int totalAnchors = reader.EvidenceAnchors.Count;
+
+            var bannerOuter = new StackPanel { Spacing = 6 };
             var bannerGrid = new Grid
             {
                 ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
@@ -389,46 +393,64 @@ public static class PdfReaderViewBuilder
                 Spacing = 2,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            if (!string.IsNullOrWhiteSpace(reader.ActiveEvidenceQuestionPrompt))
+
+            var metaTextBlock = new TextBlock
             {
-                quoteStack.Children.Add(
-                    new TextBlock
-                    {
-                        Text =
-                            $"Grounded Evidence (Page {reader.ActiveHighlightPage.Value}) · {reader.ActiveEvidenceQuestionPrompt}",
-                        FontSize = 11.5,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = ThemeService.Brush(ThemeService.PriorityP2Fg),
-                        TextTrimming = TextTrimming.CharacterEllipsis,
-                    }
-                );
-            }
-            if (!string.IsNullOrWhiteSpace(reader.ActiveEvidenceQuote))
+                FontSize = 11.5,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = ThemeService.Brush(ThemeService.PriorityP2Fg),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            quoteStack.Children.Add(metaTextBlock);
+
+            var quoteTextBlock = new TextBlock
             {
-                quoteStack.Children.Add(
-                    new TextBlock
-                    {
-                        Text = $"\"{reader.ActiveEvidenceQuote}\"",
-                        FontSize = 12,
-                        Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                        TextWrapping = TextWrapping.Wrap,
-                    }
-                );
-            }
+                FontSize = 12,
+                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                TextWrapping = TextWrapping.Wrap,
+                MaxLines = 2,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            };
+            quoteStack.Children.Add(quoteTextBlock);
+
             Grid.SetColumn(quoteStack, 1);
             bannerGrid.Children.Add(quoteStack);
 
-            if (reader.CurrentPage != reader.ActiveHighlightPage.Value)
+            var actionRow = new StackPanel
             {
-                var jumpHighlightBtn = UiBuilder.GhostButton(
-                    $"Go to Page {reader.ActiveHighlightPage.Value}",
-                    MaterialIconKind.Target,
-                    () => reader.JumpToPage(reader.ActiveHighlightPage.Value),
-                    isActive: true
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            if (totalAnchors > 1)
+            {
+                var prevHighlightBtn = UiBuilder.IconButton(
+                    MaterialIconKind.ChevronLeft,
+                    reader.PreviousEvidenceAnchor
                 );
-                Grid.SetColumn(jumpHighlightBtn, 2);
-                bannerGrid.Children.Add(jumpHighlightBtn);
+                ToolTip.SetTip(prevHighlightBtn, "Previous highlight");
+                actionRow.Children.Add(prevHighlightBtn);
+
+                var nextHighlightBtn = UiBuilder.IconButton(
+                    MaterialIconKind.ChevronRight,
+                    reader.NextEvidenceAnchor
+                );
+                ToolTip.SetTip(nextHighlightBtn, "Next highlight");
+                actionRow.Children.Add(nextHighlightBtn);
             }
+
+            var jumpHighlightBtn = UiBuilder.GhostButton(
+                "Jump to Highlight",
+                MaterialIconKind.CrosshairsGps,
+                reader.FocusActiveEvidence,
+                isActive: true
+            );
+            ToolTip.SetTip(jumpHighlightBtn, "Scroll directly to the highlighted passage");
+            actionRow.Children.Add(jumpHighlightBtn);
+
+            Grid.SetColumn(actionRow, 2);
+            bannerGrid.Children.Add(actionRow);
 
             var clearHighlightBtn = UiBuilder.IconButton(
                 MaterialIconKind.Close,
@@ -436,8 +458,115 @@ public static class PdfReaderViewBuilder
                 14,
                 ThemeService.Brush(ThemeService.TextMuted)
             );
+            ToolTip.SetTip(clearHighlightBtn, "Dismiss highlight overlay");
             Grid.SetColumn(clearHighlightBtn, 3);
             bannerGrid.Children.Add(clearHighlightBtn);
+
+            bannerOuter.Children.Add(bannerGrid);
+
+            var pillButtons = new List<Button>();
+            if (totalAnchors > 1)
+            {
+                var pillsRow = new WrapPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Margin = new Thickness(28, 0, 0, 0),
+                };
+                for (int i = 0; i < totalAnchors; i++)
+                {
+                    int capturedIdx = i;
+                    var anc = reader.EvidenceAnchors[i];
+                    var pillLabel =
+                        anc.HighlightRects.Count > 1
+                            ? $"#{i + 1} · p.{anc.PageNumber} ({anc.HighlightRects.Count})"
+                            : $"#{i + 1} · p.{anc.PageNumber}";
+
+                    var pillBtn = UiBuilder.GhostButton(
+                        pillLabel,
+                        MaterialIconKind.Marker,
+                        () => reader.SelectEvidenceAnchor(capturedIdx),
+                        isActive: false
+                    );
+                    pillBtn.Margin = new Thickness(0, 0, 4, 2);
+
+                    var tipText = !string.IsNullOrWhiteSpace(anc.VerbatimQuote)
+                        ? $"Page {anc.PageNumber}: \"{anc.VerbatimQuote}\""
+                        : !string.IsNullOrWhiteSpace(anc.SectionTitle)
+                            ? $"Page {anc.PageNumber} · {anc.SectionTitle}"
+                            : $"Jump to highlight #{i + 1} on Page {anc.PageNumber}";
+                    ToolTip.SetTip(pillBtn, tipText);
+                    pillsRow.Children.Add(pillBtn);
+                    pillButtons.Add(pillBtn);
+                }
+                bannerOuter.Children.Add(pillsRow);
+            }
+
+            syncEvidenceBannerInPlace = () =>
+            {
+                if (!reader.ActiveHighlightPage.HasValue)
+                    return;
+
+                int count = reader.EvidenceAnchors.Count;
+                int activeIdx = Math.Clamp(reader.ActiveEvidenceIndex, 0, Math.Max(0, count - 1));
+                int activePage = reader.ActiveHighlightPage.Value;
+
+                var metaParts = new List<string>
+                {
+                    count > 1
+                        ? $"Highlight {activeIdx + 1} of {count} · Page {activePage}"
+                        : $"Grounded Evidence · Page {activePage}",
+                };
+                if (!string.IsNullOrWhiteSpace(reader.ActiveEvidenceSectionTitle))
+                    metaParts.Add(reader.ActiveEvidenceSectionTitle);
+                if (!string.IsNullOrWhiteSpace(reader.ActiveEvidenceQuestionPrompt))
+                    metaParts.Add(reader.ActiveEvidenceQuestionPrompt);
+                metaTextBlock.Text = string.Join(" · ", metaParts);
+
+                bool hasQuote = !string.IsNullOrWhiteSpace(reader.ActiveEvidenceQuote);
+                quoteTextBlock.IsVisible = hasQuote;
+                quoteTextBlock.Text = hasQuote ? $"\"{reader.ActiveEvidenceQuote}\"" : string.Empty;
+
+                var jumpLabel =
+                    reader.CurrentPage != activePage ? $"Jump to p.{activePage}" : "Jump to Highlight";
+                if (jumpHighlightBtn.Content is StackPanel jsp)
+                {
+                    foreach (var child in jsp.Children)
+                    {
+                        if (child is TextBlock jtb)
+                        {
+                            jtb.Text = jumpLabel;
+                            break;
+                        }
+                    }
+                }
+
+                for (int i = 0; i < pillButtons.Count; i++)
+                {
+                    bool selected = i == activeIdx;
+                    var pb = pillButtons[i];
+                    pb.Background = selected
+                        ? ThemeService.Brush(ThemeService.AccentSoftBg)
+                        : Brushes.Transparent;
+                    pb.BorderBrush = selected
+                        ? ThemeService.Brush(ThemeService.AccentPrimary)
+                        : ThemeService.Brush(ThemeService.BorderSubtle);
+                    pb.BorderThickness = new Thickness(1);
+                    if (pb.Content is StackPanel psp)
+                    {
+                        foreach (var child in psp.Children)
+                        {
+                            if (child is TextBlock ptb)
+                            {
+                                ptb.Foreground = selected
+                                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                                    : ThemeService.Brush(ThemeService.TextSecondary);
+                                ptb.FontWeight = selected ? FontWeight.SemiBold : FontWeight.Normal;
+                            }
+                        }
+                    }
+                }
+            };
+            syncEvidenceBannerInPlace();
 
             var bannerBorder = new Border
             {
@@ -447,7 +576,7 @@ public static class PdfReaderViewBuilder
                 CornerRadius = new CornerRadius(7),
                 Padding = new Thickness(12, 8),
                 Margin = new Thickness(0, 0, 0, 8),
-                Child = bannerGrid,
+                Child = bannerOuter,
             };
             Grid.SetRow(bannerBorder, 2);
             root.Children.Add(bannerBorder);
@@ -709,11 +838,11 @@ public static class PdfReaderViewBuilder
             };
             pageLayerGrid.Children.Add(img);
 
-            var highlights = CollectPageHighlights(reader, reader.CurrentPage);
-            if (highlights.Count > 0)
+            var (fitPrimary, fitSecondary) = CollectPageHighlights(reader, reader.CurrentPage);
+            if (fitPrimary.Count > 0 || fitSecondary.Count > 0)
             {
                 pageLayerGrid.Children.Add(
-                    new PdfHighlightOverlayControl(highlights)
+                    new PdfHighlightOverlayControl(fitPrimary, fitSecondary)
                     {
                         IsHitTestVisible = false,
                         HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -769,13 +898,13 @@ public static class PdfReaderViewBuilder
         {
             // TRUE CONTINUOUS VERTICAL SCROLLING — renders in-between pages seamlessly!
             int totalPages = reader.PageCount;
-            bool isLandscapeRot = reader.RotationDegrees is 90 or 270;
             double pageTargetWidth =
                 reader.FitMode == PdfFitMode.FitWidth
                     ? 840
                     : 760 * (reader.ZoomPercent / 100.0);
-            double estAspect = isLandscapeRot ? (1.0 / 1.294) : 1.294;
-            double estSlotHeight = Math.Max(220, pageTargetWidth * estAspect);
+            double currentPageWidth = pageTargetWidth;
+            double GetSlotHeight(int pageNum) =>
+                Math.Max(220, currentPageWidth * reader.GetPageAspectRatio(pageNum));
             const double pageGap = 14.0;
 
             var pagesStack = new StackPanel
@@ -790,6 +919,7 @@ public static class PdfReaderViewBuilder
 
             var pageImages = new Image[totalPages + 1];
             var pageSheets = new Border[totalPages + 1];
+            var pageOverlays = new PdfHighlightOverlayControl?[totalPages + 1];
             int initPage = Math.Clamp(reader.CurrentPage, 1, totalPages);
 
             for (int p = 1; p <= totalPages; p++)
@@ -810,23 +940,23 @@ public static class PdfReaderViewBuilder
 
                 var layer = new Grid
                 {
-                    MinHeight = initialBmp is null ? estSlotHeight : 0,
+                    MinHeight = initialBmp is null ? GetSlotHeight(p) : 0,
                     HorizontalAlignment = HorizontalAlignment.Stretch,
                     VerticalAlignment = VerticalAlignment.Top,
                 };
                 layer.Children.Add(img);
 
-                var pageHighlights = CollectPageHighlights(reader, p);
-                if (pageHighlights.Count > 0)
+                var (pagePrimary, pageSecondary) = CollectPageHighlights(reader, p);
+                if (pagePrimary.Count > 0 || pageSecondary.Count > 0)
                 {
-                    layer.Children.Add(
-                        new PdfHighlightOverlayControl(pageHighlights)
-                        {
-                            IsHitTestVisible = false,
-                            HorizontalAlignment = HorizontalAlignment.Stretch,
-                            VerticalAlignment = VerticalAlignment.Stretch,
-                        }
-                    );
+                    var ov = new PdfHighlightOverlayControl(pagePrimary, pageSecondary)
+                    {
+                        IsHitTestVisible = false,
+                        HorizontalAlignment = HorizontalAlignment.Stretch,
+                        VerticalAlignment = VerticalAlignment.Stretch,
+                    };
+                    pageOverlays[p] = ov;
+                    layer.Children.Add(ov);
                 }
 
                 var sheet = new Border
@@ -869,6 +999,197 @@ public static class PdfReaderViewBuilder
                 }
             );
 
+            // Track pending highlight focus so async bitmap arrival re-centers accurately unless the user scrolled manually
+            int? pendingFocusPage =
+                reader.ActiveHighlightPage == initPage ? initPage : null;
+            NormalizedHighlightRect? pendingFocusRect =
+                reader.ActiveHighlightPage == initPage
+                    ? PdfReaderViewModel.GetPrimaryFocusRect(reader.ActiveEvidenceAnchor)
+                    : null;
+            DispatcherTimer? smoothScrollTimer = null;
+
+            void CancelSmoothScroll()
+            {
+                if (smoothScrollTimer is not null)
+                {
+                    smoothScrollTimer.Stop();
+                    smoothScrollTimer = null;
+                }
+            }
+
+            // Cancel smooth scroll / pending focus ONLY on real user input (never on Avalonia's async ScrollChanged!)
+            continuousScroll.AddHandler(
+                InputElement.PointerWheelChangedEvent,
+                (_, _) =>
+                {
+                    CancelSmoothScroll();
+                    pendingFocusPage = null;
+                    pendingFocusRect = null;
+                },
+                Avalonia.Interactivity.RoutingStrategies.Tunnel
+            );
+            continuousScroll.AddHandler(
+                InputElement.PointerPressedEvent,
+                (_, _) =>
+                {
+                    CancelSmoothScroll();
+                    pendingFocusPage = null;
+                    pendingFocusRect = null;
+                },
+                Avalonia.Interactivity.RoutingStrategies.Tunnel
+            );
+
+            void SetScrollOffsetProgrammatic(double y)
+            {
+                double maxY = Math.Max(
+                    0.0,
+                    continuousScroll.Extent.Height - continuousScroll.Viewport.Height
+                );
+                double clampedY = maxY > 1.0 ? Math.Clamp(y, 0.0, maxY) : Math.Max(0.0, y);
+                continuousScroll.Offset = new Vector(continuousScroll.Offset.X, clampedY);
+            }
+
+            void AnimateScrollToY(double targetY, bool animate)
+            {
+                CancelSmoothScroll();
+                double maxY = Math.Max(
+                    0.0,
+                    continuousScroll.Extent.Height - continuousScroll.Viewport.Height
+                );
+                double clampedTarget =
+                    maxY > 1.0 ? Math.Clamp(targetY, 0.0, maxY) : Math.Max(0.0, targetY);
+                double startY = continuousScroll.Offset.Y;
+                double delta = clampedTarget - startY;
+
+                if (!animate || Math.Abs(delta) < 6.0)
+                {
+                    SetScrollOffsetProgrammatic(clampedTarget);
+                    SyncVisiblePages();
+                    return;
+                }
+
+                // For long cross-document jumps (> 2800px), jump close immediately and glide the final 360px
+                if (Math.Abs(delta) > 2800.0)
+                {
+                    startY = clampedTarget - Math.Sign(delta) * 360.0;
+                    delta = clampedTarget - startY;
+                    SetScrollOffsetProgrammatic(startY);
+                }
+
+                const double durationMs = 175.0;
+                var startUtc = DateTime.UtcNow;
+                var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(14) };
+                smoothScrollTimer = timer;
+                timer.Tick += (_, _) =>
+                {
+                    double elapsed = (DateTime.UtcNow - startUtc).TotalMilliseconds;
+                    double t = Math.Clamp(elapsed / durationMs, 0.0, 1.0);
+                    // Cubic ease-out: snappy start, silky settle
+                    double eased = 1.0 - Math.Pow(1.0 - t, 3.0);
+                    SetScrollOffsetProgrammatic(startY + delta * eased);
+                    if (t >= 1.0)
+                    {
+                        CancelSmoothScroll();
+                        SyncVisiblePages();
+                    }
+                };
+                timer.Start();
+            }
+
+            // Smooth virtualized viewport tracking: loads visible +/- 1 pages and updates page box in-place
+            int lastReportedPage = initPage;
+
+            void ScrollToPageAndRectInPlace(
+                int targetPage,
+                NormalizedHighlightRect? targetRect,
+                bool animate = false
+            )
+            {
+                int clamped = Math.Clamp(targetPage, 1, totalPages);
+
+                // Ensure placeholder heights match the live FitWidth viewport width before computing targetY
+                if (reader.FitMode == PdfFitMode.FitWidth && continuousScroll.Viewport.Width > 100)
+                {
+                    double liveW = Math.Min(900, continuousScroll.Viewport.Width - 36);
+                    if (Math.Abs(liveW - currentPageWidth) > 2.0)
+                    {
+                        currentPageWidth = liveW;
+                        for (int p = 1; p <= totalPages; p++)
+                        {
+                            if (pageImages[p].Source is null && pageSheets[p].Child is Grid g)
+                                g.MinHeight = GetSlotHeight(p);
+                        }
+                    }
+                }
+
+                // Kick off target page bitmap decode immediately on frame 0
+                if (pageImages[clamped].Source is null)
+                {
+                    var pre = reader.GetPageBitmap(clamped);
+                    if (pre is not null)
+                    {
+                        pageImages[clamped].Source = pre;
+                        if (pageSheets[clamped].Child is Grid g)
+                            g.MinHeight = 0;
+                    }
+                }
+
+                double pageTopY = 12.0;
+                for (int p = 1; p < clamped; p++)
+                {
+                    double h = pageSheets[p].Bounds.Height > 10
+                        ? pageSheets[p].Bounds.Height
+                        : GetSlotHeight(p);
+                    pageTopY += h + pageGap;
+                }
+
+                double targetY = pageTopY;
+                if (targetRect is not null)
+                {
+                    double targetPageH = pageSheets[clamped].Bounds.Height > 10
+                        ? pageSheets[clamped].Bounds.Height
+                        : GetSlotHeight(clamped);
+                    double viewH = continuousScroll.Viewport.Height > 100
+                        ? continuousScroll.Viewport.Height
+                        : 650;
+                    double highlightY = pageTopY + (targetRect.Y * targetPageH);
+                    double topLead = Math.Max(56.0, viewH * 0.28);
+                    targetY = Math.Max(0.0, highlightY - topLead);
+                }
+
+                lastReportedPage = clamped;
+                if (!pageInput.IsFocused)
+                    pageInput.Text = clamped.ToString();
+
+                AnimateScrollToY(targetY, animate);
+            }
+
+            void ScrollToPageInPlace(int targetPage) =>
+                ScrollToPageAndRectInPlace(targetPage, null, animate: true);
+
+            void RefreshHighlightOverlaysInPlace()
+            {
+                for (int p = 1; p <= totalPages; p++)
+                {
+                    var (pri, sec) = CollectPageHighlights(reader, p);
+                    if (pageOverlays[p] is not null)
+                    {
+                        pageOverlays[p]!.UpdateHighlights(pri, sec);
+                    }
+                    else if ((pri.Count > 0 || sec.Count > 0) && pageSheets[p].Child is Grid g)
+                    {
+                        var ov = new PdfHighlightOverlayControl(pri, sec)
+                        {
+                            IsHitTestVisible = false,
+                            HorizontalAlignment = HorizontalAlignment.Stretch,
+                            VerticalAlignment = VerticalAlignment.Stretch,
+                        };
+                        pageOverlays[p] = ov;
+                        g.Children.Add(ov);
+                    }
+                }
+            }
+
             // Live in-place bitmap swap when background renders complete (ZERO ScrollViewer teardown!)
             Action<int, Bitmap> onContinuousBmp = (pg, newBmp) =>
             {
@@ -877,31 +1198,26 @@ public static class PdfReaderViewBuilder
                     pageImages[pg].Source = newBmp;
                     if (pageSheets[pg].Child is Grid g)
                         g.MinHeight = 0;
+
+                    if (pendingFocusPage == pg)
+                    {
+                        var rectToFocus = pendingFocusRect;
+                        Dispatcher.UIThread.Post(
+                            () =>
+                            {
+                                if (pendingFocusPage == pg)
+                                {
+                                    ScrollToPageAndRectInPlace(pg, rectToFocus, animate: false);
+                                    pendingFocusPage = null;
+                                    pendingFocusRect = null;
+                                }
+                            },
+                            DispatcherPriority.Render
+                        );
+                    }
                 }
             };
             reader.PageBitmapReady += onContinuousBmp;
-
-            // Smooth virtualized viewport tracking: loads visible +/- 1 pages and updates page box in-place
-            int lastReportedPage = initPage;
-            double currentPageWidth = pageTargetWidth;
-
-            void ScrollToPageInPlace(int targetPage)
-            {
-                int clamped = Math.Clamp(targetPage, 1, totalPages);
-                double targetY = 12.0;
-                for (int p = 1; p < clamped; p++)
-                {
-                    double h = pageSheets[p].Bounds.Height > 10
-                        ? pageSheets[p].Bounds.Height
-                        : estSlotHeight;
-                    targetY += h + pageGap;
-                }
-                lastReportedPage = clamped;
-                if (!pageInput.IsFocused)
-                    pageInput.Text = clamped.ToString();
-                continuousScroll.Offset = new Vector(continuousScroll.Offset.X, targetY);
-                SyncVisiblePages();
-            }
 
             void ApplyZoomInPlace()
             {
@@ -913,7 +1229,6 @@ public static class PdfReaderViewBuilder
                 double newWidth = isFitW ? viewportW : 760 * (reader.ZoomPercent / 100.0);
                 double scaleRatio = newWidth / oldWidth;
                 currentPageWidth = newWidth;
-                estSlotHeight = Math.Max(220, newWidth * estAspect);
 
                 pagesStack.HorizontalAlignment = isFitW
                     ? HorizontalAlignment.Stretch
@@ -930,7 +1245,7 @@ public static class PdfReaderViewBuilder
                         : HorizontalAlignment.Center;
                     pageSheets[p].MaxWidth = isFitW ? 900 : double.PositiveInfinity;
                     if (pageImages[p].Source is null && pageSheets[p].Child is Grid g)
-                        g.MinHeight = estSlotHeight;
+                        g.MinHeight = GetSlotHeight(p);
                 }
 
                 // Update zoom button text in-place (ZERO toolbar rebuild!)
@@ -967,19 +1282,42 @@ public static class PdfReaderViewBuilder
 
             Action<int> onNavRequested = pg =>
             {
+                pendingFocusPage = null;
+                pendingFocusRect = null;
                 ScrollToPageInPlace(pg);
                 // If user clicked a bookmark inside the floating drawer on narrow width, close drawer cleanly
                 if (isConstrainedWidth && reader.IsOutlineVisible)
                     reader.ToggleOutline();
             };
+            Action<int, NormalizedHighlightRect?> onHighlightFocus = (pg, rect) =>
+            {
+                pendingFocusPage = pg;
+                pendingFocusRect = rect;
+                ScrollToPageAndRectInPlace(pg, rect, animate: true);
+                if (pageImages[Math.Clamp(pg, 1, totalPages)].Source is not null)
+                {
+                    pendingFocusPage = null;
+                    pendingFocusRect = null;
+                }
+            };
+            Action onEvidenceSelectionInPlace = () =>
+            {
+                syncEvidenceBannerInPlace?.Invoke();
+                RefreshHighlightOverlaysInPlace();
+            };
             Action onZoomInPlace = ApplyZoomInPlace;
 
             reader.NavigationRequested += onNavRequested;
+            reader.HighlightFocusRequested += onHighlightFocus;
+            reader.EvidenceSelectionChangedInPlace += onEvidenceSelectionInPlace;
             reader.ZoomChangedInPlace += onZoomInPlace;
             continuousScroll.DetachedFromVisualTree += (_, _) =>
             {
+                CancelSmoothScroll();
                 reader.PageBitmapReady -= onContinuousBmp;
                 reader.NavigationRequested -= onNavRequested;
+                reader.HighlightFocusRequested -= onHighlightFocus;
+                reader.EvidenceSelectionChangedInPlace -= onEvidenceSelectionInPlace;
                 reader.ZoomChangedInPlace -= onZoomInPlace;
             };
 
@@ -1001,7 +1339,7 @@ public static class PdfReaderViewBuilder
                 {
                     double h = pageSheets[p].Bounds.Height > 10
                         ? pageSheets[p].Bounds.Height
-                        : estSlotHeight;
+                        : GetSlotHeight(p);
                     double pBottom = y + h;
 
                     if (pBottom >= viewTop - 250 && y <= viewBottom + 350)
@@ -1051,30 +1389,41 @@ public static class PdfReaderViewBuilder
                     reader.SetCurrentPageQuietly(centerPage);
                     if (!pageInput.IsFocused)
                         pageInput.Text = centerPage.ToString();
+                    syncEvidenceBannerInPlace?.Invoke();
                 }
             }
 
             continuousScroll.ScrollChanged += (_, _) => SyncVisiblePages();
 
-            // Scroll to the target CurrentPage once layout settles
+            // Scroll directly to the target CurrentPage & highlight rect once layout settles
             continuousScroll.AttachedToVisualTree += (_, _) =>
             {
                 Dispatcher.UIThread.Post(
                     () =>
                     {
-                        if (initPage > 1)
+                        if (reader.FitMode == PdfFitMode.FitWidth && continuousScroll.Viewport.Width > 100)
                         {
-                            double targetY = 12.0;
-                            for (int p = 1; p < initPage; p++)
+                            currentPageWidth = Math.Min(900, continuousScroll.Viewport.Width - 36);
+                            for (int p = 1; p <= totalPages; p++)
                             {
-                                double h = pageSheets[p].Bounds.Height > 10
-                                    ? pageSheets[p].Bounds.Height
-                                    : estSlotHeight;
-                                targetY += h + pageGap;
+                                if (pageImages[p].Source is null && pageSheets[p].Child is Grid g)
+                                    g.MinHeight = GetSlotHeight(p);
                             }
-                            continuousScroll.Offset = new Vector(continuousScroll.Offset.X, targetY);
                         }
-                        SyncVisiblePages();
+
+                        var initRect =
+                            reader.ActiveHighlightPage == initPage
+                                ? PdfReaderViewModel.GetPrimaryFocusRect(reader.ActiveEvidenceAnchor)
+                                : null;
+
+                        if (initPage > 1 || initRect is not null)
+                        {
+                            ScrollToPageAndRectInPlace(initPage, initRect);
+                        }
+                        else
+                        {
+                            SyncVisiblePages();
+                        }
                     },
                     DispatcherPriority.Loaded
                 );
@@ -1113,37 +1462,57 @@ public static class PdfReaderViewBuilder
         return root;
     }
 
-    private static List<NormalizedHighlightRect> CollectPageHighlights(
-        PdfReaderViewModel reader,
-        int oneBasedPage
-    )
+    private static (
+        List<NormalizedHighlightRect> Primary,
+        List<NormalizedHighlightRect> Secondary
+    ) CollectPageHighlights(PdfReaderViewModel reader, int oneBasedPage)
     {
-        var list = new List<NormalizedHighlightRect>();
+        var primary = new List<NormalizedHighlightRect>();
+        var secondary = new List<NormalizedHighlightRect>();
         if (reader.RotationDegrees != 0)
-            return list;
+            return (primary, secondary);
 
-        if (reader.ActiveHighlightPage == oneBasedPage && reader.ActiveHighlights.Count > 0)
-            list.AddRange(reader.ActiveHighlights);
+        var (evPrimary, evSecondary) = reader.GetPageEvidenceHighlights(oneBasedPage);
+        if (evPrimary.Count > 0)
+            primary.AddRange(evPrimary);
+        if (evSecondary.Count > 0)
+            secondary.AddRange(evSecondary);
 
         var searchHits = reader.GetPageSearchHighlights(oneBasedPage);
         if (searchHits.Count > 0)
-            list.AddRange(searchHits);
+            secondary.AddRange(searchHits);
 
-        return list;
+        return (primary, secondary);
     }
 
-    private sealed class PdfHighlightOverlayControl(IReadOnlyList<NormalizedHighlightRect> rects)
-        : Control
+    private sealed class PdfHighlightOverlayControl(
+        IReadOnlyList<NormalizedHighlightRect> primaryRects,
+        IReadOnlyList<NormalizedHighlightRect> secondaryRects
+    ) : Control
     {
-        private static readonly IBrush HighlightFill = new SolidColorBrush(
-            Color.Parse("#48F59E0B")
+        private static readonly IBrush PrimaryFill = new SolidColorBrush(Color.Parse("#52F59E0B"));
+        private static readonly IPen PrimaryBorder = new Pen(
+            new SolidColorBrush(Color.Parse("#F5D97706")),
+            2.0
         );
-        private static readonly IPen HighlightBorder = new Pen(
-            new SolidColorBrush(Color.Parse("#E6D97706")),
-            1.6
+        private static readonly IBrush SecondaryFill = new SolidColorBrush(Color.Parse("#2AF59E0B"));
+        private static readonly IPen SecondaryBorder = new Pen(
+            new SolidColorBrush(Color.Parse("#99D97706")),
+            1.1
         );
 
-        private readonly IReadOnlyList<NormalizedHighlightRect> _rects = rects;
+        private IReadOnlyList<NormalizedHighlightRect> _primaryRects = primaryRects;
+        private IReadOnlyList<NormalizedHighlightRect> _secondaryRects = secondaryRects;
+
+        public void UpdateHighlights(
+            IReadOnlyList<NormalizedHighlightRect> primary,
+            IReadOnlyList<NormalizedHighlightRect> secondary
+        )
+        {
+            _primaryRects = primary;
+            _secondaryRects = secondary;
+            InvalidateVisual();
+        }
 
         public override void Render(DrawingContext context)
         {
@@ -1153,7 +1522,7 @@ public static class PdfReaderViewBuilder
             if (w <= 1 || h <= 1)
                 return;
 
-            foreach (var r in _rects)
+            foreach (var r in _secondaryRects)
             {
                 var rect = new Rect(
                     r.X * w,
@@ -1161,7 +1530,18 @@ public static class PdfReaderViewBuilder
                     Math.Max(8, r.Width * w),
                     Math.Max(10, r.Height * h)
                 );
-                context.DrawRectangle(HighlightFill, HighlightBorder, rect, 3, 3);
+                context.DrawRectangle(SecondaryFill, SecondaryBorder, rect, 3, 3);
+            }
+
+            foreach (var r in _primaryRects)
+            {
+                var rect = new Rect(
+                    r.X * w,
+                    r.Y * h,
+                    Math.Max(8, r.Width * w),
+                    Math.Max(10, r.Height * h)
+                );
+                context.DrawRectangle(PrimaryFill, PrimaryBorder, rect, 3, 3);
             }
         }
     }

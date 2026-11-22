@@ -448,12 +448,13 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
         var snippet = target.PlainSnippet;
         var heading = $"{target.Title} · {target.SectionTitle}";
         var quoteProbe = ExtractBestHighlightQuote(target);
+        var matchedTerms = ExtractMatchedTerms(target, QueryText);
 
         // Open the PDF Reader immediately (0 ms UI lag) with the snippet banner,
         // then ground exact word bounding-box highlights asynchronously in the background.
         _mainVm.OpenPdfFromKnowledgeSearch(filePath, page, [], snippet, heading);
 
-        if (string.IsNullOrWhiteSpace(quoteProbe))
+        if (string.IsNullOrWhiteSpace(quoteProbe) && matchedTerms.Count == 0)
             return;
 
         _groundHighlightCts?.Cancel();
@@ -469,22 +470,36 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
                     if (ct.IsCancellationRequested)
                         return;
 
-                    var probeQuestion = new QuizQuestionRecord
-                    {
-                        SourcePdfPath = filePath,
-                        SourcePage = page,
-                        VerbatimQuote = quoteProbe,
-                    };
-                    PdfQuizGrounder.GroundQuestionsToPdf(filePath, [probeQuestion]);
+                    var rects = new List<NormalizedHighlightRect>();
 
-                    if (
-                        ct.IsCancellationRequested
-                        || probeQuestion.HighlightRects.Count == 0
-                        || probeQuestion.SourcePage != page
-                    )
+                    // 1. Primary: ground the matched snippet window directly on the target page
+                    if (!string.IsNullOrWhiteSpace(quoteProbe))
+                    {
+                        var probeQuestion = new QuizQuestionRecord
+                        {
+                            SourcePdfPath = filePath,
+                            SourcePage = page,
+                            VerbatimQuote = quoteProbe,
+                        };
+                        PdfQuizGrounder.GroundQuestionsToPdf(filePath, [probeQuestion]);
+                        if (
+                            probeQuestion.SourcePage == page
+                            && probeQuestion.HighlightRects.Count > 0
+                        )
+                        {
+                            rects.AddRange(probeQuestion.HighlightRects);
+                        }
+                    }
+
+                    // 2. Reliable fallback: locate the exact searched/highlighted terms directly on `page`
+                    if (rects.Count == 0 && matchedTerms.Count > 0)
+                    {
+                        rects.AddRange(FindTermRectsOnPage(filePath, page, matchedTerms));
+                    }
+
+                    if (ct.IsCancellationRequested || rects.Count == 0)
                         return;
 
-                    var rects = probeQuestion.HighlightRects;
                     Dispatcher.UIThread.Post(() =>
                     {
                         if (ct.IsCancellationRequested)
@@ -497,7 +512,10 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
                                 filePath,
                                 StringComparison.OrdinalIgnoreCase
                             )
-                            && _mainVm.PdfReader.CurrentPage == page
+                            && (
+                                _mainVm.PdfReader.ActiveHighlightPage == page
+                                || _mainVm.PdfReader.CurrentPage == page
+                            )
                         )
                         {
                             _mainVm.PdfReader.SetEvidenceHighlight(page, rects, snippet, heading);
@@ -531,9 +549,13 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
         int closeIdx = openIdx >= 0 ? snip.IndexOf('»', openIdx + 1) : -1;
         if (openIdx >= 0 && closeIdx > openIdx)
         {
-            // Grab a ~70-char window centered around the first highlighted match
-            int start = Math.Max(0, openIdx - 25);
-            int end = Math.Min(snip.Length, closeIdx + 45);
+            // Expand to whole-word boundaries around the first highlighted match
+            int start = Math.Max(0, openIdx - 32);
+            while (start > 0 && !char.IsWhiteSpace(snip[start - 1]))
+                start--;
+            int end = Math.Min(snip.Length, closeIdx + 48);
+            while (end < snip.Length && !char.IsWhiteSpace(snip[end]))
+                end++;
             return snip[start..end]
                 .Replace("«", string.Empty)
                 .Replace("»", string.Empty)
@@ -543,6 +565,94 @@ public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisp
 
         var plain = target.PlainSnippet.Replace("…", string.Empty).Trim();
         return plain.Length > 90 ? plain[..90].Trim() : plain;
+    }
+
+    private static List<string> ExtractMatchedTerms(KnowledgeSearchResult target, string rawQuery)
+    {
+        var terms = new List<string>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddToken(string raw)
+        {
+            var cleaned = raw.Trim().Trim('.', ',', ';', ':', '(', ')', '[', ']', '"', '\'', '«', '»');
+            if (cleaned.Length >= 2 && seen.Add(cleaned))
+                terms.Add(cleaned);
+        }
+
+        var snip = target.HighlightedSnippet ?? string.Empty;
+        int pos = 0;
+        while (pos < snip.Length)
+        {
+            int o = snip.IndexOf('«', pos);
+            if (o < 0)
+                break;
+            int c = snip.IndexOf('»', o + 1);
+            if (c < 0)
+                break;
+            foreach (
+                var part in snip[(o + 1)..c]
+                    .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            )
+            {
+                AddToken(part);
+            }
+            pos = c + 1;
+        }
+
+        if (terms.Count == 0 && !string.IsNullOrWhiteSpace(rawQuery))
+        {
+            foreach (
+                var part in rawQuery.Split(
+                    ' ',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+                )
+            )
+            {
+                if (!part.Contains(':'))
+                    AddToken(part);
+            }
+        }
+
+        return terms;
+    }
+
+    private static List<NormalizedHighlightRect> FindTermRectsOnPage(
+        string pdfPath,
+        int oneBasedPage,
+        IReadOnlyList<string> terms
+    )
+    {
+        var results = new List<NormalizedHighlightRect>();
+        using var doc = UglyToad.PdfPig.PdfDocument.Open(pdfPath);
+        if (oneBasedPage < 1 || oneBasedPage > doc.NumberOfPages)
+            return results;
+
+        var page = doc.GetPage(oneBasedPage);
+        double pw = page.Width > 1 ? page.Width : 612.0;
+        double ph = page.Height > 1 ? page.Height : 792.0;
+
+        foreach (var word in page.GetWords())
+        {
+            var txt = word.Text;
+            if (string.IsNullOrWhiteSpace(txt))
+                continue;
+            if (terms.Any(t => txt.Contains(t, StringComparison.OrdinalIgnoreCase)))
+            {
+                var b = word.BoundingBox;
+                results.Add(
+                    new NormalizedHighlightRect(
+                        Math.Clamp(b.Left / pw, 0.0, 1.0),
+                        Math.Clamp((ph - b.Top) / ph, 0.0, 1.0),
+                        Math.Clamp(b.Width / pw, 0.015, 1.0),
+                        Math.Clamp(b.Height / ph, 0.012, 1.0)
+                    )
+                );
+                if (results.Count >= 16)
+                    break;
+            }
+        }
+
+        return results;
     }
 
     private void NotifyResultsUpdated()

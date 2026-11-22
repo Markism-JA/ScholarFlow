@@ -146,6 +146,22 @@ public sealed partial class MainWindowViewModel
         string? questionPrompt
     )
     {
+        var anchor = new Core.Quiz.GroundedEvidenceAnchor(
+            Math.Max(1, pageNumber),
+            string.Empty,
+            verbatimQuote ?? string.Empty,
+            [.. (highlights ?? [])]
+        );
+        OpenPdfWithQuizEvidenceAnchors(pdfFullPath, [anchor], 0, questionPrompt);
+    }
+
+    public void OpenPdfWithQuizEvidenceAnchors(
+        string pdfFullPath,
+        IReadOnlyList<Core.Quiz.GroundedEvidenceAnchor> anchors,
+        int initialIndex,
+        string? questionPrompt
+    )
+    {
         PdfReturnMode = WorkspaceTabMode.QuizStudio;
         PdfReturnTask = null;
         PdfOpenedFromQuiz = true;
@@ -157,7 +173,7 @@ public sealed partial class MainWindowViewModel
             )
         )
             PdfReader.LoadPdf(pdfFullPath, BasinRoot);
-        PdfReader.SetEvidenceHighlight(pageNumber, highlights, verbatimQuote, questionPrompt);
+        PdfReader.SetEvidenceAnchors(anchors, initialIndex, questionPrompt);
         ActiveMode = WorkspaceTabMode.PdfReader;
         NotifyStateChanged();
     }
