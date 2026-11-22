@@ -904,8 +904,9 @@ public static class PdfReaderViewBuilder
                     : 760 * (reader.ZoomPercent / 100.0);
             double currentPageWidth = pageTargetWidth;
             double GetSlotHeight(int pageNum) =>
-                Math.Max(220, currentPageWidth * reader.GetPageAspectRatio(pageNum));
+                Math.Max(120, currentPageWidth * reader.GetPageAspectRatio(pageNum));
             const double pageGap = 14.0;
+            const double sheetChromeH = 10.0; // BorderThickness(1*2) + Padding(4*2)
 
             var pagesStack = new StackPanel
             {
@@ -1007,6 +1008,8 @@ public static class PdfReaderViewBuilder
                     ? PdfReaderViewModel.GetPrimaryFocusRect(reader.ActiveEvidenceAnchor)
                     : null;
             DispatcherTimer? smoothScrollTimer = null;
+            bool isApplyingZoom = false;
+            DispatcherTimer? zoomSharpenTimer = null;
 
             void CancelSmoothScroll()
             {
@@ -1221,13 +1224,41 @@ public static class PdfReaderViewBuilder
 
             void ApplyZoomInPlace()
             {
+                CancelSmoothScroll();
+                isApplyingZoom = true;
+
+                // 1. Capture exact (anchorPage, anchorFraction) at 40% down the viewport BEFORE resizing.
+                //    This eliminates cumulative drift on large multi-hundred-page books caused by non-scaling page gaps!
+                double viewH = continuousScroll.Viewport.Height > 100
+                    ? continuousScroll.Viewport.Height
+                    : 650.0;
+                double anchorOffsetInViewport = viewH * 0.40;
+                double anchorViewY = continuousScroll.Offset.Y + anchorOffsetInViewport;
+
+                int anchorPage = Math.Clamp(lastReportedPage, 1, totalPages);
+                double anchorFraction = 0.0;
+                double scanY = 12.0;
+                for (int p = 1; p <= totalPages; p++)
+                {
+                    double h = pageSheets[p].Bounds.Height > 10
+                        ? pageSheets[p].Bounds.Height
+                        : (GetSlotHeight(p) + sheetChromeH);
+                    double pBottom = scanY + h;
+                    if (anchorViewY <= pBottom + (pageGap * 0.5) || p == totalPages)
+                    {
+                        anchorPage = p;
+                        anchorFraction = Math.Clamp((anchorViewY - scanY) / Math.Max(1.0, h), 0.0, 1.0);
+                        break;
+                    }
+                    scanY = pBottom + pageGap;
+                }
+
+                // 2. Apply new page width & placeholder heights across all pages
                 bool isFitW = reader.FitMode == PdfFitMode.FitWidth;
-                double oldWidth = Math.Max(200, currentPageWidth);
                 double viewportW = continuousScroll.Viewport.Width > 100
                     ? Math.Min(900, continuousScroll.Viewport.Width - 36)
                     : 840;
                 double newWidth = isFitW ? viewportW : 760 * (reader.ZoomPercent / 100.0);
-                double scaleRatio = newWidth / oldWidth;
                 currentPageWidth = newWidth;
 
                 pagesStack.HorizontalAlignment = isFitW
@@ -1265,19 +1296,42 @@ public static class PdfReaderViewBuilder
                     directTb.Text = isFitW ? "Width" : $"{reader.ZoomPercent}%";
                 }
 
-                // Scale scroll offset proportionally so you stay on the exact line you were reading
-                double scaledY = Math.Max(0, continuousScroll.Offset.Y * scaleRatio);
+                // 3. Synchronously compute & apply the exact new Offset.Y in the SAME frame (zero 1-frame jump/flicker!)
+                double newTopY = 12.0;
+                for (int p = 1; p < anchorPage; p++)
+                    newTopY += GetSlotHeight(p) + sheetChromeH + pageGap;
+                double newAnchorH = GetSlotHeight(anchorPage) + sheetChromeH;
+                double targetY = Math.Max(
+                    0.0,
+                    newTopY + (anchorFraction * newAnchorH) - anchorOffsetInViewport
+                );
+
+                continuousScroll.Offset = new Vector(continuousScroll.Offset.X, targetY);
+
+                // Release zoom guard after layout settles and ensure visible pages are loaded (zero mid-zoom eviction!)
                 Dispatcher.UIThread.Post(
                     () =>
                     {
-                        continuousScroll.Offset = new Vector(continuousScroll.Offset.X, scaledY);
-                        // Trigger crisp 280 DPI upgrade for currently visible pages if zoomed > 150%
-                        int cur = Math.Clamp(reader.CurrentPage, 1, totalPages);
-                        for (int p = Math.Max(1, cur - 1); p <= Math.Min(totalPages, cur + 1); p++)
-                            reader.GetPageBitmap(p);
+                        continuousScroll.Offset = new Vector(continuousScroll.Offset.X, targetY);
+                        isApplyingZoom = false;
+                        SyncVisiblePages();
                     },
                     DispatcherPriority.Render
                 );
+
+                // Debounce >150% high-DPI bitmap upgrades so rapid Ctrl+Scroll / Ctrl+/- bursts stay flicker-free
+                zoomSharpenTimer?.Stop();
+                var sharpenTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                zoomSharpenTimer = sharpenTimer;
+                int capturedAnchor = anchorPage;
+                sharpenTimer.Tick += (_, _) =>
+                {
+                    sharpenTimer.Stop();
+                    int cur = Math.Clamp(capturedAnchor, 1, totalPages);
+                    for (int p = Math.Max(1, cur - 1); p <= Math.Min(totalPages, cur + 1); p++)
+                        reader.GetPageBitmap(p);
+                };
+                sharpenTimer.Start();
             }
 
             Action<int> onNavRequested = pg =>
@@ -1314,6 +1368,7 @@ public static class PdfReaderViewBuilder
             continuousScroll.DetachedFromVisualTree += (_, _) =>
             {
                 CancelSmoothScroll();
+                zoomSharpenTimer?.Stop();
                 reader.PageBitmapReady -= onContinuousBmp;
                 reader.NavigationRequested -= onNavRequested;
                 reader.HighlightFocusRequested -= onHighlightFocus;
@@ -1323,6 +1378,8 @@ public static class PdfReaderViewBuilder
 
             void SyncVisiblePages()
             {
+                if (isApplyingZoom)
+                    return;
                 double viewTop = continuousScroll.Offset.Y;
                 double viewH = continuousScroll.Viewport.Height > 0
                     ? continuousScroll.Viewport.Height

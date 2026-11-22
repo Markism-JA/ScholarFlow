@@ -203,22 +203,43 @@ public sealed class PdfReaderViewModel : IDisposable
                         token.ThrowIfCancellationRequested();
                         var data = File.ReadAllBytes(filePath);
                         token.ThrowIfCancellationRequested();
-                        using var doc = PdfDocument.Open(data);
-                        int pages = doc.NumberOfPages;
-                        var ratios = new double[pages + 1];
-                        for (int p = 1; p <= pages; p++)
+
+                        // Native C++ PDFium reads all page dimensions in ~1-3ms without parsing any content streams
+                        // (unlike PdfPig's doc.GetPage(p), which parses full page content streams and takes seconds on large books).
+                        int pages = 0;
+                        double[] ratios = [];
+                        try
                         {
-                            try
+                            if (
+                                OperatingSystem.IsWindows()
+                                || OperatingSystem.IsLinux()
+                                || OperatingSystem.IsMacOS()
+                            )
                             {
-                                var pg = doc.GetPage(p);
-                                double w = pg.Width > 1 ? pg.Width : 612.0;
-                                double h = pg.Height > 1 ? pg.Height : 792.0;
-                                ratios[p] = Math.Clamp(h / w, 0.35, 3.0);
+                                var nativeSizes = PDFtoImage.Conversion.GetPageSizes(data);
+                                pages = nativeSizes.Count;
+                                ratios = new double[pages + 1];
+                                for (int i = 0; i < pages; i++)
+                                {
+                                    var sz = nativeSizes[i];
+                                    double w = sz.Width > 1f ? sz.Width : 612.0;
+                                    double h = sz.Height > 1f ? sz.Height : 792.0;
+                                    ratios[i + 1] = Math.Clamp(h / w, 0.35, 3.0);
+                                }
                             }
-                            catch
-                            {
+                        }
+                        catch
+                        {
+                            // Fallback below via PdfPig if native size query fails
+                        }
+
+                        using var doc = PdfDocument.Open(data);
+                        if (pages <= 0)
+                        {
+                            pages = doc.NumberOfPages;
+                            ratios = new double[pages + 1];
+                            for (int p = 1; p <= pages; p++)
                                 ratios[p] = 1.294;
-                            }
                         }
 
                         var tree = ExtractBookmarkRoots(doc);
@@ -745,7 +766,7 @@ public sealed class PdfReaderViewModel : IDisposable
     {
         bool wasFitPage = FitMode == PdfFitMode.FitPage;
         FitMode = PdfFitMode.Custom;
-        ZoomPercent = Math.Max(50, ZoomPercent - step);
+        ZoomPercent = Math.Max(40, ZoomPercent - step);
         if (!wasFitPage && ZoomChangedInPlace is not null)
             ZoomChangedInPlace.Invoke();
         else

@@ -143,14 +143,23 @@ public static class ShortcutDispatcher
                     vm.SourceViewer.ZoomIn();
                     return;
                 }
-                if (
-                    vm.ActiveMode == WorkspaceTabMode.QuizStudio
-                    && vm.QuizStudio.IsDedicatedSnipperOpen
-                )
+                if (vm.ActiveMode == WorkspaceTabMode.QuizStudio)
                 {
-                    e.Handled = true;
-                    _ = vm.QuizStudio.ZoomSnipAsync(+25);
-                    return;
+                    if (vm.QuizStudio.IsDedicatedSnipperOpen)
+                    {
+                        e.Handled = true;
+                        _ = vm.QuizStudio.ZoomSnipAsync(+25);
+                        return;
+                    }
+                    if (
+                        vm.QuizStudio.ActiveSession is null
+                        && !string.IsNullOrWhiteSpace(vm.QuizStudio.SelectedPdfPath)
+                    )
+                    {
+                        e.Handled = true;
+                        vm.QuizStudio.ZoomPreview(+20);
+                        return;
+                    }
                 }
             }
             if (e.Key is Key.OemMinus or Key.Subtract)
@@ -167,14 +176,23 @@ public static class ShortcutDispatcher
                     vm.SourceViewer.ZoomOut();
                     return;
                 }
-                if (
-                    vm.ActiveMode == WorkspaceTabMode.QuizStudio
-                    && vm.QuizStudio.IsDedicatedSnipperOpen
-                )
+                if (vm.ActiveMode == WorkspaceTabMode.QuizStudio)
                 {
-                    e.Handled = true;
-                    _ = vm.QuizStudio.ZoomSnipAsync(-25);
-                    return;
+                    if (vm.QuizStudio.IsDedicatedSnipperOpen)
+                    {
+                        e.Handled = true;
+                        _ = vm.QuizStudio.ZoomSnipAsync(-25);
+                        return;
+                    }
+                    if (
+                        vm.QuizStudio.ActiveSession is null
+                        && !string.IsNullOrWhiteSpace(vm.QuizStudio.SelectedPdfPath)
+                    )
+                    {
+                        e.Handled = true;
+                        vm.QuizStudio.ZoomPreview(-20);
+                        return;
+                    }
                 }
             }
             if (e.Key is Key.D0 or Key.NumPad0)
@@ -191,14 +209,23 @@ public static class ShortcutDispatcher
                     vm.SourceViewer.ToggleFitToWindow();
                     return;
                 }
-                if (
-                    vm.ActiveMode == WorkspaceTabMode.QuizStudio
-                    && vm.QuizStudio.IsDedicatedSnipperOpen
-                )
+                if (vm.ActiveMode == WorkspaceTabMode.QuizStudio)
                 {
-                    e.Handled = true;
-                    _ = vm.QuizStudio.ToggleSnipFitToWidthAsync();
-                    return;
+                    if (vm.QuizStudio.IsDedicatedSnipperOpen)
+                    {
+                        e.Handled = true;
+                        _ = vm.QuizStudio.ToggleSnipFitToWidthAsync();
+                        return;
+                    }
+                    if (
+                        vm.QuizStudio.ActiveSession is null
+                        && !string.IsNullOrWhiteSpace(vm.QuizStudio.SelectedPdfPath)
+                    )
+                    {
+                        e.Handled = true;
+                        vm.QuizStudio.ResetPreviewZoom();
+                        return;
+                    }
                 }
             }
             if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
