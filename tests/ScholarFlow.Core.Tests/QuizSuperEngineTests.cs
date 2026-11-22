@@ -570,6 +570,19 @@ public sealed class QuizSuperEngineTests
         Assert.Contains(mermaidGraph.Nodes, n => n.Label == "Target" && n.Shape == DiagramNodeShape.RoundedPill);
         Assert.Contains(mermaidGraph.Edges, e => e.Label == "Yes");
 
+        // 2b-ii. Verify Mermaid undirected "---" links and multi-hop chained edges on a single line
+        var busDiagram = """
+            flowchart LR
+                CPU["CPU"] --- SB["System Bus"] --- BR["???"]
+                BR --- MB["Memory Bus"] --- RAM["Main Memory"]
+                BR --- IOB["I/O Bus"] --- IO["I/O Devices"]
+            """;
+        Assert.True(PdfDiagramGraphRenderer.TryParseGraph(busDiagram, out var parsedBus));
+        Assert.Equal(7, parsedBus.Nodes.Count);
+        Assert.Equal(6, parsedBus.Edges.Count);
+        Assert.Contains(parsedBus.Nodes, n => n.Id == "BR" && n.IsCloze);
+        Assert.All(parsedBus.Edges, e => Assert.False(e.IsDirected));
+
         // 2c. Verify sequenceDiagram is parsed as a Sequence Diagram (not flattened into a flowchart)
         var seqSpec = """
             sequenceDiagram
@@ -630,5 +643,129 @@ public sealed class QuizSuperEngineTests
                 // Ignore cleanup lock
             }
         }
+    }
+
+    [Fact]
+    public void ModalityDetector_DetectsMathTextbookProseMultiSelectFlagsAntiOverfittingAndLazyHints()
+    {
+        // 1. Math textbook extracted via PdfPig (where special symbols are stripped into theorem/derivative/limit prose)
+        var mathPages = new List<GroundedPdfPage>
+        {
+            new(
+                PageNumber: 14,
+                SectionBreadcrumb: "Chapter 3: Differentiation and the Mean Value Theorem",
+                Term: null,
+                Text: """
+                Theorem 3.1 (Rolle's Theorem). Let f(x) = x^3 - 3x be continuous on [a, b] and differentiable on (a, b).
+                Proof. By the limit definition of the derivative, dy/dx = lim_{h->0} (f(x+h) - f(x))/h.
+                Corollary 3.2. If the determinant det(A) != 0, the matrix is invertible and its eigenvalues are non-zero.
+                """
+            ),
+        };
+
+        var autoMathProfile = QuizLlmService.DetectContentModalities(
+            mathPages,
+            courseTitle: "Handout 03",
+            mode: QuizContentModalityMode.AutoDetect
+        );
+        Assert.True(autoMathProfile.HasMath);
+        Assert.True(autoMathProfile.DetectedMathInSource);
+        Assert.False(autoMathProfile.HasCode);
+
+        // 2. Multi-select modality flags (Code + MathLatex + Diagrams simultaneously) on a prose page
+        var prosePages = new List<GroundedPdfPage>
+        {
+            new(
+                PageNumber: 1,
+                SectionBreadcrumb: "Unit 1: History of Software Engineering Ethics",
+                Term: null,
+                Text: "Software engineers shall act consistently with the public interest and maintain professional integrity in all client deliverables."
+            ),
+        };
+
+        var multiSelectProfile = QuizLlmService.DetectContentModalities(
+            prosePages,
+            courseTitle: "Professional Ethics",
+            mode: QuizContentModalityMode.AutoDetect,
+            selectedFlags: QuizContentModalityFlags.Code | QuizContentModalityFlags.MathLatex
+        );
+        Assert.True(multiSelectProfile.HasCode);
+        Assert.True(multiSelectProfile.HasMath);
+        Assert.False(multiSelectProfile.DetectedCodeInSource);
+        Assert.False(multiSelectProfile.DetectedMathInSource);
+
+        // 3. Verify anti-overfitting prompt clause and closed-book hint rules when user enables Math/Code on prose
+        var tempPdfDir = Path.Combine(
+            Path.GetTempPath(),
+            "ScholarFlow_ModalityTest_" + Guid.NewGuid().ToString("N")[..8]
+        );
+        Directory.CreateDirectory(tempPdfDir);
+        try
+        {
+            var mdFile = Path.Combine(tempPdfDir, "calculus_notes.md");
+            File.WriteAllText(
+                mdFile,
+                "# Fundamental Theorem of Calculus\nTheorem 1: If $f(x) = \\int_a^x g(t) dt$, then $dy/dx = g(x)$."
+            );
+
+            var fileReq = new QuizGenerationRequest
+            {
+                CourseTitle = "Notes",
+                SourceFilePaths = [mdFile],
+                ModalityMode = QuizContentModalityMode.AutoDetect,
+            };
+            var fileModality = QuizLlmService.DetectFileSourceModalities(fileReq);
+            Assert.True(fileModality.HasMath);
+            Assert.True(fileModality.DetectedMathInSource);
+
+            var proseFile = Path.Combine(tempPdfDir, "ethics.txt");
+            File.WriteAllText(
+                proseFile,
+                "Professional ethics requires transparency, accountability, and informed consent across organizational stakeholders."
+            );
+            var overfitReq = new QuizGenerationRequest
+            {
+                CourseTitle = "Ethics",
+                SourceFilePaths = [proseFile],
+                ModalityMode = QuizContentModalityMode.AutoDetect,
+                SelectedModalityFlags =
+                    QuizContentModalityFlags.MathLatex | QuizContentModalityFlags.Code,
+                AvailableTerms = [],
+            };
+            var svc = new QuizLlmService();
+            var prompt = svc.BuildFileSourcePromptForManualCopy(overfitReq, 40_000, out _);
+
+            Assert.Contains("ANTI-OVERFITTING GUARDRAIL", prompt);
+            Assert.Contains("NEVER invent artificial equations", prompt);
+            Assert.Contains("NEVER cite or point to document locations such as \"See Section X\"", prompt);
+            Assert.Contains("\"courseTerm\": null", prompt);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempPdfDir, recursive: true);
+            }
+            catch
+            {
+                // Ignore cleanup error
+            }
+        }
+
+        // 4. Verify QuizQualityCritic flags lazy section/figure/page meta-hints AND dangling figure references in prompts
+        var lazyHintQuestion = new QuizQuestionRecord
+        {
+            Kind = QuizQuestionKind.MultipleChoice,
+            Prompt = "In Figure 3.2, what is the time complexity of binary search on a sorted array?",
+            Options = ["O(log n)", "O(n)", "O(n log n)", "O(1)"],
+            CorrectAnswer = "O(log n)",
+            Hint = "See Section 2.1 and Figure 4 in the handout for the tree depth.",
+            Explanation = "Why correct: Halving the search space takes log2(n) steps. Why distractors fail: O(n) is linear scan. Core principle: Divide and conquer.",
+            VerbatimQuote = "Binary search runs in O(log n) logarithmic time.",
+            HighlightRects = [new NormalizedHighlightRect(0.1, 0.1, 0.5, 0.05)],
+        };
+        var report = QuizQualityCritic.Audit([lazyHintQuestion]);
+        Assert.Contains(report.Issues, i => i.Code == "LAZY_META_HINT");
+        Assert.Contains(report.Issues, i => i.Code == "DANGLING_SOURCE_REF");
     }
 }

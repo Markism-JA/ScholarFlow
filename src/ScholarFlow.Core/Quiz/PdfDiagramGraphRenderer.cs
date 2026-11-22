@@ -26,7 +26,8 @@ public sealed record DiagramGraphEdge(
     string FromId,
     string ToId,
     string? Label,
-    bool IsDashed = false
+    bool IsDashed = false,
+    bool IsDirected = true
 );
 
 public sealed record ParsedDiagramGraph(
@@ -844,8 +845,19 @@ public static partial class PdfDiagramGraphRenderer
                             }
 
                             bool isDashed = m.Value.Contains('.');
+                            bool isDirected =
+                                m.Value.Contains('>')
+                                || m.Value.Contains('<')
+                                || m.Value.Contains('→')
+                                || m.Value.Contains('⟶');
                             edges.Add(
-                                new DiagramGraphEdge(prevNode.Id, nextNode.Id, edgeLabel, isDashed)
+                                new DiagramGraphEdge(
+                                    prevNode.Id,
+                                    nextNode.Id,
+                                    edgeLabel,
+                                    isDashed,
+                                    isDirected
+                                )
                             );
                             prevNode = nextNode;
                         }
@@ -956,6 +968,7 @@ public static partial class PdfDiagramGraphRenderer
                 r2,
                 edge.Label,
                 edge.IsDashed,
+                edge.IsDirected,
                 edgeFont,
                 originY,
                 layout.TotalHeight
@@ -1351,6 +1364,7 @@ public static partial class PdfDiagramGraphRenderer
         XRect to,
         string? label,
         bool isDashed,
+        bool isDirected,
         XFont edgeFont,
         double originY,
         double totalH
@@ -1377,7 +1391,8 @@ public static partial class PdfDiagramGraphRenderer
             gfx.DrawLine(pen, pStart, pMid1);
             gfx.DrawLine(pen, pMid1, pMid2);
             gfx.DrawLine(pen, pMid2, pEnd);
-            DrawArrowHead(gfx, pMid2, pEnd);
+            if (isDirected)
+                DrawArrowHead(gfx, pMid2, pEnd);
 
             if (!string.IsNullOrWhiteSpace(label))
                 DrawEdgeLabelPill(gfx, label, new XPoint((c1x + c2x) / 2.0, arcY), edgeFont);
@@ -1416,7 +1431,8 @@ public static partial class PdfDiagramGraphRenderer
         }
 
         gfx.DrawLine(pen, startPt, endPt);
-        DrawArrowHead(gfx, startPt, endPt);
+        if (isDirected)
+            DrawArrowHead(gfx, startPt, endPt);
 
         if (!string.IsNullOrWhiteSpace(label))
         {
@@ -1647,17 +1663,17 @@ public static partial class PdfDiagramGraphRenderer
     private static partial Regex HeaderDirectiveRegex();
 
     [GeneratedRegex(
-        @"(?:-\.\s*(?<lbl>[A-Za-z0-9_\-\?\./\s]{1,24}?)\s*\.->|--+\s*(?<lbl>[A-Za-z0-9_\-\?\./\s]{1,24}?)\s*--+>|-\.->\s*\|(?<lbl>[^\|]+)\||==+>\s*\|(?<lbl>[^\|]+)\||--+>\s*\|(?<lbl>[^\|]+)\|-->?|--+>\s*\|(?<lbl>[^\|]+)\||->\s*\|(?<lbl>[^\|]+)\||-\.->|\.\.>|<\-+>|<--+>|==+>|--+>|->|=>|──>|→|⟶)"
+        @"(?:-\.\s*(?<lbl>[A-Za-z0-9_\-\?\./\s]{1,24}?)\s*\.->|-\.\s*(?<lbl>[A-Za-z0-9_\-\?\./\s]{1,24}?)\s*-\.|--+\s*(?<lbl>[A-Za-z0-9_\-\?\./\s]{1,24}?)\s*--+>|--+\s*(?<lbl>[A-Za-z0-9_\-\?\./\s]{1,24}?)\s*---+|--+-\s*\|(?<lbl>[^\|]+)\||-\.-\s*\|(?<lbl>[^\|]+)\||===+\s*\|(?<lbl>[^\|]+)\||-\.->\s*\|(?<lbl>[^\|]+)\||==+>\s*\|(?<lbl>[^\|]+)\||--+>\s*\|(?<lbl>[^\|]+)\|-->?|--+>\s*\|(?<lbl>[^\|]+)\||->\s*\|(?<lbl>[^\|]+)\||-\.->|\.\.>|<\-+>|<--+>|==+>|--+>|->|=>|──>|→|⟶|-\.-|===+|--+-)"
     )]
     private static partial Regex ArrowTokenRegex();
 
     [GeneratedRegex(@"\|(?<lbl>[^\|]+)\|")]
     private static partial Regex PipeLabelRegex();
 
-    [GeneratedRegex(@"^--+\s*(?<lbl>[^->]+?)\s*--+>$")]
+    [GeneratedRegex(@"^--+\s*(?<lbl>[^->]+?)\s*--+>?$")]
     private static partial Regex MidArrowLabelRegex();
 
-    [GeneratedRegex(@"^-\.\s*(?<lbl>[^.>]+?)\s*\.->$")]
+    [GeneratedRegex(@"^-\.\s*(?<lbl>[^.>]+?)\s*(?:\.->|-\.)$")]
     private static partial Regex DottedMidArrowLabelRegex();
 
     [GeneratedRegex(

@@ -768,22 +768,25 @@ public static partial class QuizRichContentRenderer
             };
             canvas.Children.Add(lineShape);
 
-            var angle = Math.Atan2(end.Y - start.Y, end.X - start.X);
-            var arrowSize = 7.0;
-            var a1 = new Point(
-                end.X - arrowSize * Math.Cos(angle - Math.PI / 6),
-                end.Y - arrowSize * Math.Sin(angle - Math.PI / 6)
-            );
-            var a2 = new Point(
-                end.X - arrowSize * Math.Cos(angle + Math.PI / 6),
-                end.Y - arrowSize * Math.Sin(angle + Math.PI / 6)
-            );
-            var head = new Avalonia.Controls.Shapes.Polygon
+            if (e.IsDirected)
             {
-                Points = [end, a1, a2],
-                Fill = ThemeService.Brush(ThemeService.AccentPrimary),
-            };
-            canvas.Children.Add(head);
+                var angle = Math.Atan2(end.Y - start.Y, end.X - start.X);
+                var arrowSize = 7.0;
+                var a1 = new Point(
+                    end.X - arrowSize * Math.Cos(angle - Math.PI / 6),
+                    end.Y - arrowSize * Math.Sin(angle - Math.PI / 6)
+                );
+                var a2 = new Point(
+                    end.X - arrowSize * Math.Cos(angle + Math.PI / 6),
+                    end.Y - arrowSize * Math.Sin(angle + Math.PI / 6)
+                );
+                var head = new Avalonia.Controls.Shapes.Polygon
+                {
+                    Points = [end, a1, a2],
+                    Fill = ThemeService.Brush(ThemeService.AccentPrimary),
+                };
+                canvas.Children.Add(head);
+            }
 
             if (!string.IsNullOrWhiteSpace(e.Label))
             {

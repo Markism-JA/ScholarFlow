@@ -983,14 +983,26 @@ public static partial class QuizStudioViewBuilder
                 Watermark = "Optional Math LaTeX (e.g. O(n \\log n) or \\frac{a+b}{2})...",
                 FontSize = 12,
             };
+            var mathPreviewHost = new Border
+            {
+                Child = string.IsNullOrWhiteSpace(draft.MathLatex)
+                    ? null
+                    : QuizRichContentRenderer.BuildMathLatexCard(draft.MathLatex),
+            };
             mathBox.PropertyChanged += (_, e) =>
             {
                 if (e.Property == TextBox.TextProperty)
+                {
                     draft.MathLatex = string.IsNullOrWhiteSpace(mathBox.Text)
                         ? null
                         : mathBox.Text.Trim();
+                    mathPreviewHost.Child = string.IsNullOrWhiteSpace(draft.MathLatex)
+                        ? null
+                        : QuizRichContentRenderer.BuildMathLatexCard(draft.MathLatex);
+                }
             };
             advStack.Children.Add(mathBox);
+            advStack.Children.Add(mathPreviewHost);
 
             var diagBox = new TextBox
             {
@@ -1003,14 +1015,26 @@ public static partial class QuizStudioViewBuilder
                 FontSize = 11.5,
                 FontFamily = new FontFamily("Consolas, JetBrains Mono, monospace"),
             };
+            var diagPreviewHost = new Border
+            {
+                Child = string.IsNullOrWhiteSpace(draft.Diagram)
+                    ? null
+                    : QuizRichContentRenderer.BuildDiagramCard(draft.Diagram),
+            };
             diagBox.PropertyChanged += (_, e) =>
             {
                 if (e.Property == TextBox.TextProperty)
+                {
                     draft.Diagram = string.IsNullOrWhiteSpace(diagBox.Text)
                         ? null
                         : diagBox.Text.Trim();
+                    diagPreviewHost.Child = string.IsNullOrWhiteSpace(draft.Diagram)
+                        ? null
+                        : QuizRichContentRenderer.BuildDiagramCard(draft.Diagram);
+                }
             };
             advStack.Children.Add(diagBox);
+            advStack.Children.Add(diagPreviewHost);
 
             var codeLangRow = new Grid
             {
