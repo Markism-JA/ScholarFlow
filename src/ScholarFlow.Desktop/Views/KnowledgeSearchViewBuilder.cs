@@ -29,12 +29,16 @@ public static class KnowledgeSearchViewBuilder
     );
 
     private static TextBox? _activeQueryBox;
+    private static Button? _activeClearBtn;
     private static Border? _activeTelemetryHost;
     private static Border? _activeFilterBarHost;
     private static Border? _activeResultsHost;
     private static ListBox? _activeResultsListBox;
     private static List<IndexedResultRow> _activeIndexedItems = [];
-    private static readonly Dictionary<int, (Border Card, bool IsWeakSpot)> _renderedCardsByIndex = [];
+    private static readonly Dictionary<
+        int,
+        (Border Card, Button JumpBtn, TextBlock TitleTb, bool IsWeakSpot)
+    > _renderedCardsByIndex = [];
     private static int _lastRenderedSelectedIndex = -1;
     private static Action? _activeOnClose;
     private static MainWindowViewModel? _boundVm;
@@ -58,7 +62,7 @@ public static class KnowledgeSearchViewBuilder
     public static Border BuildFloatingModal(MainWindowViewModel vm, Action onClose)
     {
         var content = Build(vm, onClose, isFloatingModal: true);
-        return new Border
+        var modal = new Border
         {
             Background = ThemeService.Brush(ThemeService.BgSurface),
             BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
@@ -68,11 +72,13 @@ public static class KnowledgeSearchViewBuilder
             MaxWidth = 780,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(24, 56, 24, 24),
+            Margin = new Thickness(24, 62, 24, 24),
             Padding = new Thickness(14, 12),
             ClipToBounds = true,
             Child = content,
         };
+        UiBuilder.AttachModalEntranceAnimation(modal);
+        return modal;
     }
 
     public static Control Build(
@@ -179,6 +185,9 @@ public static class KnowledgeSearchViewBuilder
             }
         );
         clearBtn.Margin = new Thickness(6, 0, 0, 0);
+        clearBtn.IsVisible =
+            ks.ParsedQuery.HasAnyFilterOrQuery || !string.IsNullOrWhiteSpace(ks.QueryText);
+        _activeClearBtn = clearBtn;
         Grid.SetColumn(clearBtn, 2);
         searchHeader.Children.Add(clearBtn);
 
@@ -300,6 +309,12 @@ public static class KnowledgeSearchViewBuilder
             }
         }
 
+        if (_activeClearBtn is not null)
+        {
+            _activeClearBtn.IsVisible =
+                ks.ParsedQuery.HasAnyFilterOrQuery || !string.IsNullOrWhiteSpace(ks.QueryText);
+        }
+
         _activeTelemetryHost?.Child = BuildTelemetryPills(ks);
         _activeFilterBarHost?.Child = BuildFilterChipsPanel(_boundVm, ks);
         _activeResultsHost?.Child = BuildResultsPane(ks);
@@ -315,10 +330,22 @@ public static class KnowledgeSearchViewBuilder
         int prevIdx = _lastRenderedSelectedIndex;
 
         if (prevIdx >= 0 && _renderedCardsByIndex.TryGetValue(prevIdx, out var prevEntry))
-            ApplyCardSelectionVisual(prevEntry.Card, isSelected: false, prevEntry.IsWeakSpot);
+            ApplyCardSelectionVisual(
+                prevEntry.Card,
+                prevEntry.JumpBtn,
+                prevEntry.TitleTb,
+                isSelected: false,
+                prevEntry.IsWeakSpot
+            );
 
         if (nextIdx >= 0 && _renderedCardsByIndex.TryGetValue(nextIdx, out var nextEntry))
-            ApplyCardSelectionVisual(nextEntry.Card, isSelected: true, nextEntry.IsWeakSpot);
+            ApplyCardSelectionVisual(
+                nextEntry.Card,
+                nextEntry.JumpBtn,
+                nextEntry.TitleTb,
+                isSelected: true,
+                nextEntry.IsWeakSpot
+            );
 
         _lastRenderedSelectedIndex = nextIdx;
 
@@ -344,6 +371,8 @@ public static class KnowledgeSearchViewBuilder
                     {
                         ApplyCardSelectionVisual(
                             realized.Card,
+                            realized.JumpBtn,
+                            realized.TitleTb,
                             isSelected: true,
                             realized.IsWeakSpot
                         );
@@ -354,16 +383,29 @@ public static class KnowledgeSearchViewBuilder
         }
     }
 
-    private static void ApplyCardSelectionVisual(Border card, bool isSelected, bool isWeakSpot)
+    private static void ApplyCardSelectionVisual(
+        Border card,
+        Button jumpBtn,
+        TextBlock titleTb,
+        bool isSelected,
+        bool isWeakSpot
+    )
     {
-        card.Background = isSelected
-            ? ThemeService.Brush(ThemeService.BgElevated)
-            : Brushes.Transparent;
-        card.BorderBrush =
-            isSelected ? ThemeService.Brush(ThemeService.TextSecondary)
-            : isWeakSpot ? ThemeService.Brush(ThemeService.PriorityP2Fg)
-            : Brushes.Transparent;
-        card.BorderThickness = new Thickness(isSelected || isWeakSpot ? 2.5 : 0, 0, 0, 0);
+        // Calm Material-style tonal surface elevation (zero loud red stripe, zero white flash)
+        var selectedBg = ThemeService.Brush(ThemeService.BgElevated);
+        var idleBg = UiBuilder.TransparentOf(selectedBg);
+        var selectedBorder = ThemeService.Brush(ThemeService.BorderSubtle);
+        var idleBorder = UiBuilder.TransparentOf(selectedBorder);
+
+        card.Background = isSelected ? selectedBg : idleBg;
+        card.BorderBrush = isSelected ? selectedBorder : idleBorder;
+        titleTb.FontWeight = isSelected ? FontWeight.Bold : FontWeight.SemiBold;
+
+        // Subtle tonal action pill on the active row (calm Material outline, no loud accent border)
+        var btnBg = ThemeService.Brush(ThemeService.BgSurface);
+        jumpBtn.Background = isSelected ? btnBg : UiBuilder.TransparentOf(btnBg);
+        jumpBtn.BorderBrush = isSelected ? selectedBorder : idleBorder;
+        jumpBtn.BorderThickness = new Thickness(1);
     }
 
     private static Grid BuildHeaderBar(
@@ -808,8 +850,8 @@ public static class KnowledgeSearchViewBuilder
                 {
                     if (row is null)
                         return new Border();
-                    var card = BuildResultRowCard(ks, row.Index, row.Item);
-                    _renderedCardsByIndex[row.Index] = (card, row.Item.IsWeakSpot);
+                    var (card, jumpBtn, titleTb) = BuildResultRowCard(ks, row.Index, row.Item);
+                    _renderedCardsByIndex[row.Index] = (card, jumpBtn, titleTb, row.Item.IsWeakSpot);
                     return card;
                 }
             ),
@@ -864,7 +906,7 @@ public static class KnowledgeSearchViewBuilder
 
     private sealed record IndexedResultRow(int Index, KnowledgeSearchResult Item);
 
-    private static Border BuildResultRowCard(
+    private static (Border Card, Button JumpBtn, TextBlock TitleTb) BuildResultRowCard(
         KnowledgeSearchViewModel ks,
         int index,
         KnowledgeSearchResult item
@@ -896,16 +938,15 @@ public static class KnowledgeSearchViewBuilder
 
         AddMetaControl(UiBuilder.Pill(kindLabel, kindFg, kindBg, kindIcon, fontSize: 10));
 
-        AddMetaControl(
-            new TextBlock
-            {
-                Text = item.Title,
-                FontSize = 13.5,
-                FontWeight = FontWeight.Bold,
-                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                VerticalAlignment = VerticalAlignment.Center,
-            }
-        );
+        var titleTb = new TextBlock
+        {
+            Text = item.Title,
+            FontSize = 13.5,
+            FontWeight = isSelected ? FontWeight.Bold : FontWeight.SemiBold,
+            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        AddMetaControl(titleTb);
 
         if (
             !string.IsNullOrWhiteSpace(item.SectionTitle)
@@ -1009,26 +1050,24 @@ public static class KnowledgeSearchViewBuilder
         Grid.SetColumn(actionsCol, 1);
         outerGrid.Children.Add(actionsCol);
 
-        var normalBg = isSelected
-            ? ThemeService.Brush(ThemeService.BgElevated)
-            : Brushes.Transparent;
+        var selectedBg = ThemeService.Brush(ThemeService.BgElevated);
+        var idleBg = UiBuilder.TransparentOf(selectedBg);
         var hoverBg = ThemeService.Brush(ThemeService.BgHover);
-        var normalBorder =
-            isSelected ? ThemeService.Brush(ThemeService.TextSecondary)
-            : item.IsWeakSpot ? ThemeService.Brush(ThemeService.PriorityP2Fg)
-            : Brushes.Transparent;
+        var subtleBorder = ThemeService.Brush(ThemeService.BorderSubtle);
 
         var card = new Border
         {
-            Background = normalBg,
-            BorderBrush = normalBorder,
-            BorderThickness = new Thickness(isSelected || item.IsWeakSpot ? 2.5 : 0, 0, 0, 0),
-            CornerRadius = new CornerRadius(6),
+            Background = idleBg,
+            BorderBrush = UiBuilder.TransparentOf(subtleBorder),
+            // Constant 1px Material tonal outline (zero horizontal jitter, no loud side bar)
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
             Padding = new Thickness(10, 7),
             Cursor = new Cursor(StandardCursorType.Hand),
-            Transitions = UiBuilder.CreateSmoothBrushTransitions(90),
+            Transitions = UiBuilder.CreateSmoothBrushTransitions(95),
             Child = outerGrid,
         };
+        ApplyCardSelectionVisual(card, jumpBtn, titleTb, isSelected, item.IsWeakSpot);
 
         card.PointerEntered += (_, _) =>
         {
@@ -1037,9 +1076,7 @@ public static class KnowledgeSearchViewBuilder
         };
         card.PointerExited += (_, _) =>
             card.Background =
-                index == ks.SelectedResultIndex
-                    ? ThemeService.Brush(ThemeService.BgElevated)
-                    : Brushes.Transparent;
+                index == ks.SelectedResultIndex ? selectedBg : idleBg;
         card.PointerPressed += (_, e) =>
         {
             if (e.GetCurrentPoint(card).Properties.IsLeftButtonPressed)
@@ -1050,7 +1087,7 @@ public static class KnowledgeSearchViewBuilder
             }
         };
 
-        return card;
+        return (card, jumpBtn, titleTb);
     }
 
     private static Control BuildHighlightedSnippetControl(KnowledgeSearchResult item)
@@ -1190,6 +1227,18 @@ public static class KnowledgeSearchViewBuilder
                 }
             );
         }
+
+        // Gentle shimmer pulse while background FTS5 indexing runs
+        var pulseTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(40) };
+        var startUtc = DateTime.UtcNow;
+        pulseTimer.Tick += (_, _) =>
+        {
+            double phase = (DateTime.UtcNow - startUtc).TotalSeconds * 2.6;
+            stack.Opacity = 0.55 + (0.35 * (0.5 + 0.5 * Math.Sin(phase)));
+        };
+        stack.AttachedToVisualTree += (_, _) => pulseTimer.Start();
+        stack.DetachedFromVisualTree += (_, _) => pulseTimer.Stop();
+
         return stack;
     }
 

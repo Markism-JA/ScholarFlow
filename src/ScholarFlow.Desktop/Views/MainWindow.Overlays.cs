@@ -208,7 +208,10 @@ public sealed partial class MainWindow
 
         var stack = new StackPanel { Spacing = 8 };
 
-        var searchHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto") };
+        var searchHeader = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
+        };
         var icon = UiBuilder.Icon(
             MaterialIconKind.Magnify,
             18,
@@ -220,9 +223,35 @@ public sealed partial class MainWindow
         Grid.SetColumn(_searchBox, 1);
         searchHeader.Children.Add(_searchBox);
 
+        var clearBtn = UiBuilder.GhostButton(
+            "Clear",
+            MaterialIconKind.Close,
+            () =>
+            {
+                _vm.ClearQuickSearch();
+                _searchBox.Focus();
+            }
+        );
+        clearBtn.Margin = new Thickness(6, 0, 0, 0);
+        clearBtn.IsVisible = _vm.HasActiveQuickSearchFilters;
+        _searchClearBtn = clearBtn;
+        Grid.SetColumn(clearBtn, 2);
+        searchHeader.Children.Add(clearBtn);
+
         var escChip = UiBuilder.KbdChip("Esc");
         escChip.Margin = new Thickness(8, 0, 0, 0);
-        Grid.SetColumn(escChip, 2);
+        escChip.Cursor = new Cursor(StandardCursorType.Hand);
+        escChip.PointerPressed += (_, e) =>
+        {
+            if (e.GetCurrentPoint(escChip).Properties.IsLeftButtonPressed)
+            {
+                e.Handled = true;
+                _vm.CloseSearchModal();
+                Focus();
+            }
+        };
+        ToolTip.SetTip(escChip, "Close Quick Search (Esc)");
+        Grid.SetColumn(escChip, 3);
         searchHeader.Children.Add(escChip);
 
         stack.Children.Add(searchHeader);
@@ -237,36 +266,47 @@ public sealed partial class MainWindow
         stack.Children.Add(
             new TextBlock
             {
-                Text = "Up/Down to navigate · Enter to jump to match · Esc to close",
+                Text =
+                    "Up/Down to navigate · Enter to jump · @tasks @courses @quizzes @files @pdf #course · Esc to close",
                 FontSize = 11,
                 Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
 
-        return new Border
+        var modal = new Border
         {
             Background = ThemeService.Brush(ThemeService.BgSurface),
             BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(10),
             BoxShadow = BoxShadows.Parse("0 16 40 0 #66000000"),
-            MaxWidth = 560,
+            MaxWidth = 580,
             HorizontalAlignment = HorizontalAlignment.Stretch,
             VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(24, 70, 24, 24),
+            Margin = new Thickness(24, 62, 24, 24),
             Padding = new Thickness(14, 12),
+            ClipToBounds = true,
             Child = stack,
         };
+        UiBuilder.AttachModalEntranceAnimation(modal);
+        return modal;
     }
+
+    private Button? _searchClearBtn;
 
     private void RefreshSearchFilterBar()
     {
+        if (_searchClearBtn is not null)
+            _searchClearBtn.IsVisible = _vm.HasActiveQuickSearchFilters;
+
         _searchFilterBar.Children.Clear();
+        var effectiveCategory = _vm.EffectiveSearchCategoryFilter;
         foreach (var cat in new[] { "All", "Tasks", "Courses", "Quizzes", "Files" })
         {
             var captured = cat;
             bool isActive = string.Equals(
-                _vm.SearchCategoryFilter,
+                effectiveCategory,
                 captured,
                 StringComparison.OrdinalIgnoreCase
             );
@@ -284,7 +324,7 @@ public sealed partial class MainWindow
             _searchFilterBar.Children.Add(btn);
         }
 
-        if (_vm.SearchCategoryFilter == "All")
+        if (effectiveCategory == "All")
         {
             var hideFilesBtn = UiBuilder.GhostButton(
                 _vm.ExcludeFilesInQuickSearch ? "Files Hidden" : "Hide Files",
@@ -395,19 +435,25 @@ public sealed partial class MainWindow
             Grid.SetColumn(badge, 3);
             rowGrid.Children.Add(badge);
 
-            var normalBg = isSelected
-                ? ThemeService.Brush(ThemeService.AccentSoftBg)
-                : Brushes.Transparent;
+            var selectedBg = ThemeService.Brush(ThemeService.BgElevated);
+            var idleBg = UiBuilder.TransparentOf(selectedBg);
+            var subtleBorder = ThemeService.Brush(ThemeService.BorderSubtle);
+            var idleBorder = UiBuilder.TransparentOf(subtleBorder);
+
+            var normalBg = isSelected ? selectedBg : idleBg;
+            var normalBorder = isSelected ? subtleBorder : idleBorder;
             var btn = new Button
             {
                 Content = rowGrid,
                 Background = normalBg,
-                BorderThickness = new Thickness(0),
-                CornerRadius = new CornerRadius(6),
+                BorderBrush = normalBorder,
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
                 Padding = new Thickness(8, 7),
                 Cursor = new Cursor(StandardCursorType.Hand),
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Transitions = UiBuilder.CreateSmoothBrushTransitions(95),
             };
             btn.PointerEntered += (_, _) =>
                 btn.Background = isSelected ? normalBg : ThemeService.Brush(ThemeService.BgHover);

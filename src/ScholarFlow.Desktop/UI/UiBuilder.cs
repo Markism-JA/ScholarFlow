@@ -52,6 +52,61 @@ public static class UiBuilder
             },
         ];
 
+    /// <summary>
+    /// Returns a 0-alpha solid brush matching the RGB channels of <paramref name="targetBrush"/>.
+    /// Prevents bright white/grey mid-transition flashes in Dark Mode that occur when animating
+    /// from <see cref="Brushes.Transparent"/> (#00FFFFFF) to a dark surface color.
+    /// </summary>
+    public static IBrush TransparentOf(IBrush targetBrush)
+    {
+        if (targetBrush is ISolidColorBrush solid)
+            return new SolidColorBrush(Color.FromArgb(0, solid.Color.R, solid.Color.G, solid.Color.B));
+        return new SolidColorBrush(Color.FromArgb(0, 24, 28, 36));
+    }
+
+    /// <summary>
+    /// Plays a crisp 160ms cubic ease-out entrance animation (fade + subtle slide-down + scale-in)
+    /// whenever a floating palette or modal attaches to the visual tree.
+    /// </summary>
+    public static void AttachModalEntranceAnimation(Control modal)
+    {
+        var translate = new TranslateTransform(0, -10);
+        var scale = new ScaleTransform(0.985, 0.985);
+        modal.RenderTransformOrigin = new RelativePoint(0.5, 0.0, RelativeUnit.Relative);
+        modal.RenderTransform = new TransformGroup { Children = { scale, translate } };
+        modal.Opacity = 0.0;
+
+        modal.AttachedToVisualTree += (_, _) =>
+        {
+            const double durationMs = 160.0;
+            var startUtc = DateTime.UtcNow;
+            var timer = new Avalonia.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMilliseconds(14),
+            };
+            timer.Tick += (_, _) =>
+            {
+                double t = Math.Clamp((DateTime.UtcNow - startUtc).TotalMilliseconds / durationMs, 0.0, 1.0);
+                double eased = 1.0 - Math.Pow(1.0 - t, 3.0);
+                modal.Opacity = eased;
+                translate.Y = -10.0 * (1.0 - eased);
+                double s = 0.985 + (0.015 * eased);
+                scale.ScaleX = s;
+                scale.ScaleY = s;
+                if (t >= 1.0)
+                {
+                    timer.Stop();
+                    modal.Opacity = 1.0;
+                    translate.Y = 0;
+                    scale.ScaleX = 1.0;
+                    scale.ScaleY = 1.0;
+                }
+            };
+            modal.DetachedFromVisualTree += (_, _) => timer.Stop();
+            timer.Start();
+        };
+    }
+
     public static Border HairlineDivider(Thickness? margin = null) =>
         new()
         {

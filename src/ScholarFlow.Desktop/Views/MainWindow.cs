@@ -96,8 +96,12 @@ public sealed partial class MainWindow : Window
 
         _searchBox = new TextBox
         {
-            Watermark = "Search tasks, courses (#sqa), or Master PDFs...",
+            Watermark = "Quick jump — e.g. @tasks @courses @quizzes @files @pdf #course...",
             FontSize = 14,
+            FontWeight = FontWeight.Medium,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            VerticalAlignment = VerticalAlignment.Center,
         };
         _searchBox.KeyDown += OnSearchBoxKeyDown;
         _searchBox.PropertyChanged += (_, e) =>

@@ -69,6 +69,18 @@ public sealed partial class MainWindowViewModel
     public string SearchCategoryFilter { get; private set; } = "All";
     public bool ExcludeFilesInQuickSearch { get; private set; }
 
+    /// <summary>
+    /// Effective active category taking inline <c>@tasks</c> / <c>@courses</c> / <c>@quizzes</c> / <c>@files</c> / <c>@pdf</c>
+    /// tokens typed in <see cref="SearchQuery"/> into account so filter chips highlight live.
+    /// </summary>
+    public string EffectiveSearchCategoryFilter =>
+        ParseQuickSearchTokens(SearchQuery).InlineCategory ?? SearchCategoryFilter;
+
+    public bool HasActiveQuickSearchFilters =>
+        !string.IsNullOrWhiteSpace(SearchQuery)
+        || !string.Equals(SearchCategoryFilter, "All", StringComparison.OrdinalIgnoreCase)
+        || ExcludeFilesInQuickSearch;
+
     public void UpdateSearchQuery(string query)
     {
         SearchQuery = query;
@@ -76,9 +88,27 @@ public sealed partial class MainWindowViewModel
         NotifyStateChanged(UiChangeKind.SearchOrTaskList);
     }
 
+    public void ClearQuickSearch()
+    {
+        SearchQuery = string.Empty;
+        SearchCategoryFilter = "All";
+        ExcludeFilesInQuickSearch = false;
+        RecomputeSearchResults();
+        NotifyStateChanged(UiChangeKind.SearchOrTaskList);
+    }
+
     public void SetSearchCategoryFilter(string category)
     {
-        if (string.Equals(SearchCategoryFilter, category, StringComparison.OrdinalIgnoreCase))
+        // Strip any conflicting inline @category token so clicking a chip always wins cleanly
+        var stripped = StripInlineQuickSearchCategoryTokens(SearchQuery);
+        bool queryChanged = !string.Equals(stripped, SearchQuery, StringComparison.Ordinal);
+        if (queryChanged)
+            SearchQuery = stripped;
+
+        if (
+            !queryChanged
+            && string.Equals(SearchCategoryFilter, category, StringComparison.OrdinalIgnoreCase)
+        )
             return;
 
         SearchCategoryFilter = category;
@@ -86,6 +116,122 @@ public sealed partial class MainWindowViewModel
             ExcludeFilesInQuickSearch = false;
         RecomputeSearchResults();
         NotifyStateChanged(UiChangeKind.SearchOrTaskList);
+    }
+
+    private sealed record ParsedQuickSearch(
+        string CleanQuery,
+        string? InlineCategory,
+        bool PdfOnlyFiles,
+        string? CourseFilter
+    );
+
+    private static ParsedQuickSearch ParseQuickSearchTokens(string? rawQuery)
+    {
+        var raw = rawQuery?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(raw))
+            return new ParsedQuickSearch(string.Empty, null, false, null);
+
+        string? inlineCategory = null;
+        bool pdfOnly = false;
+        string? courseFilter = null;
+        var remaining = new List<string>();
+
+        foreach (
+            var token in raw.Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
+        )
+        {
+            if (token.StartsWith('@') && token.Length > 1)
+            {
+                var tag = token[1..].ToLowerInvariant();
+                switch (tag)
+                {
+                    case "all":
+                        inlineCategory = "All";
+                        pdfOnly = false;
+                        continue;
+                    case "task":
+                    case "tasks":
+                        inlineCategory = "Tasks";
+                        pdfOnly = false;
+                        continue;
+                    case "course":
+                    case "courses":
+                        inlineCategory = "Courses";
+                        pdfOnly = false;
+                        continue;
+                    case "quiz":
+                    case "quizzes":
+                        inlineCategory = "Quizzes";
+                        pdfOnly = false;
+                        continue;
+                    case "file":
+                    case "files":
+                        inlineCategory = "Files";
+                        pdfOnly = false;
+                        continue;
+                    case "pdf":
+                    case "pdfs":
+                        inlineCategory = "Files";
+                        pdfOnly = true;
+                        continue;
+                }
+            }
+            else if (token.StartsWith('#') && token.Length > 1)
+            {
+                courseFilter = token[1..].Trim();
+                continue;
+            }
+
+            remaining.Add(token);
+        }
+
+        return new ParsedQuickSearch(
+            string.Join(' ', remaining),
+            inlineCategory,
+            pdfOnly,
+            courseFilter
+        );
+    }
+
+    private static string StripInlineQuickSearchCategoryTokens(string? rawQuery)
+    {
+        var raw = rawQuery?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(raw) || !raw.Contains('@'))
+            return raw;
+
+        var kept = new List<string>();
+        foreach (
+            var token in raw.Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            )
+        )
+        {
+            if (token.StartsWith('@') && token.Length > 1)
+            {
+                var tag = token[1..].ToLowerInvariant();
+                if (
+                    tag
+                    is "all"
+                        or "task"
+                        or "tasks"
+                        or "course"
+                        or "courses"
+                        or "quiz"
+                        or "quizzes"
+                        or "file"
+                        or "files"
+                        or "pdf"
+                        or "pdfs"
+                )
+                    continue;
+            }
+            kept.Add(token);
+        }
+        return string.Join(' ', kept);
     }
 
     public void ToggleExcludeFilesInQuickSearch()
@@ -146,7 +292,10 @@ public sealed partial class MainWindowViewModel
                 )
                     OpenFileInSourceViewer(item.PdfPath);
                 else
+                {
                     ExternalFileLauncher.OpenLocalFile(item.PdfPath);
+                    NotifyStateChanged(UiChangeKind.OverlayOnly);
+                }
                 break;
 
             case SearchResultKind.Quiz when item.Quiz is not null:
@@ -190,7 +339,11 @@ public sealed partial class MainWindowViewModel
                         : SmartViewKind.Inbox;
                 }
                 RecomputeVisibleTasks();
-                SelectTask(task, openInspector: true);
+                SelectedTask = task;
+                SelectedTaskNoteContent = LoadTaskNotePreview(task);
+                IsInspectorOpen = true;
+                // Full refresh closes the Quick Search overlay, switches to the task's view, and opens the inspector
+                NotifyStateChanged();
                 break;
         }
     }
@@ -207,19 +360,40 @@ public sealed partial class MainWindowViewModel
 
     private void RecomputeSearchResults()
     {
-        var q = SearchQuery?.Trim() ?? string.Empty;
+        var parsed = ParseQuickSearchTokens(SearchQuery);
+        var q = parsed.CleanQuery;
+        var activeCategory = parsed.InlineCategory ?? SearchCategoryFilter;
+        var courseFilter = parsed.CourseFilter;
+        bool pdfOnlyFiles = parsed.PdfOnlyFiles;
         var results = new List<SearchResultItem>();
 
-        bool wantCourses = SearchCategoryFilter is "All" or "Courses";
-        bool wantTasks = SearchCategoryFilter is "All" or "Tasks";
-        bool wantQuizzes = SearchCategoryFilter is "All" or "Quizzes";
-        bool wantFiles = (SearchCategoryFilter is "All" or "Files") && !ExcludeFilesInQuickSearch;
+        bool MatchesCourseFilter(string? alias, string? title, string? folderName)
+        {
+            if (string.IsNullOrWhiteSpace(courseFilter))
+                return true;
+            return (!string.IsNullOrWhiteSpace(alias)
+                    && alias.Contains(courseFilter, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(title)
+                    && title.Contains(courseFilter, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(folderName)
+                    && folderName.Contains(courseFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        bool wantCourses = activeCategory is "All" or "Courses";
+        bool wantTasks = activeCategory is "All" or "Tasks";
+        bool wantQuizzes = activeCategory is "All" or "Quizzes";
+        bool wantFiles =
+            (activeCategory is "All" or "Files")
+            && (!ExcludeFilesInQuickSearch || parsed.InlineCategory == "Files");
 
         // 1. Matching Courses
         if (wantCourses)
         {
             foreach (var c in Courses.Where(c => !c.IsArchived))
             {
+                if (!MatchesCourseFilter(c.EffectiveAlias, c.Title, c.FolderName))
+                    continue;
+
                 if (QuickSearchMatcher.Matches(q, c.Title, c.Alias, c.CourseCode))
                 {
                     results.Add(
@@ -238,7 +412,9 @@ public sealed partial class MainWindowViewModel
         // 2. Matching Tasks (SQLite FTS5 + QuickSearchMatcher fallback)
         if (wantTasks)
         {
-            var allNodes = EnumerateAllTaskNodes(AllTasks).ToList();
+            var allNodes = EnumerateAllTaskNodes(AllTasks)
+                .Where(t => MatchesCourseFilter(t.CourseAlias, t.CourseFolder, t.CourseFolder))
+                .ToList();
             var byId = allNodes.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
             var matchedTasks = new List<TaskItem>();
 
@@ -299,7 +475,7 @@ public sealed partial class MainWindowViewModel
                     new SearchResultItem(SearchResultKind.Task, t.Title, sub, badge, Task: t)
                 );
 
-                if (SearchCategoryFilter == "All" && results.Count >= 18)
+                if (activeCategory == "All" && results.Count >= 18)
                     break;
             }
         }
@@ -310,6 +486,9 @@ public sealed partial class MainWindowViewModel
             var scoredFiles = new List<(int Score, SearchResultItem Item)>();
             foreach (var c in Courses.Where(c => !c.IsArchived))
             {
+                if (!MatchesCourseFilter(c.EffectiveAlias, c.Title, c.FolderName))
+                    continue;
+
                 var masterPdf = MasterPdfService.FindExistingMasterPdfPath(BasinRoot, c.FolderName);
                 if (masterPdf is not null)
                 {
@@ -358,6 +537,11 @@ public sealed partial class MainWindowViewModel
                             || QuickSearchIgnoredManifests.Contains(fileName)
                         )
                             continue;
+                        if (
+                            pdfOnlyFiles
+                            && !fileName.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                        )
+                            continue;
 
                         var rel = Path.GetRelativePath(courseDir, file).Replace('\\', '/');
                         if (
@@ -404,7 +588,7 @@ public sealed partial class MainWindowViewModel
                 }
             }
 
-            int maxFiles = SearchCategoryFilter == "Files" ? 30 : 10;
+            int maxFiles = activeCategory == "Files" ? 30 : 10;
             foreach (var (_, item) in scoredFiles.OrderByDescending(x => x.Score).Take(maxFiles))
                 results.Add(item);
         }
@@ -414,6 +598,9 @@ public sealed partial class MainWindowViewModel
         {
             foreach (var qz in QuizStudio.SavedQuizzes)
             {
+                if (!MatchesCourseFilter(null, qz.CourseTitle, qz.CourseFolder))
+                    continue;
+
                 bool matchesQuiz =
                     QuickSearchMatcher.Matches(
                         q,
