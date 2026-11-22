@@ -550,7 +550,7 @@ public sealed partial class QuizLlmService
             if (modality.DetectedDiagramsInSource || modality.HasImageSources)
             {
                 sb.AppendLine(
-                    "- ARCHITECTURE / PROCESS DIAGRAMS DETECTED: When testing multi-stage pipelines, branching logic, network protocols, or state flows, populate \"diagram\" using EITHER a concise 1-line chain (\"[Client] -> [API Gateway] -> [DB]\"), a Mermaid-subset branching flowchart (\"flowchart LR\\nA[CPU] --> B{L1 Hit?}\\nB -->|Yes| C[Fast]\\nB -->|No| D[(RAM)]\"), or a sequenceDiagram (\"sequenceDiagram\\nClient ->> Server: SYN\\nServer -->> Client: SYN-ACK\"). Use \"[???]\" for cloze-style missing nodes. Leave \"diagram\": null for standard questions."
+                    "- ARCHITECTURE / PROCESS DIAGRAMS DETECTED: When testing multi-stage pipelines, branching logic, network protocols, class hierarchies, ER schemas, or state flows, populate \"diagram\" using standard Mermaid syntax (\"flowchart LR\", \"sequenceDiagram\", \"stateDiagram-v2\", \"classDiagram\", \"erDiagram\", or \"mindmap\"). Use \"[???]\" for cloze-style missing nodes. Leave \"diagram\": null for standard questions."
                 );
             }
             else

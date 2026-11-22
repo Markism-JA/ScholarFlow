@@ -415,6 +415,63 @@ public static partial class QuizPdfPrintRenderer
             double figX = MarginX + 18;
             double figW = Math.Max(160, ContentWidth() - 18);
 
+            // Primary path: Mermaider + Svg.Skia high-DPI diagram image (supports all 24 Mermaid types)
+            if (MermaidDiagramService.CustomMermaidPngRenderer is not null)
+            {
+                var pngBytes = MermaidDiagramService.CustomMermaidPngRenderer(diagramText, true);
+                if (pngBytes is { Length: > 0 })
+                {
+                    try
+                    {
+                        using var xImg = XImage.FromStream(() => new MemoryStream(pngBytes, writable: false));
+                        double naturalW = xImg.PixelWidth / 2.5;
+                        double naturalH = xImg.PixelHeight / 2.5;
+                        double maxDrawW = figW - 16;
+                        double maxDrawH = Math.Min(
+                            340,
+                            page.Height.Point - MarginTop - MarginBottom - 64
+                        );
+                        double fitScale = Math.Min(
+                            1.0,
+                            Math.Min(maxDrawW / Math.Max(1, naturalW), maxDrawH / Math.Max(1, naturalH))
+                        );
+                        double drawW = naturalW * fitScale;
+                        double drawH = naturalH * fitScale;
+                        double boxH = drawH + 30;
+
+                        EnsureSpace(boxH + 8);
+                        gfx.DrawRoundedRectangle(
+                            HairlinePen,
+                            XBrushes.White,
+                            figX,
+                            y,
+                            figW,
+                            boxH,
+                            5,
+                            5
+                        );
+                        double imgX = figX + (figW - drawW) * 0.5;
+                        gfx.DrawImage(xImg, imgX, y + 8, drawW, drawH);
+
+                        var caption =
+                            $"Figure {questionNumber}.1 — {MermaidDiagramService.DetectDiagramTitle(diagramText)}";
+                        gfx.DrawString(
+                            caption,
+                            italicFont,
+                            InkMuted,
+                            new XRect(figX + 8, y + drawH + 12, figW - 16, 14),
+                            XStringFormats.TopCenter
+                        );
+                        y += boxH + 8;
+                        return;
+                    }
+                    catch
+                    {
+                        // Fall through to legacy vector fallback below
+                    }
+                }
+            }
+
             if (PdfDiagramGraphRenderer.TryParseSequenceDiagram(diagramText, out var parsedSeq))
             {
                 double neededH = PdfDiagramGraphRenderer.EstimateSequenceDiagramHeight(

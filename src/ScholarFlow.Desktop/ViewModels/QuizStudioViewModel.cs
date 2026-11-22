@@ -74,6 +74,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     static QuizStudioViewModel()
     {
         LatexMathFormatter.CustomLatexPngRenderer = UI.LatexBitmapRenderer.TryRenderPngBytes;
+        MermaidDiagramService.CustomMermaidPngRenderer = (spec, forPrint) =>
+            UI.MermaidBitmapRenderer.TryRenderPngBytes(spec, isDarkTheme: false, forPrint: forPrint);
 
         PdfQuizGrounder.CustomPageRegionRasterizer = (
             pdfPath,
