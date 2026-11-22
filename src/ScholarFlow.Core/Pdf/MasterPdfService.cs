@@ -1599,29 +1599,34 @@ public sealed partial class MasterPdfService
             }
             if (isBold && isItalic)
             {
+                yield return "/usr/share/fonts/TTF/DejaVuSans-BoldOblique.ttf";
+                yield return "/usr/share/fonts/dejavu/DejaVuSans-BoldOblique.ttf";
+                yield return "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf";
                 yield return "/usr/share/fonts/noto/NotoSans-BoldItalic.ttf";
                 yield return "/usr/share/fonts/liberation/LiberationSans-BoldItalic.ttf";
-                yield return "/usr/share/fonts/TTF/DejaVuSans-BoldOblique.ttf";
             }
             if (isBold)
             {
-                yield return "/usr/share/fonts/noto/NotoSans-Bold.ttf";
-                yield return "/usr/share/fonts/liberation/LiberationSans-Bold.ttf";
                 yield return "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf";
                 yield return "/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf";
                 yield return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf";
+                yield return "/usr/share/fonts/noto/NotoSans-Bold.ttf";
+                yield return "/usr/share/fonts/liberation/LiberationSans-Bold.ttf";
             }
             if (isItalic)
             {
+                yield return "/usr/share/fonts/TTF/DejaVuSans-Oblique.ttf";
+                yield return "/usr/share/fonts/dejavu/DejaVuSans-Oblique.ttf";
+                yield return "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf";
                 yield return "/usr/share/fonts/noto/NotoSans-Italic.ttf";
                 yield return "/usr/share/fonts/liberation/LiberationSans-Italic.ttf";
-                yield return "/usr/share/fonts/TTF/DejaVuSans-Oblique.ttf";
             }
-            yield return "/usr/share/fonts/noto/NotoSans-Regular.ttf";
-            yield return "/usr/share/fonts/liberation/LiberationSans-Regular.ttf";
+            // Prefer DejaVuSans on Linux: 20/20 math Unicode glyph coverage (⇒⇔≤≥≠∈ℤℝ∣∑∫√) vs 6/20 in NotoSans-Regular
             yield return "/usr/share/fonts/TTF/DejaVuSans.ttf";
             yield return "/usr/share/fonts/dejavu/DejaVuSans.ttf";
             yield return "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+            yield return "/usr/share/fonts/noto/NotoSans-Regular.ttf";
+            yield return "/usr/share/fonts/liberation/LiberationSans-Regular.ttf";
         }
 
         public byte[]? GetFont(string faceName)

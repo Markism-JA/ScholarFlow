@@ -1035,5 +1035,14 @@ public sealed class QuizSuperEngineTests
         };
         var okReport = QuizQualityCritic.Audit([scalarQ]);
         Assert.DoesNotContain(okReport.Issues, i => i.Code == "COMPLEX_LATEX_TEXT_ANSWER");
+
+        // 5. Multi-line equation splitting & structural TeX MCQ option detection for PDF printing
+        var splitLines = LatexMathFormatter.SplitDisplayEquationLines(proofLatex);
+        Assert.Equal(3, splitLines.Count);
+        Assert.StartsWith(@"\implies", splitLines[1]);
+        Assert.StartsWith(@"\implies", splitLines[2]);
+
+        Assert.True(LatexMathFormatter.ShouldRenderOptionAsTeX(@"\frac{a+b}{2}"));
+        Assert.False(LatexMathFormatter.ShouldRenderOptionAsTeX("Divisibility is transitive"));
     }
 }

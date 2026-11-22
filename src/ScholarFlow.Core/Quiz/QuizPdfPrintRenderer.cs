@@ -636,7 +636,7 @@ public static partial class QuizPdfPrintRenderer
                     "Also accepted:",
                     smallBoldFont,
                     InkSecondary,
-                    string.Join(", ", q.AcceptedAliases),
+                    string.Join(", ", q.AcceptedAliases.Select(LatexMathFormatter.FormatInlineMath)),
                     smallFont,
                     InkSecondary,
                     indent: indent + 12,
@@ -662,7 +662,7 @@ public static partial class QuizPdfPrintRenderer
                             "WHY CORRECT:",
                             smallBoldFont,
                             SuccessInk,
-                            whyCorrect,
+                            LatexMathFormatter.FormatInlineMath(whyCorrect),
                             bodyFont,
                             InkPrimary,
                             indent: indent + 12,
@@ -675,7 +675,7 @@ public static partial class QuizPdfPrintRenderer
                             "WHY DISTRACTORS FAIL:",
                             smallBoldFont,
                             InkSecondary,
-                            whyDistractors,
+                            LatexMathFormatter.FormatInlineMath(whyDistractors),
                             bodyFont,
                             InkSecondary,
                             indent: indent + 12,
@@ -688,7 +688,7 @@ public static partial class QuizPdfPrintRenderer
                             "CORE PRINCIPLE:",
                             smallBoldFont,
                             AccentSlate,
-                            corePrinciple,
+                            LatexMathFormatter.FormatInlineMath(corePrinciple),
                             bodyFont,
                             InkPrimary,
                             indent: indent + 12,
@@ -702,7 +702,7 @@ public static partial class QuizPdfPrintRenderer
                         "Explanation:",
                         smallBoldFont,
                         InkSecondary,
-                        q.Explanation,
+                        LatexMathFormatter.FormatInlineMath(q.Explanation),
                         bodyFont,
                         InkPrimary,
                         indent: indent + 12,
@@ -829,7 +829,17 @@ public static partial class QuizPdfPrintRenderer
         for (int i = 0; i < quiz.Questions.Count; i++)
         {
             var q = quiz.Questions[i];
-            EnsureSpace(54);
+            var formattedPrompt = LatexMathFormatter.FormatInlineMath(q.Prompt);
+
+            // Keep-with-next orphan protection: ensure the stem + its immediate equation/media or first options stay together
+            double estimatedKeepHeight = 46;
+            if (!string.IsNullOrWhiteSpace(q.MathLatex))
+                estimatedKeepHeight += 42;
+            else if (!string.IsNullOrWhiteSpace(q.CodeSnippet) || !string.IsNullOrWhiteSpace(q.Diagram))
+                estimatedKeepHeight += 48;
+            if (formattedPrompt.Length > 140)
+                estimatedKeepHeight += 28;
+            EnsureSpace(Math.Min(150, estimatedKeepHeight));
 
             // In Study Guide mode only, show the subtle metadata line above the question
             if (opt.Mode == QuizPdfExportMode.StudyGuideInline)
@@ -855,12 +865,12 @@ public static partial class QuizPdfPrintRenderer
                 y += 1.5;
             }
 
-            // Question Stem: Only the item number "1." is bold; stem is crisp regular weight
+            // Question Stem: Only the item number "1." is bold; stem is crisp regular weight with formatted inline math
             DrawLabeledParagraph(
                 $"{i + 1}.",
                 bodyBoldFont,
                 InkPrimary,
-                q.Prompt,
+                formattedPrompt,
                 bodyFont,
                 InkPrimary,
                 indent: 0,
@@ -884,66 +894,120 @@ public static partial class QuizPdfPrintRenderer
                 );
             }
 
-            // Rich Content: Mathematical Formula (prefer crisp CSharpMath TeX PNG, fallback to token-safe Unicode)
+            // Rich Content: Mathematical Formula (CSharpMath TeX PNG with smart multi-line wrapping for long derivations)
             if (!string.IsNullOrWhiteSpace(q.MathLatex))
             {
-                var texPng = LatexMathFormatter.CustomLatexPngRenderer?.Invoke(
-                    q.MathLatex,
-                    14f,
-                    0xFF0F172A
-                );
-                if (texPng is { Length: > 0 })
+                bool renderedAsTexImage = false;
+                if (LatexMathFormatter.CustomLatexPngRenderer is not null)
                 {
                     try
                     {
-                        using var xTex = XImage.FromStream(() =>
-                            new MemoryStream(texPng, writable: false)
-                        );
                         double maxW = ContentWidth() - 36;
-                        // Rendered at 2x HiDPI: convert pixels to ~0.42pt for crisp print density
-                        double drawW = xTex.PixelWidth * 0.42;
-                        double drawH = xTex.PixelHeight * 0.42;
-                        if (drawW > maxW)
+                        const double pxToPt = 0.40;
+                        var singlePng = LatexMathFormatter.CustomLatexPngRenderer(
+                            q.MathLatex,
+                            13.5f,
+                            0xFF0F172A
+                        );
+
+                        var linePngs = new List<byte[]>();
+                        bool shouldSplit = q.MathLatex.Contains(@"\\", StringComparison.Ordinal);
+                        if (!shouldSplit && singlePng is { Length: > 0 })
                         {
-                            double scale = maxW / drawW;
-                            drawW *= scale;
-                            drawH *= scale;
+                            using var probeImg = XImage.FromStream(() =>
+                                new MemoryStream(singlePng, writable: false)
+                            );
+                            if (probeImg.PixelWidth * pxToPt > maxW * 1.12)
+                                shouldSplit = true;
                         }
-                        if (drawH > 95)
+
+                        if (shouldSplit)
                         {
-                            double scale = 95.0 / drawH;
-                            drawW *= scale;
-                            drawH *= scale;
+                            var splitLines = LatexMathFormatter.SplitDisplayEquationLines(q.MathLatex);
+                            if (splitLines.Count > 1)
+                            {
+                                foreach (var ln in splitLines)
+                                {
+                                    var lp = LatexMathFormatter.CustomLatexPngRenderer(
+                                        ln,
+                                        13.0f,
+                                        0xFF0F172A
+                                    );
+                                    if (lp is { Length: > 0 })
+                                        linePngs.Add(lp);
+                                }
+                            }
                         }
-                        double boxH = drawH + 10;
-                        EnsureSpace(boxH + 6);
-                        double boxX = MarginX + 18;
-                        double boxW = ContentWidth() - 18;
-                        gfx.DrawRectangle(FormulaBg, boxX, y, boxW, boxH);
-                        gfx.DrawRectangle(HairlinePen, boxX, y, boxW, boxH);
-                        double imgX = boxX + Math.Max(8, (boxW - drawW) / 2.0);
-                        gfx.DrawImage(xTex, imgX, y + 5, drawW, drawH);
-                        y += boxH + 6;
+
+                        if (linePngs.Count == 0 && singlePng is { Length: > 0 })
+                            linePngs.Add(singlePng);
+
+                        if (linePngs.Count > 0)
+                        {
+                            var loaded = new List<(XImage Img, double W, double H)>();
+                            try
+                            {
+                                double totalImgH = 0;
+                                foreach (var bytes in linePngs)
+                                {
+                                    var xTex = XImage.FromStream(() =>
+                                        new MemoryStream(bytes, writable: false)
+                                    );
+                                    double dw = xTex.PixelWidth * pxToPt;
+                                    double dh = xTex.PixelHeight * pxToPt;
+                                    if (dw > maxW)
+                                    {
+                                        double s = maxW / dw;
+                                        dw *= s;
+                                        dh *= s;
+                                    }
+                                    if (dh > 92)
+                                    {
+                                        double s = 92.0 / dh;
+                                        dw *= s;
+                                        dh *= s;
+                                    }
+                                    loaded.Add((xTex, dw, dh));
+                                    totalImgH += dh + 4;
+                                }
+
+                                double boxH = totalImgH + 8;
+                                EnsureSpace(boxH + 6);
+                                double boxX = MarginX + 18;
+                                double boxW = ContentWidth() - 18;
+                                gfx.DrawRectangle(FormulaBg, boxX, y, boxW, boxH);
+                                gfx.DrawRectangle(HairlinePen, boxX, y, boxW, boxH);
+
+                                double curImgY = y + 5;
+                                foreach (var (img, dw, dh) in loaded)
+                                {
+                                    double imgX = boxX + Math.Max(8, (boxW - dw) / 2.0);
+                                    gfx.DrawImage(img, imgX, curImgY, dw, dh);
+                                    curImgY += dh + 4;
+                                }
+                                y += boxH + 6;
+                                renderedAsTexImage = true;
+                            }
+                            finally
+                            {
+                                foreach (var (img, _, _) in loaded)
+                                    img.Dispose();
+                            }
+                        }
                     }
                     catch
                     {
-                        DrawCodeOrFormulaListing(
-                            null,
-                            BeautifyLatexForPrint(q.MathLatex),
-                            FormulaBg,
-                            monoFont,
-                            indent: 18,
-                            showLineNumbers: false
-                        );
+                        renderedAsTexImage = false;
                     }
                 }
-                else
+
+                if (!renderedAsTexImage)
                 {
                     DrawCodeOrFormulaListing(
                         null,
                         BeautifyLatexForPrint(q.MathLatex),
                         FormulaBg,
-                        monoFont,
+                        bodyFont,
                         indent: 18,
                         showLineNumbers: false
                     );
@@ -974,54 +1038,179 @@ public static partial class QuizPdfPrintRenderer
             }
             else if (q.Kind is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational)
             {
-                double colW = (ContentWidth() - 36) / 2.0;
-                bool canUseTwoColumnGrid =
-                    q.Options.Count == 4
-                    && q.Options.All(o =>
-                        gfx.MeasureString($"A.  {o}", bodyFont).Width <= colW - 22
-                    );
+                var formattedOpts = q
+                    .Options.Select(LatexMathFormatter.FormatInlineMath)
+                    .ToList();
 
-                if (canUseTwoColumnGrid)
+                // Check if any option contains structural LaTeX (\frac, \sqrt, \int, etc.) for TeX image rendering
+                List<(XImage? Img, double W, double H)>? optionTexImages = null;
+                bool hasAnyTexOption =
+                    LatexMathFormatter.CustomLatexPngRenderer is not null
+                    && q.Options.Any(LatexMathFormatter.ShouldRenderOptionAsTeX);
+
+                if (hasAnyTexOption)
                 {
-                    // Compact 2x2 academic exam option grid for short options
-                    for (int row = 0; row < 2; row++)
-                    {
-                        EnsureSpace(16);
-                        double rowBaseY = y + 11;
-                        for (int col = 0; col < 2; col++)
-                        {
-                            int oi = (row * 2) + col;
-                            char letter = (char)('A' + oi);
-                            double cellX = MarginX + 18 + (col * (colW + 12));
-                            DrawChoiceCircleOrBox(cellX, y + 3.2, size: 7.8);
-                            gfx.DrawString(
-                                $"{letter}.  {q.Options[oi]}",
-                                bodyFont,
-                                InkPrimary,
-                                new XPoint(cellX + 12, rowBaseY)
-                            );
-                        }
-                        y += 15.5;
-                    }
-                }
-                else
-                {
+                    optionTexImages = new List<(XImage?, double, double)>(q.Options.Count);
+                    double maxOptImgW = ContentWidth() - 62;
                     for (int oi = 0; oi < q.Options.Count; oi++)
                     {
-                        char letter = (char)('A' + oi);
-                        EnsureSpace(15);
-                        DrawChoiceCircleOrBox(MarginX + 18, y + 3.2, size: 7.8);
-                        DrawLabeledParagraph(
-                            $"{letter}.",
-                            bodyFont,
-                            InkSecondary,
-                            q.Options[oi],
-                            bodyFont,
-                            InkPrimary,
-                            indent: 31,
-                            lineHeight: 14.2
-                        );
-                        y += 1.5;
+                        XImage? optImg = null;
+                        double ow = 0;
+                        double oh = 0;
+                        if (LatexMathFormatter.ShouldRenderOptionAsTeX(q.Options[oi]))
+                        {
+                            try
+                            {
+                                var png = LatexMathFormatter.CustomLatexPngRenderer!(
+                                    q.Options[oi],
+                                    11.5f,
+                                    0xFF181C22
+                                );
+                                if (png is { Length: > 0 })
+                                {
+                                    optImg = XImage.FromStream(() =>
+                                        new MemoryStream(png, writable: false)
+                                    );
+                                    ow = optImg.PixelWidth * 0.36;
+                                    oh = optImg.PixelHeight * 0.36;
+                                    if (ow > maxOptImgW)
+                                    {
+                                        double s = maxOptImgW / ow;
+                                        ow *= s;
+                                        oh *= s;
+                                    }
+                                    if (oh > 46)
+                                    {
+                                        double s = 46.0 / oh;
+                                        ow *= s;
+                                        oh *= s;
+                                    }
+                                }
+                            }
+                            catch
+                            {
+                                optImg?.Dispose();
+                                optImg = null;
+                            }
+                        }
+                        optionTexImages.Add((optImg, ow, oh));
+                    }
+                }
+
+                try
+                {
+                    double colW = (ContentWidth() - 36) / 2.0;
+                    bool canUseTwoColumnGrid =
+                        q.Options.Count == 4
+                        && Enumerable
+                            .Range(0, 4)
+                            .All(oi =>
+                            {
+                                if (optionTexImages is not null && optionTexImages[oi].Img is not null)
+                                    return optionTexImages[oi].W <= colW - 30;
+                                return gfx.MeasureString($"A.  {formattedOpts[oi]}", bodyFont).Width
+                                    <= colW - 22;
+                            });
+
+                    if (canUseTwoColumnGrid)
+                    {
+                        // Compact 2x2 academic exam option grid (supports both formatted text and TeX option images)
+                        for (int row = 0; row < 2; row++)
+                        {
+                            double rowH = 15.5;
+                            if (optionTexImages is not null)
+                            {
+                                for (int col = 0; col < 2; col++)
+                                {
+                                    int oi = (row * 2) + col;
+                                    if (optionTexImages[oi].Img is not null)
+                                        rowH = Math.Max(rowH, optionTexImages[oi].H + 6);
+                                }
+                            }
+                            EnsureSpace(rowH + 2);
+                            double rowMidY = y + (rowH * 0.5);
+                            for (int col = 0; col < 2; col++)
+                            {
+                                int oi = (row * 2) + col;
+                                char letter = (char)('A' + oi);
+                                double cellX = MarginX + 18 + (col * (colW + 12));
+                                DrawChoiceCircleOrBox(cellX, rowMidY - 3.9, size: 7.8);
+                                if (optionTexImages is not null && optionTexImages[oi].Img is not null)
+                                {
+                                    gfx.DrawString(
+                                        $"{letter}.",
+                                        bodyFont,
+                                        InkSecondary,
+                                        new XPoint(cellX + 12, rowMidY + 3.5)
+                                    );
+                                    var (oImg, ow, oh) = optionTexImages[oi];
+                                    gfx.DrawImage(
+                                        oImg!,
+                                        cellX + 26,
+                                        rowMidY - (oh * 0.5),
+                                        ow,
+                                        oh
+                                    );
+                                }
+                                else
+                                {
+                                    gfx.DrawString(
+                                        $"{letter}.  {formattedOpts[oi]}",
+                                        bodyFont,
+                                        InkPrimary,
+                                        new XPoint(cellX + 12, rowMidY + 3.5)
+                                    );
+                                }
+                            }
+                            y += rowH;
+                        }
+                    }
+                    else
+                    {
+                        for (int oi = 0; oi < q.Options.Count; oi++)
+                        {
+                            char letter = (char)('A' + oi);
+                            if (optionTexImages is not null && optionTexImages[oi].Img is not null)
+                            {
+                                var (oImg, ow, oh) = optionTexImages[oi];
+                                double rowH = Math.Max(16, oh + 5);
+                                EnsureSpace(rowH + 2);
+                                double midY = y + (rowH * 0.5);
+                                DrawChoiceCircleOrBox(MarginX + 18, midY - 3.9, size: 7.8);
+                                gfx.DrawString(
+                                    $"{letter}.",
+                                    bodyFont,
+                                    InkSecondary,
+                                    new XPoint(MarginX + 31, midY + 3.5)
+                                );
+                                gfx.DrawImage(oImg!, MarginX + 46, midY - (oh * 0.5), ow, oh);
+                                y += rowH + 1.5;
+                            }
+                            else
+                            {
+                                EnsureSpace(15);
+                                DrawChoiceCircleOrBox(MarginX + 18, y + 3.2, size: 7.8);
+                                DrawLabeledParagraph(
+                                    $"{letter}.",
+                                    bodyFont,
+                                    InkSecondary,
+                                    formattedOpts[oi],
+                                    bodyFont,
+                                    InkPrimary,
+                                    indent: 31,
+                                    lineHeight: 14.2
+                                );
+                                y += 1.5;
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    if (optionTexImages is not null)
+                    {
+                        foreach (var (img, _, _) in optionTexImages)
+                            img?.Dispose();
                     }
                 }
             }
@@ -1040,12 +1229,42 @@ public static partial class QuizPdfPrintRenderer
                 {
                     EnsureSpace(16);
                     gfx.DrawRectangle(CheckboxPen, MarginX + 18, y + 2.5, 16, 10);
-                    DrawWrapped(step, bodyFont, InkPrimary, indent: 40, lineHeight: 14.2);
+                    DrawWrapped(
+                        LatexMathFormatter.FormatInlineMath(step),
+                        bodyFont,
+                        InkPrimary,
+                        indent: 40,
+                        lineHeight: 14.2
+                    );
                     y += 1.5;
                 }
             }
             else
             {
+                // For math calculation items in Exam Worksheet mode, include a compact "Work" box above the answer line
+                bool isMathCalculation =
+                    opt.Mode == QuizPdfExportMode.ExamWorksheet
+                    && (
+                        !string.IsNullOrWhiteSpace(q.MathLatex)
+                        || LatexMathFormatter.TryParseNumericValue(q.CorrectAnswer, out _)
+                    );
+                if (isMathCalculation)
+                {
+                    const double workH = 44;
+                    EnsureSpace(workH + 24);
+                    double boxX = MarginX + 18;
+                    double boxW = ContentWidth() - 18;
+                    gfx.DrawRectangle(SoftPanelBg, boxX, y, boxW, workH);
+                    gfx.DrawRectangle(HairlinePen, boxX, y, boxW, workH);
+                    gfx.DrawString(
+                        "Work / Calculation:",
+                        smallFont,
+                        InkMuted,
+                        new XPoint(boxX + 6, y + 11)
+                    );
+                    y += workH + 5;
+                }
+
                 // Identification or Fill-in-the-Blank clean ruled answer line
                 EnsureSpace(20);
                 double ansY = y + 13;
@@ -1080,7 +1299,7 @@ public static partial class QuizPdfPrintRenderer
                         "Hint:",
                         smallBoldFont,
                         HintInk,
-                        q.Hint,
+                        LatexMathFormatter.FormatInlineMath(q.Hint),
                         italicFont,
                         InkSecondary,
                         indent: 18,
@@ -1134,7 +1353,7 @@ public static partial class QuizPdfPrintRenderer
                     $"Q{num} (@{q.TopicTag.TrimStart('@')}):",
                     smallBoldFont,
                     HintInk,
-                    q.Hint!,
+                    LatexMathFormatter.FormatInlineMath(q.Hint!),
                     bodyFont,
                     InkPrimary,
                     indent: 2,
@@ -1392,7 +1611,7 @@ public static partial class QuizPdfPrintRenderer
         if (q.Kind == QuizQuestionKind.Ordering)
             return "[Sequence]";
 
-        var ans = q.CorrectAnswer.Trim();
+        var ans = LatexMathFormatter.FormatInlineMath(q.CorrectAnswer);
         return ans.Length > 18 ? ans[..18].Trim() + "…" : ans;
     }
 
@@ -1413,15 +1632,18 @@ public static partial class QuizPdfPrintRenderer
                 string.Equals(o.Trim(), q.CorrectAnswer.Trim(), StringComparison.OrdinalIgnoreCase)
             );
             if (idx >= 0)
-                return $"{(char)('A' + idx)}. {opts[idx]}";
+                return $"{(char)('A' + idx)}. {LatexMathFormatter.FormatInlineMath(opts[idx])}";
         }
 
         if (q.Kind == QuizQuestionKind.Ordering && q.Options.Count > 0)
         {
-            return string.Join("  ->  ", q.Options.Select((s, idx) => $"{idx + 1}. {s}"));
+            return string.Join(
+                "  ->  ",
+                q.Options.Select((s, idx) => $"{idx + 1}. {LatexMathFormatter.FormatInlineMath(s)}")
+            );
         }
 
-        return q.CorrectAnswer;
+        return LatexMathFormatter.FormatInlineMath(q.CorrectAnswer);
     }
 
     private static string FormatKindShort(QuizQuestionKind kind) =>

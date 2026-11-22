@@ -501,6 +501,69 @@ public static partial class LatexMathFormatter
         return s.Trim();
     }
 
+    [GeneratedRegex(@"\\(?:frac|dfrac|tfrac|sum|prod|int|iint|oint|sqrt|binom|begin\{)")]
+    private static partial Regex StructuralTexOptionRegex();
+
+    [GeneratedRegex(@"(?=(?:\\implies|\\Rightarrow|\\iff|\\Leftrightarrow)\b)")]
+    private static partial Regex ImplicationSplitRegex();
+
+    /// <summary>
+    /// Returns true if an MCQ/Situational option contains structural LaTeX (fractions, roots, integrals, matrices)
+    /// that benefits from TeX image rendering rather than flat inline Unicode text.
+    /// </summary>
+    public static bool ShouldRenderOptionAsTeX(string? optionText)
+    {
+        if (string.IsNullOrWhiteSpace(optionText))
+            return false;
+
+        var trimmed = optionText.Trim();
+        if (trimmed.Length > 150)
+            return false;
+
+        return StructuralTexOptionRegex().IsMatch(trimmed);
+    }
+
+    /// <summary>
+    /// Splits long multi-step derivations (e.g. "A \implies B \implies C" or explicit "\\" breaks)
+    /// into readable stacked TeX lines so printable exam equations never shrink to unreadable sizes.
+    /// </summary>
+    public static List<string> SplitDisplayEquationLines(string rawLatex)
+    {
+        var clean = (rawLatex ?? string.Empty).Trim();
+        if (string.IsNullOrEmpty(clean))
+            return [];
+
+        // Preserve environments like \begin{cases}...\end{cases} or \begin{pmatrix}...\end{pmatrix} intact
+        if (clean.Contains(@"\begin{", StringComparison.Ordinal))
+            return [clean];
+
+        var explicitLines = clean
+            .Split(@"\\", StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(l => !string.IsNullOrWhiteSpace(l))
+            .ToList();
+
+        var result = new List<string>();
+        foreach (var line in explicitLines)
+        {
+            if (line.Length > 48)
+            {
+                var parts = ImplicationSplitRegex()
+                    .Split(line)
+                    .Select(p => p.Trim())
+                    .Where(p => p.Length > 0)
+                    .ToList();
+                if (parts.Count >= 2)
+                {
+                    result.AddRange(parts);
+                    continue;
+                }
+            }
+            result.Add(line);
+        }
+
+        return result.Count > 0 ? result : [clean];
+    }
+
     /// <summary>
     /// Returns true if the text contains raw LaTeX structural or symbol commands that a student
     /// should not be expected to type verbatim in an Identification / FillInTheBlank box.
