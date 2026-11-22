@@ -22,7 +22,8 @@ public sealed record QuizPdfExportOptions(
     bool IncludeHintsSection = true,
     bool IncludeConfidenceBoxes = false,
     bool IncludeEvidenceCitations = true,
-    bool IncludeBlueprintSummary = true
+    bool IncludeBlueprintSummary = true,
+    string? BasinRoot = null
 )
 {
     public static QuizPdfExportOptions ExamDefault { get; } = new();
@@ -530,12 +531,19 @@ public static partial class QuizPdfPrintRenderer
             }
         }
 
-        static string? ResolveQuestionImagePath(QuizQuestionRecord q)
+        static string? ResolveQuestionImagePath(QuizQuestionRecord q, string? basinRoot)
         {
             if (!string.IsNullOrWhiteSpace(q.ImagePath))
             {
                 if (File.Exists(q.ImagePath))
                     return q.ImagePath;
+
+                if (!Path.IsPathRooted(q.ImagePath) && !string.IsNullOrWhiteSpace(basinRoot))
+                {
+                    var basinCandidate = Path.Combine(basinRoot, q.ImagePath);
+                    if (File.Exists(basinCandidate))
+                        return basinCandidate;
+                }
 
                 if (!Path.IsPathRooted(q.ImagePath) && !string.IsNullOrWhiteSpace(q.SourcePdfPath))
                 {
@@ -561,9 +569,31 @@ public static partial class QuizPdfPrintRenderer
             return null;
         }
 
+        static string FormatFigureCaption(QuizQuestionRecord q, string imgPath, int questionNumber)
+        {
+            var fileName = Path.GetFileName(imgPath);
+            bool isInternalCrop =
+                imgPath.Contains("quiz_media", StringComparison.OrdinalIgnoreCase)
+                || fileName.Contains("_fig", StringComparison.OrdinalIgnoreCase)
+                || fileName.Contains("_crop", StringComparison.OrdinalIgnoreCase)
+                || fileName.Contains("_snip", StringComparison.OrdinalIgnoreCase);
+
+            if (isInternalCrop)
+            {
+                return q.SourcePage > 0
+                    ? $"Figure {questionNumber} — Reference Diagram (Page {q.SourcePage})"
+                    : $"Figure {questionNumber} — Reference Diagram";
+            }
+
+            var cleanName = Path.GetFileNameWithoutExtension(imgPath).Replace('_', ' ').Trim();
+            return string.IsNullOrWhiteSpace(cleanName)
+                ? $"Figure {questionNumber} — Reference Figure"
+                : $"Figure {questionNumber} — {cleanName}";
+        }
+
         void DrawImageFigure(QuizQuestionRecord q, int questionNumber)
         {
-            var imgPath = ResolveQuestionImagePath(q);
+            var imgPath = ResolveQuestionImagePath(q, opt.BasinRoot);
 
             if (string.IsNullOrWhiteSpace(imgPath))
                 return;
@@ -588,18 +618,32 @@ public static partial class QuizPdfPrintRenderer
                 gfx.DrawImage(xImg, centeredX, y, drawW, drawH);
                 gfx.DrawRectangle(HairlinePen, centeredX, y, drawW, drawH);
 
-                foreach (var rect in q.HighlightRects)
+                // Only overlay HighlightRects when rendering a standalone image source directly.
+                // For cropped PDF figures (q.ImagePath from quiz_media / Snipper), q.HighlightRects
+                // are full-PDF-page evidence coordinates and must NOT be projected onto the cropped image.
+                bool isStandaloneImageSource =
+                    StudySourceClassifier.Classify(q.SourcePdfPath).Kind == StudySourceKind.Image
+                    && string.Equals(
+                        Path.GetFullPath(imgPath),
+                        Path.GetFullPath(q.SourcePdfPath!),
+                        StringComparison.OrdinalIgnoreCase
+                    );
+
+                if (isStandaloneImageSource)
                 {
-                    double rx = centeredX + (rect.X * drawW);
-                    double ry = y + (rect.Y * drawH);
-                    double rw = Math.Max(8, rect.Width * drawW);
-                    double rh = Math.Max(8, rect.Height * drawH);
-                    gfx.DrawRectangle(SoftWarnPen, rx, ry, rw, rh);
+                    foreach (var rect in q.HighlightRects)
+                    {
+                        double rx = centeredX + (rect.X * drawW);
+                        double ry = y + (rect.Y * drawH);
+                        double rw = Math.Max(8, rect.Width * drawW);
+                        double rh = Math.Max(8, rect.Height * drawH);
+                        gfx.DrawRectangle(SoftWarnPen, rx, ry, rw, rh);
+                    }
                 }
 
                 y += drawH + 4;
                 gfx.DrawString(
-                    $"Figure {questionNumber} — {Path.GetFileName(imgPath)}",
+                    FormatFigureCaption(q, imgPath, questionNumber),
                     italicFont,
                     InkMuted,
                     new XRect(figX, y, maxW, 12),

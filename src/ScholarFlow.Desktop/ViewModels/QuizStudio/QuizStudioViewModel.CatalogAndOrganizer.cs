@@ -1479,7 +1479,13 @@ public sealed partial class QuizStudioViewModel
         QuizPdfExportOptions? options = null
     )
     {
-        await Task.Run(() => QuizExportService.ExportDeckToPrintablePdf(quiz, filePath, options));
+        var effectiveOptions = (options ?? QuizPdfExportOptions.ExamDefault) with
+        {
+            BasinRoot = _mainVm.BasinRoot,
+        };
+        await Task.Run(() =>
+            QuizExportService.ExportDeckToPrintablePdf(quiz, filePath, effectiveOptions)
+        );
         var modeLabel =
             options?.Mode == QuizPdfExportMode.StudyGuideInline
                 ? "Study Guide PDF"

@@ -435,9 +435,12 @@ public static class PdfQuizGrounder
             var (pageTerm, breadcrumb) = pageSections[p];
             var text = cached.PageTexts.GetValueOrDefault(p, string.Empty);
 
+            var pageFigures = cached.PageFigures.GetValueOrDefault(p, []);
+
             // Skip cover pages, term divider pages, table of contents, or nearly empty pages
+            // (but retain figure-bearing slides/pages that have at least 40 chars of context text)
             if (
-                text.Length < 180
+                (text.Length < 180 && (pageFigures.Count == 0 || text.Length < 40))
                 || text.StartsWith("TABLE OF CONTENTS", StringComparison.OrdinalIgnoreCase)
                 || (
                     text.Contains("Includes:", StringComparison.OrdinalIgnoreCase)
@@ -456,7 +459,7 @@ public static class PdfQuizGrounder
                         ? Path.GetFileNameWithoutExtension(pdfPath)
                         : breadcrumb,
                     Text: text,
-                    Figures: cached.PageFigures.GetValueOrDefault(p, [])
+                    Figures: pageFigures
                 )
             );
 
@@ -1185,6 +1188,159 @@ public static class PdfQuizGrounder
                     )
                 );
             }
+        }
+
+        // 4. Tier B2: Uncaptioned Pure-Vector Graphic Clusters (e.g. Matplotlib / TikZ / PowerPoint plots without "Figure N" text)
+        try
+        {
+            var rawPaths = page.Paths;
+            if (rawPaths is { Count: >= 8 })
+            {
+                var pathRects = new List<(double X1, double Y1, double X2, double Y2)>();
+                foreach (var path in rawPaths)
+                {
+                    var rect = path.GetBoundingRectangle();
+                    if (rect is null)
+                        continue;
+                    var r = rect.Value;
+                    double nx1 = Math.Clamp(r.Left / pw, 0.0, 1.0);
+                    double ny1 = Math.Clamp(1.0 - (r.Top / ph), 0.0, 1.0);
+                    double nx2 = Math.Clamp(r.Right / pw, 0.0, 1.0);
+                    double ny2 = Math.Clamp(1.0 - (r.Bottom / ph), 0.0, 1.0);
+                    double rw = nx2 - nx1;
+                    double rh = ny2 - ny1;
+
+                    // Skip full-page frames/backgrounds and degenerate zero-area specks
+                    if ((rw > 0.90 && rh > 0.90) || (rw < 0.003 && rh < 0.003))
+                        continue;
+                    // Skip header/footer rules in the very top/bottom 5% margin
+                    if ((ny2 < 0.05 || ny1 > 0.95) && rh < 0.02)
+                        continue;
+
+                    pathRects.Add((nx1, ny1, nx2, ny2));
+                }
+
+                // Connected-component clustering with 0.035 normalized proximity margin
+                const double clusterMargin = 0.035;
+                var visited = new bool[pathRects.Count];
+                var vectorClusters = new List<(double X1, double Y1, double X2, double Y2, int Count)>();
+
+                for (int i = 0; i < pathRects.Count; i++)
+                {
+                    if (visited[i])
+                        continue;
+                    visited[i] = true;
+                    var queue = new Queue<int>();
+                    queue.Enqueue(i);
+                    double cx1 = pathRects[i].X1;
+                    double cy1 = pathRects[i].Y1;
+                    double cx2 = pathRects[i].X2;
+                    double cy2 = pathRects[i].Y2;
+                    int count = 1;
+
+                    while (queue.Count > 0)
+                    {
+                        var cur = pathRects[queue.Dequeue()];
+                        for (int j = 0; j < pathRects.Count; j++)
+                        {
+                            if (visited[j])
+                                continue;
+                            var cand = pathRects[j];
+                            if (
+                                cand.X1 <= cur.X2 + clusterMargin
+                                && cand.X2 >= cur.X1 - clusterMargin
+                                && cand.Y1 <= cur.Y2 + clusterMargin
+                                && cand.Y2 >= cur.Y1 - clusterMargin
+                            )
+                            {
+                                visited[j] = true;
+                                queue.Enqueue(j);
+                                cx1 = Math.Min(cx1, cand.X1);
+                                cy1 = Math.Min(cy1, cand.Y1);
+                                cx2 = Math.Max(cx2, cand.X2);
+                                cy2 = Math.Max(cy2, cand.Y2);
+                                count++;
+                            }
+                        }
+                    }
+
+                    double cw = cx2 - cx1;
+                    double ch = cy2 - cy1;
+                    if (count >= 8 && cw >= 0.22 && ch >= 0.14 && !(cw > 0.92 && ch > 0.92))
+                    {
+                        vectorClusters.Add((cx1, cy1, cx2, cy2, count));
+                    }
+                }
+
+                int addedVectorFigs = 0;
+                foreach (var vc in vectorClusters.OrderByDescending(c => c.Count))
+                {
+                    if (addedVectorFigs >= 2)
+                        break;
+
+                    // Skip if it significantly overlaps an already-discovered Tier A or Tier B figure
+                    bool overlapsExisting = discovered.Any(existing =>
+                    {
+                        double ex1 = existing.Region.X;
+                        double ey1 = existing.Region.Y;
+                        double ex2 = ex1 + existing.Region.Width;
+                        double ey2 = ey1 + existing.Region.Height;
+                        double ix = Math.Max(0.0, Math.Min(vc.X2, ex2) - Math.Max(vc.X1, ex1));
+                        double iy = Math.Max(0.0, Math.Min(vc.Y2, ey2) - Math.Max(vc.Y1, ey1));
+                        double interArea = ix * iy;
+                        double vcArea = Math.Max(1e-6, (vc.X2 - vc.X1) * (vc.Y2 - vc.Y1));
+                        return (interArea / vcArea) >= 0.35;
+                    });
+                    if (overlapsExisting)
+                        continue;
+
+                    // Skip dense prose paragraphs / text-heavy tables (many long full-width lines inside)
+                    int longBodyLinesInside = lines.Count(ln =>
+                        ln.TopY >= vc.Y1 - 0.01
+                        && ln.BottomY <= vc.Y2 + 0.01
+                        && ln.Text.Length >= 55
+                        && (ln.RightX - ln.LeftX) >= 0.45
+                    );
+                    if (longBodyLinesInside >= 4)
+                        continue;
+
+                    // Try to find a concise heading/title line directly above the chart
+                    string? nearbyHeading = lines
+                        .Where(ln =>
+                            ln.BottomY <= vc.Y1 + 0.01
+                            && (vc.Y1 - ln.BottomY) <= 0.065
+                            && ln.Text.Length is >= 4 and <= 80
+                        )
+                        .OrderBy(ln => vc.Y1 - ln.BottomY)
+                        .Select(ln => ln.Text)
+                        .FirstOrDefault();
+
+                    double padX = Math.Max(0.0, vc.X1 - 0.02);
+                    double padY = Math.Max(0.0, vc.Y1 - 0.025);
+                    double padW = Math.Min(1.0 - padX, (vc.X2 - vc.X1) + 0.04);
+                    double padH = Math.Min(1.0 - padY, (vc.Y2 - vc.Y1) + 0.05);
+
+                    var figId = $"p{pageNumber}_fig{figCounter++}";
+                    var label = !string.IsNullOrWhiteSpace(nearbyHeading)
+                        ? $"Vector Chart: {nearbyHeading}"
+                        : $"Vector Figure / Chart {figCounter - 1} (Page {pageNumber})";
+
+                    discovered.Add(
+                        new ExtractablePdfFigure(
+                            figId,
+                            pageNumber,
+                            label,
+                            new NormalizedHighlightRect(padX, padY, padW, padH),
+                            EmbeddedImageIndex: -1
+                        )
+                    );
+                    addedVectorFigs++;
+                }
+            }
+        }
+        catch
+        {
+            // Non-fatal: some malformed PDFs may throw during path inspection
         }
 
         return discovered;
