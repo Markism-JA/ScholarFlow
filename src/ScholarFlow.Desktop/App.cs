@@ -14,7 +14,7 @@ using ScholarFlow.Core.Sync;
 using ScholarFlow.Desktop.Theme;
 using ScholarFlow.Desktop.ViewModels;
 using ScholarFlow.Desktop.Views;
-using ScholarFlow.Elms.Sync;
+using ScholarFlow.Elms.Sti.Sync;
 
 namespace ScholarFlow.Desktop;
 

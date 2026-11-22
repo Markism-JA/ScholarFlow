@@ -5,8 +5,11 @@ using ScholarFlow.Elms.Abstractions;
 using ScholarFlow.Elms.Auth;
 using ScholarFlow.Elms.Models;
 using ScholarFlow.Elms.Parsing;
+using ScholarFlow.Elms.Sti.Auth;
+using ScholarFlow.Elms.Sti.Parsing;
+using ScholarFlow.Elms.Sync;
 
-namespace ScholarFlow.Elms.Client;
+namespace ScholarFlow.Elms.Sti.Client;
 
 /// <summary>
 /// Concurrent HttpClient + AngleSharp implementation of <see cref="IElmsClient"/> backed by <see cref="IElmsAuthProvider"/>.
@@ -425,6 +428,16 @@ public sealed class StiElmsClient : IElmsClient
         );
     }
 
+    public async Task<ElmsAssignment?> GetAssignmentAsync(
+        string assignmentUrl,
+        string courseId,
+        CancellationToken ct = default
+    )
+    {
+        var html = await FetchAuthenticatedHtmlAsync(assignmentUrl, ct);
+        return AssignmentParser.Parse(html, assignmentUrl, courseId, BaseUrl);
+    }
+
     public async Task<string> FetchAuthenticatedHtmlAsync(
         string urlOrPath,
         CancellationToken ct = default
@@ -538,7 +551,7 @@ public sealed class StiElmsClient : IElmsClient
                             _cookieContainer,
                             replaceStiCookies: false
                         );
-                        await Sync.ElmsSessionStore.SaveAsync(
+                        await ElmsSessionStore.SaveAsync(
                             _session,
                             _authOptions.SessionFilePath,
                             ct
@@ -557,7 +570,7 @@ public sealed class StiElmsClient : IElmsClient
         }
     }
 
-    public ISyncExecutor CreateSyncExecutor() => new Sync.SyncExecutor(HttpClient);
+    public ISyncExecutor CreateSyncExecutor() => new SyncExecutor(HttpClient);
 
     public ValueTask DisposeAsync()
     {

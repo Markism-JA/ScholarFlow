@@ -6,7 +6,7 @@ using ScholarFlow.Elms.Models;
 
 namespace ScholarFlow.Elms.Parsing;
 
-internal static partial class HtmlParsingHelpers
+public static partial class HtmlParsingHelpers
 {
     private static readonly HtmlParser Parser = new();
 

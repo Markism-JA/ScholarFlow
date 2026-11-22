@@ -2,11 +2,12 @@ using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 using ScholarFlow.Elms.Abstractions;
+using ScholarFlow.Elms.Auth;
 using ScholarFlow.Elms.Models;
 using ScholarFlow.Elms.Parsing;
 using ScholarFlow.Elms.Sync;
 
-namespace ScholarFlow.Elms.Auth;
+namespace ScholarFlow.Elms.Sti.Auth;
 
 /// <summary>
 /// Authenticates against STI eLMS using cached HTTP cookies first, then persistent Playwright

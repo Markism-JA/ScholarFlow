@@ -5,9 +5,10 @@ using ScholarFlow.Core.Pdf;
 using ScholarFlow.Core.Services;
 using ScholarFlow.Core.Sync;
 using ScholarFlow.Elms.Auth;
-using ScholarFlow.Elms.Client;
+using ScholarFlow.Elms.Sti.Client;
+using ScholarFlow.Elms.Sync;
 
-namespace ScholarFlow.Elms.Sync;
+namespace ScholarFlow.Elms.Sti.Sync;
 
 /// <summary>
 /// Pluggable <see cref="IBasinSyncProvider"/> implementation for STI eLMS (CYPHER).

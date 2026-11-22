@@ -3,7 +3,9 @@ using AngleSharp.Dom;
 using ScholarFlow.Core.Services;
 using ScholarFlow.Elms.Models;
 
-namespace ScholarFlow.Elms.Parsing;
+using ScholarFlow.Elms.Parsing;
+
+namespace ScholarFlow.Elms.Sti.Parsing;
 
 /// <summary>
 /// Parses enrolled courses from the STI eLMS user dashboard without hardcoded course maps.

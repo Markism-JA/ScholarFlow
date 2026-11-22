@@ -52,6 +52,15 @@ public interface IElmsClient : IAsyncDisposable
     );
 
     /// <summary>
+    /// Fetches and parses a single assignment page by URL for targeted refresh.
+    /// </summary>
+    Task<ElmsAssignment?> GetAssignmentAsync(
+        string assignmentUrl,
+        string courseId,
+        CancellationToken ct = default
+    ) => Task.FromResult<ElmsAssignment?>(null);
+
+    /// <summary>
     /// Fetches raw HTML of an authenticated eLMS URL for selector inspection and diagnostics.
     /// </summary>
     Task<string> FetchAuthenticatedHtmlAsync(string urlOrPath, CancellationToken ct = default);

@@ -1,7 +1,9 @@
 using ScholarFlow.Core.Services;
 using ScholarFlow.Elms.Models;
 
-namespace ScholarFlow.Elms.Parsing;
+using ScholarFlow.Elms.Parsing;
+
+namespace ScholarFlow.Elms.Sti.Parsing;
 
 /// <summary>
 /// Parses an individual lesson or handout section page (/student_lesson/show/{id}) for content, attachments, and SCORM/iframe players.

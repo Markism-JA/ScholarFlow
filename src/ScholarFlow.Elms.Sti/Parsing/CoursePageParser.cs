@@ -3,7 +3,9 @@ using AngleSharp.Dom;
 using ScholarFlow.Core.Services;
 using ScholarFlow.Elms.Models;
 
-namespace ScholarFlow.Elms.Parsing;
+using ScholarFlow.Elms.Parsing;
+
+namespace ScholarFlow.Elms.Sti.Parsing;
 
 /// <summary>
 /// Result of parsing a course landing page (/student_class/show/{id}).

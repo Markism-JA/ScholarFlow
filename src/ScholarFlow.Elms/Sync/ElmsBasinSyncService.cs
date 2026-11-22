@@ -255,8 +255,7 @@ public sealed class ElmsBasinSyncService(
             ct
         );
 
-        var html = await client.FetchAuthenticatedHtmlAsync(task.LmsUrl, ct);
-        var parsed = AssignmentParser.Parse(html, task.LmsUrl, courseId, baseUrl);
+        var parsed = await client.GetAssignmentAsync(task.LmsUrl, courseId, ct);
         if (parsed is null)
             return false;
 

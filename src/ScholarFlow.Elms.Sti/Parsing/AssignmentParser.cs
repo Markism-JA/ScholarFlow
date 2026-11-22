@@ -3,7 +3,9 @@ using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using ScholarFlow.Elms.Models;
 
-namespace ScholarFlow.Elms.Parsing;
+using ScholarFlow.Elms.Parsing;
+
+namespace ScholarFlow.Elms.Sti.Parsing;
 
 /// <summary>
 /// Parses assignment/activity detail pages (/student_*_assignment/show/{id}) and submission pages (/student_*_assignment/submissions/{id}).
