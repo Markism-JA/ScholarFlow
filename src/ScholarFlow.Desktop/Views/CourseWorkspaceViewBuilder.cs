@@ -30,9 +30,10 @@ public static class CourseWorkspaceViewBuilder
     )
     {
         var coursePath = Path.Combine(vm.BasinRoot, course.FolderName);
-        var masterPdfPath =
-            Core.Pdf.MasterPdfService.FindExistingMasterPdfPath(vm.BasinRoot, course.FolderName)
-            ?? Core.Pdf.MasterPdfService.GetExpectedMasterPdfPath(vm.BasinRoot, course.FolderName);
+        var masterPdfPath = Core.Pdf.MasterPdfService.FindExistingMasterPdfPath(
+            vm.BasinRoot,
+            course.FolderName
+        ) ?? Core.Pdf.MasterPdfService.GetExpectedMasterPdfPath(vm.BasinRoot, course.FolderName);
         bool hasMasterPdf = File.Exists(masterPdfPath);
 
         var root = new Grid
@@ -1381,10 +1382,8 @@ public static class CourseWorkspaceViewBuilder
             if (isPdf)
             {
                 actions.Children.Add(
-                    UiBuilder.GhostButton(
-                        "Read",
-                        MaterialIconKind.BookOpenOutline,
-                        () => vm.OpenPdfInReader(file)
+                    UiBuilder.GhostButton("Read", MaterialIconKind.BookOpenOutline, () =>
+                        vm.OpenPdfInReader(file)
                     )
                 );
                 actions.Children.Add(
@@ -1401,10 +1400,8 @@ public static class CourseWorkspaceViewBuilder
             )
             {
                 actions.Children.Add(
-                    UiBuilder.GhostButton(
-                        "View",
-                        MaterialIconKind.EyeOutline,
-                        () => vm.OpenFileInSourceViewer(file)
+                    UiBuilder.GhostButton("View", MaterialIconKind.EyeOutline, () =>
+                        vm.OpenFileInSourceViewer(file)
                     )
                 );
             }

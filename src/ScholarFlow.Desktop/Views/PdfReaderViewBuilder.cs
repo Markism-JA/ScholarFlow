@@ -133,9 +133,8 @@ public static class PdfReaderViewBuilder
         );
         navRow.Children.Add(UiBuilder.IconButton(MaterialIconKind.ChevronRight, reader.NextPage));
         navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.PageLast,
-                () => reader.JumpToPage(reader.PageCount)
+            UiBuilder.IconButton(MaterialIconKind.PageLast, () =>
+                reader.JumpToPage(reader.PageCount)
             )
         );
         rightControls.Children.Add(navRow);
@@ -382,16 +381,13 @@ public static class PdfReaderViewBuilder
                 VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
                 Content = pageSheet,
             };
-            UiBuilder.AttachPdfWheelAndPan(
-                readerScroll,
-                delta =>
-                {
-                    if (delta > 0)
-                        reader.ZoomIn(Math.Abs(delta));
-                    else
-                        reader.ZoomOut(Math.Abs(delta));
-                }
-            );
+            UiBuilder.AttachPdfWheelAndPan(readerScroll, delta =>
+            {
+                if (delta > 0)
+                    reader.ZoomIn(Math.Abs(delta));
+                else
+                    reader.ZoomOut(Math.Abs(delta));
+            });
             canvasContent = readerScroll;
         }
         else if (reader.IsLoadingDocument || reader.IsRenderingPage)

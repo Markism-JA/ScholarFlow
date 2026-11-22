@@ -18,7 +18,17 @@ public static class FileSourceQuizSupport
 {
     private static readonly HashSet<string> IgnoredDirs = new(StringComparer.OrdinalIgnoreCase)
     {
-        "bin", "obj", "node_modules", ".git", ".vs", "__pycache__", "dist", "build", "target", "completed", "ongoing",
+        "bin",
+        "obj",
+        "node_modules",
+        ".git",
+        ".vs",
+        "__pycache__",
+        "dist",
+        "build",
+        "target",
+        "completed",
+        "ongoing",
     };
 
     public static IReadOnlyList<StudySourceDescriptor> DiscoverCourseStudyFiles(
@@ -38,7 +48,9 @@ public static class FileSourceQuizSupport
             IEnumerable<string> files;
             try
             {
-                files = Directory.EnumerateFiles(dir).OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
+                files = Directory
+                    .EnumerateFiles(dir)
+                    .OrderBy(f => f, StringComparer.OrdinalIgnoreCase);
             }
             catch
             {
@@ -53,14 +65,22 @@ public static class FileSourceQuizSupport
                 if (name.StartsWith('.'))
                     continue;
                 var d = StudySourceClassifier.Describe(f);
-                if (d.Kind is StudySourceKind.Code or StudySourceKind.Markdown or StudySourceKind.PlainText or StudySourceKind.Image)
+                if (
+                    d.Kind
+                    is StudySourceKind.Code
+                        or StudySourceKind.Markdown
+                        or StudySourceKind.PlainText
+                        or StudySourceKind.Image
+                )
                     result.Add(d);
             }
 
             IEnumerable<string> subs;
             try
             {
-                subs = Directory.EnumerateDirectories(dir).OrderBy(s => s, StringComparer.OrdinalIgnoreCase);
+                subs = Directory
+                    .EnumerateDirectories(dir)
+                    .OrderBy(s => s, StringComparer.OrdinalIgnoreCase);
             }
             catch
             {
@@ -101,7 +121,14 @@ public static class FileSourceQuizSupport
                 continue;
             }
 
-            if (kind is not (StudySourceKind.Code or StudySourceKind.Markdown or StudySourceKind.PlainText))
+            if (
+                kind
+                is not (
+                    StudySourceKind.Code
+                    or StudySourceKind.Markdown
+                    or StudySourceKind.PlainText
+                )
+            )
                 continue;
             if (!File.Exists(path))
                 continue;
@@ -116,7 +143,12 @@ public static class FileSourceQuizSupport
                 continue;
             }
 
-            var numbered = SourceEvidenceGrounder.ExtractNumberedLines(path, 1, null, maxLinesPerFile);
+            var numbered = SourceEvidenceGrounder.ExtractNumberedLines(
+                path,
+                1,
+                null,
+                maxLinesPerFile
+            );
             if (string.IsNullOrWhiteSpace(numbered))
                 continue;
 
@@ -169,7 +201,11 @@ public static class FileSourceQuizSupport
                 continue;
             }
 
-            var match = SourceEvidenceGrounder.ResolveLineRange(file, q.VerbatimQuote, ev?.StartLine);
+            var match = SourceEvidenceGrounder.ResolveLineRange(
+                file,
+                q.VerbatimQuote,
+                ev?.StartLine
+            );
             if (match is not null)
             {
                 q.SourceStartLine = match.StartLine;
@@ -193,12 +229,19 @@ public static class FileSourceQuizSupport
 
         var req = requested.Trim().Replace('\\', '/');
         return sources.FirstOrDefault(s =>
-            string.Equals(Path.GetFileName(s), Path.GetFileName(req), StringComparison.OrdinalIgnoreCase)
-            || s.Replace('\\', '/').EndsWith(req, StringComparison.OrdinalIgnoreCase)
+            string.Equals(
+                Path.GetFileName(s),
+                Path.GetFileName(req),
+                StringComparison.OrdinalIgnoreCase
+            ) || s.Replace('\\', '/').EndsWith(req, StringComparison.OrdinalIgnoreCase)
         );
     }
 
-    private static string? PickFile(IReadOnlyList<string> sources, string? requested, string fallbackHaystack)
+    private static string? PickFile(
+        IReadOnlyList<string> sources,
+        string? requested,
+        string fallbackHaystack
+    )
     {
         if (sources.Count == 1)
             return sources[0];

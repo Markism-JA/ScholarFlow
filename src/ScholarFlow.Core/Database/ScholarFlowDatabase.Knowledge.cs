@@ -28,7 +28,10 @@ public static partial class ScholarFlowDatabase
     );
 
     public static async Task<
-        Dictionary<string, (long MtimeTicks, long SizeBytes, string CourseFolder, string SourceKind)>
+        Dictionary<
+            string,
+            (long MtimeTicks, long SizeBytes, string CourseFolder, string SourceKind)
+        >
     > GetKnowledgeFileIndexSnapshotAsync(string basinRoot, CancellationToken ct = default)
     {
         var map = new Dictionary<

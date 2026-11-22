@@ -201,23 +201,21 @@ public static class DateTimePickerWidgets
                 bool isToday = cellDate == today;
                 bool isSelected = currentDate.HasValue && cellDate == currentDate.Value;
 
-                var cellNormalBg = isSelected
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
-                    : isToday
-                        ? ThemeService.Brush(ThemeService.AccentSoftBg)
-                        : Brushes.Transparent;
-
-                var cellFg = isSelected
-                    ? Brushes.White
-                    : isToday
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
-                        : inMonth
-                            ? ThemeService.Brush(ThemeService.TextPrimary)
-                            : ThemeService.Brush(ThemeService.TextMuted);
-
-                var cellBorder = isToday && !isSelected
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                var cellNormalBg =
+                    isSelected ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    : isToday ? ThemeService.Brush(ThemeService.AccentSoftBg)
                     : Brushes.Transparent;
+
+                var cellFg =
+                    isSelected ? Brushes.White
+                    : isToday ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    : inMonth ? ThemeService.Brush(ThemeService.TextPrimary)
+                    : ThemeService.Brush(ThemeService.TextMuted);
+
+                var cellBorder =
+                    isToday && !isSelected
+                        ? ThemeService.Brush(ThemeService.AccentPrimary)
+                        : Brushes.Transparent;
 
                 var dayBtn = new Button
                 {
@@ -267,7 +265,10 @@ public static class DateTimePickerWidgets
             stack.Children.Add(UiBuilder.HairlineDivider());
 
             // Footer quick actions (Today, Tomorrow, Clear)
-            var footer = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto,*,Auto") };
+            var footer = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto,*,Auto"),
+            };
             var todayBtn = UiBuilder.GhostButton(
                 "Today",
                 null,
@@ -301,17 +302,13 @@ public static class DateTimePickerWidgets
             Grid.SetColumn(tmrwBtn, 1);
             footer.Children.Add(tmrwBtn);
 
-            var clearBtn = UiBuilder.GhostButton(
-                "Clear",
-                null,
-                async () =>
-                {
-                    currentDate = null;
-                    UpdateTriggerVisual();
-                    flyout.Hide();
-                    await onDateSelected(null);
-                }
-            );
+            var clearBtn = UiBuilder.GhostButton("Clear", null, async () =>
+            {
+                currentDate = null;
+                UpdateTriggerVisual();
+                flyout.Hide();
+                await onDateSelected(null);
+            });
             Grid.SetColumn(clearBtn, 3);
             footer.Children.Add(clearBtn);
 
@@ -527,15 +524,11 @@ public static class DateTimePickerWidgets
                 var capturedH = h;
                 bool active = draftHour12 == capturedH;
                 hourGrid.Children.Add(
-                    BuildClockCell(
-                        capturedH.ToString(CultureInfo.InvariantCulture),
-                        active,
-                        () =>
-                        {
-                            draftHour12 = capturedH;
-                            RebuildClockPopup();
-                        }
-                    )
+                    BuildClockCell(capturedH.ToString(CultureInfo.InvariantCulture), active, () =>
+                    {
+                        draftHour12 = capturedH;
+                        RebuildClockPopup();
+                    })
                 );
             }
             stack.Children.Add(hourGrid);
@@ -550,28 +543,16 @@ public static class DateTimePickerWidgets
                 Spacing = 3,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            fineBtns.Children.Add(
-                UiBuilder.GhostButton(
-                    "-1m",
-                    null,
-                    () =>
-                    {
-                        draftMinute = (draftMinute + 59) % 60;
-                        RebuildClockPopup();
-                    }
-                )
-            );
-            fineBtns.Children.Add(
-                UiBuilder.GhostButton(
-                    "+1m",
-                    null,
-                    () =>
-                    {
-                        draftMinute = (draftMinute + 1) % 60;
-                        RebuildClockPopup();
-                    }
-                )
-            );
+            fineBtns.Children.Add(UiBuilder.GhostButton("-1m", null, () =>
+                {
+                    draftMinute = (draftMinute + 59) % 60;
+                    RebuildClockPopup();
+                }));
+            fineBtns.Children.Add(UiBuilder.GhostButton("+1m", null, () =>
+                {
+                    draftMinute = (draftMinute + 1) % 60;
+                    RebuildClockPopup();
+                }));
             fineBtns.Children.Add(
                 UiBuilder.GhostButton(
                     ":59",
@@ -593,17 +574,11 @@ public static class DateTimePickerWidgets
             {
                 var capturedM = m;
                 bool active = draftMinute == capturedM;
-                minGrid.Children.Add(
-                    BuildClockCell(
-                        $":{capturedM:00}",
-                        active,
-                        () =>
-                        {
-                            draftMinute = capturedM;
-                            RebuildClockPopup();
-                        }
-                    )
-                );
+                minGrid.Children.Add(BuildClockCell($":{capturedM:00}", active, () =>
+                    {
+                        draftMinute = capturedM;
+                        RebuildClockPopup();
+                    }));
             }
             stack.Children.Add(minGrid);
 
@@ -644,17 +619,13 @@ public static class DateTimePickerWidgets
 
             // Footer: Clear + Apply
             var footer = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto") };
-            var clearBtn = UiBuilder.GhostButton(
-                "Clear",
-                MaterialIconKind.Close,
-                async () =>
-                {
-                    committedTime = null;
-                    UpdateTriggerVisual();
-                    flyout.Hide();
-                    await onTimeSelected(null);
-                }
-            );
+            var clearBtn = UiBuilder.GhostButton("Clear", MaterialIconKind.Close, async () =>
+            {
+                committedTime = null;
+                UpdateTriggerVisual();
+                flyout.Hide();
+                await onTimeSelected(null);
+            });
             footer.Children.Add(clearBtn);
 
             var applyBtn = UiBuilder.ActionButton(
@@ -724,7 +695,8 @@ public static class DateTimePickerWidgets
 
         if (!isActive)
         {
-            btn.PointerEntered += (_, _) => btn.Background = ThemeService.Brush(ThemeService.BgHover);
+            btn.PointerEntered += (_, _) =>
+                btn.Background = ThemeService.Brush(ThemeService.BgHover);
             btn.PointerExited += (_, _) => btn.Background = normalBg;
         }
 
@@ -737,7 +709,9 @@ public static class DateTimePickerWidgets
     }
 
     private static string FormatDateLabel(DateOnly? date, string placeholder) =>
-        date.HasValue ? date.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) : placeholder;
+        date.HasValue
+            ? date.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)
+            : placeholder;
 
     private static string FormatTimeLabel(TimeOnly? time, string placeholder) =>
         time.HasValue ? time.Value.ToString("h:mm tt", CultureInfo.CurrentCulture) : placeholder;

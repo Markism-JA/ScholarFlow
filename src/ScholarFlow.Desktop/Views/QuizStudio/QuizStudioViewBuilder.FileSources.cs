@@ -35,11 +35,12 @@ public static partial class QuizStudioViewBuilder
             ColumnSpacing = 6,
         };
 
-        var labelText = studio.IsMixedSourceMode
-            ? $"Course Files ({studio.SelectedFileSourcePaths.Count} selected · Combined with PDF)"
+        var labelText =
+            studio.IsMixedSourceMode
+                ? $"Course Files ({studio.SelectedFileSourcePaths.Count} selected · Combined with PDF)"
             : studio.IsFileSourceMode
                 ? $"Course Files ({studio.SelectedFileSourcePaths.Count} selected · Files Only)"
-                : $"Course Files — Code, Notes & Diagrams ({studio.StudyFiles.Count} available)";
+            : $"Course Files — Code, Notes & Diagrams ({studio.StudyFiles.Count} available)";
 
         header.Children.Add(
             new TextBlock
@@ -54,7 +55,8 @@ public static partial class QuizStudioViewBuilder
 
         var headerActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
         bool hasValidPdf =
-            !string.IsNullOrWhiteSpace(studio.SelectedPdfPath) && File.Exists(studio.SelectedPdfPath);
+            !string.IsNullOrWhiteSpace(studio.SelectedPdfPath)
+            && File.Exists(studio.SelectedPdfPath);
         if (studio.IsFileSourceMode && hasValidPdf)
         {
             headerActions.Children.Add(
@@ -70,7 +72,11 @@ public static partial class QuizStudioViewBuilder
         if (studio.IsFileSourceMode)
         {
             headerActions.Children.Add(
-                UiBuilder.GhostButton("Clear Files", MaterialIconKind.Close, studio.ClearFileSources)
+                UiBuilder.GhostButton(
+                    "Clear Files",
+                    MaterialIconKind.Close,
+                    studio.ClearFileSources
+                )
             );
         }
 
@@ -78,7 +84,9 @@ public static partial class QuizStudioViewBuilder
         {
             headerActions.Children.Add(
                 UiBuilder.GhostButton(
-                    studio.ShowStudyFiles ? "Hide Files" : $"Browse Files ({studio.StudyFiles.Count})",
+                    studio.ShowStudyFiles
+                        ? "Hide Files"
+                        : $"Browse Files ({studio.StudyFiles.Count})",
                     studio.ShowStudyFiles
                         ? MaterialIconKind.ChevronUp
                         : MaterialIconKind.ChevronDown,
@@ -175,11 +183,7 @@ public static partial class QuizStudioViewBuilder
                 }
             );
 
-            var info = new StackPanel
-            {
-                Spacing = 1,
-                VerticalAlignment = VerticalAlignment.Center,
-            };
+            var info = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
             info.Children.Add(
                 new TextBlock
                 {
@@ -201,10 +205,8 @@ public static partial class QuizStudioViewBuilder
             Grid.SetColumn(info, 1);
             row.Children.Add(info);
 
-            var open = UiBuilder.GhostButton(
-                "View",
-                MaterialIconKind.OpenInNew,
-                () => vm.OpenFileInSourceViewer(path)
+            var open = UiBuilder.GhostButton("View", MaterialIconKind.OpenInNew, () =>
+                vm.OpenFileInSourceViewer(path)
             );
             Grid.SetColumn(open, 2);
             row.Children.Add(open);
@@ -224,10 +226,8 @@ public static partial class QuizStudioViewBuilder
         {
             var d = StudySourceClassifier.Describe(path);
             var captured = path;
-            var btn = UiBuilder.GhostButton(
-                d.DisplayName,
-                IconForSource(d.Kind),
-                () => vm.OpenFileInSourceViewer(captured)
+            var btn = UiBuilder.GhostButton(d.DisplayName, IconForSource(d.Kind), () =>
+                vm.OpenFileInSourceViewer(captured)
             );
             btn.Margin = new Thickness(0, 0, 5, 4);
             filesWrap.Children.Add(btn);

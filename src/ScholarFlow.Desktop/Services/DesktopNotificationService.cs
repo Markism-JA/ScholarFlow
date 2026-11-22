@@ -42,13 +42,13 @@ public sealed class DesktopNotificationService
                     var safeTitle = EscapeXml(title);
                     var safeMsg = EscapeXml(message);
                     var script = $"""
-                    [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
-                    [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
-                    $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
-                    $xml.LoadXml('<toast><visual><binding template="ToastGeneric"><text>{safeTitle}</text><text>{safeMsg}</text></binding></visual></toast>')
-                    $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
-                    [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('ScholarFlow').Show($toast)
-                    """;
+                        [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null
+                        [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null
+                        $xml = New-Object Windows.Data.Xml.Dom.XmlDocument
+                        $xml.LoadXml('<toast><visual><binding template="ToastGeneric"><text>{safeTitle}</text><text>{safeMsg}</text></binding></visual></toast>')
+                        $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)
+                        [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier('ScholarFlow').Show($toast)
+                        """;
 
                     var psi = new ProcessStartInfo("powershell.exe")
                     {

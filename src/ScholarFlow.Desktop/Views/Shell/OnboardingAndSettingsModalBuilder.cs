@@ -178,8 +178,8 @@ public static class OnboardingAndSettingsModalBuilder
                 fieldBox.PropertyChanged += (_, e) =>
                 {
                     if (e.Property == TextBox.TextProperty)
-                        vm.OnboardingProviderSettings[capturedField.Key] =
-                            fieldBox.Text ?? string.Empty;
+                        vm.OnboardingProviderSettings[capturedField.Key] = fieldBox.Text
+                            ?? string.Empty;
                 };
                 providerCard.Children.Add(fieldBox);
             }
@@ -274,9 +274,7 @@ public static class OnboardingAndSettingsModalBuilder
 
         // 1. Active Basin & Pluggable Sync Provider Configuration Card
         var basinCard = new StackPanel { Spacing = 8 };
-        basinCard.Children.Add(
-            UiBuilder.SectionHeader($"Active Basin: {vm.BasinConfig.Name}")
-        );
+        basinCard.Children.Add(UiBuilder.SectionHeader($"Active Basin: {vm.BasinConfig.Name}"));
 
         var providerRow = new WrapPanel { Orientation = Orientation.Horizontal };
         foreach (var provider in vm.AvailableSyncProviders)
@@ -443,11 +441,7 @@ public static class OnboardingAndSettingsModalBuilder
             for (int i = 0; i < vm.ActiveTerms.Count; i++)
             {
                 var capturedTerm = vm.ActiveTerms[i];
-                var chipRow = new StackPanel
-                {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 2,
-                };
+                var chipRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2 };
                 chipRow.Children.Add(
                     new TextBlock
                     {
@@ -526,19 +520,15 @@ public static class OnboardingAndSettingsModalBuilder
             FontSize = 12,
         };
         addTermGrid.Children.Add(newTermBox);
-        var addTermBtn = UiBuilder.GhostButton(
-            "Add Term",
-            MaterialIconKind.Plus,
-            async () =>
+        var addTermBtn = UiBuilder.GhostButton("Add Term", MaterialIconKind.Plus, async () =>
+        {
+            if (!string.IsNullOrWhiteSpace(newTermBox.Text))
             {
-                if (!string.IsNullOrWhiteSpace(newTermBox.Text))
-                {
-                    var txt = newTermBox.Text;
-                    newTermBox.Text = string.Empty;
-                    await vm.AddBasinTermAsync(txt);
-                }
+                var txt = newTermBox.Text;
+                newTermBox.Text = string.Empty;
+                await vm.AddBasinTermAsync(txt);
             }
-        );
+        });
         Grid.SetColumn(addTermBtn, 1);
         addTermGrid.Children.Add(addTermBtn);
         basinCard.Children.Add(addTermGrid);
@@ -702,7 +692,8 @@ public static class OnboardingAndSettingsModalBuilder
                 },
                 new TextBlock
                 {
-                    Text = "Create a new subject folder in this Basin or import an existing folder.",
+                    Text =
+                        "Create a new subject folder in this Basin or import an existing folder.",
                     FontSize = 11.5,
                     Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                 },
@@ -787,9 +778,7 @@ public static class OnboardingAndSettingsModalBuilder
 
                 var startFolder =
                     !string.IsNullOrWhiteSpace(vm.BasinRoot) && Directory.Exists(vm.BasinRoot)
-                        ? await top.StorageProvider.TryGetFolderFromPathAsync(
-                            new Uri(vm.BasinRoot)
-                        )
+                        ? await top.StorageProvider.TryGetFolderFromPathAsync(new Uri(vm.BasinRoot))
                         : null;
 
                 var picked = await top.StorageProvider.OpenFolderPickerAsync(
@@ -800,8 +789,7 @@ public static class OnboardingAndSettingsModalBuilder
                         SuggestedStartLocation = startFolder,
                     }
                 );
-                var localPath =
-                    picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
+                var localPath = picked.Count > 0 ? picked[0].TryGetLocalPath() : null;
                 if (string.IsNullOrWhiteSpace(localPath))
                     return;
 
@@ -812,8 +800,12 @@ public static class OnboardingAndSettingsModalBuilder
                 if (string.IsNullOrWhiteSpace(titleBox.Text))
                 {
                     var inferred = Path.GetFileName(
-                        localPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                    ).Replace('_', ' ');
+                            localPath.TrimEnd(
+                                Path.DirectorySeparatorChar,
+                                Path.AltDirectorySeparatorChar
+                            )
+                        )
+                        .Replace('_', ' ');
                     titleBox.Text = inferred;
                 }
 
@@ -824,8 +816,10 @@ public static class OnboardingAndSettingsModalBuilder
                     parentDir is not null
                     && !string.IsNullOrWhiteSpace(vm.BasinRoot)
                     && string.Equals(
-                        Path.GetFullPath(parentDir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
-                        Path.GetFullPath(vm.BasinRoot).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                        Path.GetFullPath(parentDir)
+                            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                        Path.GetFullPath(vm.BasinRoot)
+                            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
                         StringComparison.OrdinalIgnoreCase
                     );
                 folderHintText.Text = inBasin
@@ -1001,10 +995,8 @@ public static class OnboardingAndSettingsModalBuilder
         Grid.SetColumn(cancelBtn, 1);
         actions.Children.Add(cancelBtn);
 
-        submitBtn = UiBuilder.PrimaryButton(
-            "Create Course",
-            MaterialIconKind.Check,
-            async () => await SubmitAsync()
+        submitBtn = UiBuilder.PrimaryButton("Create Course", MaterialIconKind.Check, async () =>
+            await SubmitAsync()
         );
         Grid.SetColumn(submitBtn, 2);
         actions.Children.Add(submitBtn);
@@ -1059,7 +1051,9 @@ public static class OnboardingAndSettingsModalBuilder
 
         var allItems = plan.Sections.SelectMany(s => s.Items).ToList();
         int pdfCount = allItems.Count(i => i.IsPdf);
-        int imgCount = allItems.Count(i => i.ResolvedKind == ScholarFlow.Core.Knowledge.StudySourceKind.Image);
+        int imgCount = allItems.Count(i =>
+            i.ResolvedKind == ScholarFlow.Core.Knowledge.StudySourceKind.Image
+        );
         int noteCodeCount = allItems.Count(i =>
             i.ResolvedKind
                 is ScholarFlow.Core.Knowledge.StudySourceKind.Markdown
@@ -1159,7 +1153,11 @@ public static class OnboardingAndSettingsModalBuilder
                 label,
                 icon,
                 () => vm.SetPacketOrganizerFilter(key),
-                isActive: string.Equals(vm.PacketOrganizerFilter, key, StringComparison.OrdinalIgnoreCase)
+                isActive: string.Equals(
+                    vm.PacketOrganizerFilter,
+                    key,
+                    StringComparison.OrdinalIgnoreCase
+                )
             );
             btn.Margin = new Thickness(0, 0, 5, 4);
             filterAndOptionsWrap.Children.Add(btn);
@@ -1170,7 +1168,11 @@ public static class OnboardingAndSettingsModalBuilder
         if (imgCount > 0)
             AddFilterChip("Images", $"Images ({imgCount})", MaterialIconKind.FileImageOutline);
         if (noteCodeCount > 0)
-            AddFilterChip("Notes & Code", $"Notes & Code ({noteCodeCount})", MaterialIconKind.CodeBraces);
+            AddFilterChip(
+                "Notes & Code",
+                $"Notes & Code ({noteCodeCount})",
+                MaterialIconKind.CodeBraces
+            );
 
         if (nonPdfCount > 0)
         {
@@ -1333,9 +1335,10 @@ public static class OnboardingAndSettingsModalBuilder
                 secStack.Children.Add(
                     new TextBlock
                     {
-                        Text = capturedSec.Items.Count == 0
-                            ? "No study files in this section."
-                            : $"No items match the '{vm.PacketOrganizerFilter}' filter in this section ({capturedSec.Items.Count} hidden).",
+                        Text =
+                            capturedSec.Items.Count == 0
+                                ? "No study files in this section."
+                                : $"No items match the '{vm.PacketOrganizerFilter}' filter in this section ({capturedSec.Items.Count} hidden).",
                         FontSize = 11.5,
                         Foreground = ThemeService.Brush(ThemeService.TextMuted),
                         Margin = new Thickness(4, 2),
@@ -1556,10 +1559,8 @@ public static class OnboardingAndSettingsModalBuilder
             ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
             ColumnSpacing = 8,
         };
-        var resetBtn = UiBuilder.GhostButton(
-            "Reset to Auto",
-            MaterialIconKind.Restore,
-            async () => await vm.ResetPacketPlanToAutoAsync()
+        var resetBtn = UiBuilder.GhostButton("Reset to Auto", MaterialIconKind.Restore, async () =>
+            await vm.ResetPacketPlanToAutoAsync()
         );
         footer.Children.Add(resetBtn);
 

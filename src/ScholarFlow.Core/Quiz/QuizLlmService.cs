@@ -14,28 +14,26 @@ namespace ScholarFlow.Core.Quiz;
 /// </summary>
 public sealed partial class QuizLlmService
 {
-    private static readonly HttpClient SharedHttp = new()
-    {
-        Timeout = TimeSpan.FromMinutes(3)
-    };
+    private static readonly HttpClient SharedHttp = new() { Timeout = TimeSpan.FromMinutes(3) };
 
     private static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
+        AllowTrailingCommas = true,
     };
 
     public string BuildPromptForManualCopy(
         QuizGenerationRequest request,
-        out IReadOnlyList<GroundedPdfPage> extractedPages) =>
-        BuildPromptForManualCopy(request, 160_000, out extractedPages, out _);
+        out IReadOnlyList<GroundedPdfPage> extractedPages
+    ) => BuildPromptForManualCopy(request, 160_000, out extractedPages, out _);
 
     public string BuildPromptForManualCopy(
         QuizGenerationRequest request,
         int maxChars,
         out IReadOnlyList<GroundedPdfPage> extractedPages,
-        out int includedPageCount)
+        out int includedPageCount
+    )
     {
         extractedPages = PdfQuizGrounder.ExtractGroundedPages(
             request.SourcePdfPath,
@@ -44,23 +42,38 @@ public sealed partial class QuizLlmService
             request.StartPage,
             request.EndPage,
             request.SelectedRanges,
-            maxPages: 250);
+            maxPages: 250
+        );
 
         var groundedContent = PdfQuizGrounder.FormatPagesForPrompt(
             extractedPages,
             maxChars: maxChars,
-            out includedPageCount);
-        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(request.BasinRoot, request.CourseFolder);
-        var modality = DetectContentModalities(extractedPages, request.CourseTitle, request.ModalityMode);
+            out includedPageCount
+        );
+        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(
+            request.BasinRoot,
+            request.CourseFolder
+        );
+        var modality = DetectContentModalities(
+            extractedPages,
+            request.CourseTitle,
+            request.ModalityMode
+        );
         int count = Math.Clamp(request.QuestionCount, 1, 150);
-        return BuildSystemInstructions(request, weakTopics, modality) + "\n\n" + BuildUserPrompt(request, groundedContent, count, modality: modality);
+        return BuildSystemInstructions(request, weakTopics, modality)
+            + "\n\n"
+            + BuildUserPrompt(request, groundedContent, count, modality: modality);
     }
 
     public string BuildInstructionPromptForUploadedPdf(
         QuizGenerationRequest request,
-        IReadOnlyList<(int OriginalPage, string SectionBreadcrumb)> pageManifest)
+        IReadOnlyList<(int OriginalPage, string SectionBreadcrumb)> pageManifest
+    )
     {
-        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(request.BasinRoot, request.CourseFolder);
+        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(
+            request.BasinRoot,
+            request.CourseFolder
+        );
         var modality = new ContentModalityProfile(HasCode: true, HasMath: true, HasDiagrams: true);
         int count = Math.Clamp(request.QuestionCount, 1, 150);
 
@@ -68,14 +81,18 @@ public sealed partial class QuizLlmService
         sb.AppendLine(BuildSystemInstructions(request, weakTopics, modality));
         sb.AppendLine();
         sb.AppendLine("ATTACHED SCOPED PDF PAGE MAPPING:");
-        sb.AppendLine("Use the ORIGINAL page number below for \"evidence.pageNumber\" so highlights align with the source textbook:");
+        sb.AppendLine(
+            "Use the ORIGINAL page number below for \"evidence.pageNumber\" so highlights align with the source textbook:"
+        );
         for (int i = 0; i < pageManifest.Count; i++)
         {
             var (origPage, section) = pageManifest[i];
             sb.AppendLine($"- Uploaded PDF Page {i + 1} = [PAGE {origPage}] | Section: {section}");
         }
         sb.AppendLine();
-        sb.AppendLine($"Generate {count} grounded questions from the attached PDF strictly following the JSON schema above.");
+        sb.AppendLine(
+            $"Generate {count} grounded questions from the attached PDF strictly following the JSON schema above."
+        );
         return sb.ToString();
     }
 
@@ -85,62 +102,86 @@ public sealed partial class QuizLlmService
         string modelName,
         string systemPrompt,
         string userPrompt,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         var effectiveKey = !string.IsNullOrWhiteSpace(apiKey)
             ? apiKey.Trim()
             : Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-              ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
         return CallOpenAiCompatibleChatAsync(
             providerBaseUrl,
             effectiveKey,
             modelName,
             systemPrompt,
             userPrompt,
-            ct);
+            ct
+        );
     }
 
     public async Task<QuizSessionRecord> GenerateQuizAsync(
         QuizGenerationRequest request,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (request.HasFileSources)
             return await GenerateFromFileSourcesAsync(request, ct);
 
-        var pages = await Task.Run(() => PdfQuizGrounder.ExtractGroundedPages(
-            request.SourcePdfPath,
-            request.Term,
-            request.SectionFilter,
-            request.StartPage,
-            request.EndPage,
-            request.SelectedRanges,
-            maxPages: 250), ct);
+        var pages = await Task.Run(
+            () =>
+                PdfQuizGrounder.ExtractGroundedPages(
+                    request.SourcePdfPath,
+                    request.Term,
+                    request.SectionFilter,
+                    request.StartPage,
+                    request.EndPage,
+                    request.SelectedRanges,
+                    maxPages: 250
+                ),
+            ct
+        );
 
         if (pages.Count == 0)
-            throw new InvalidOperationException("No readable text pages were found in the selected PDF scope.");
+            throw new InvalidOperationException(
+                "No readable text pages were found in the selected PDF scope."
+            );
 
         int desiredCount = Math.Clamp(request.QuestionCount, 1, 150);
 
         var effectiveKey = !string.IsNullOrWhiteSpace(request.ApiKey)
             ? request.ApiKey.Trim()
             : Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-              ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
 
-        bool isLocalEndpoint = request.ProviderBaseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase) ||
-                               request.ProviderBaseUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
+        bool isLocalEndpoint =
+            request.ProviderBaseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+            || request.ProviderBaseUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
 
         QuizGenerationResponseDto dto;
         string modelLabel;
 
-        if (request.UseOfflineHeuristicFallback || (!isLocalEndpoint && string.IsNullOrWhiteSpace(effectiveKey)))
+        if (
+            request.UseOfflineHeuristicFallback
+            || (!isLocalEndpoint && string.IsNullOrWhiteSpace(effectiveKey))
+        )
         {
-            dto = await Task.Run(() => GenerateOfflineGroundedDto(request, pages, desiredCount), ct);
+            dto = await Task.Run(
+                () => GenerateOfflineGroundedDto(request, pages, desiredCount),
+                ct
+            );
             modelLabel = "ScholarFlow Smart PDF Analyzer (Offline)";
         }
         else
         {
-            var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(request.BasinRoot, request.CourseFolder);
-            var modality = DetectContentModalities(pages, request.CourseTitle, request.ModalityMode);
+            var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(
+                request.BasinRoot,
+                request.CourseFolder
+            );
+            var modality = DetectContentModalities(
+                pages,
+                request.CourseTitle,
+                request.ModalityMode
+            );
             var sysPrompt = BuildSystemInstructions(request, weakTopics, modality);
 
             int batchCharBudget = isLocalEndpoint ? 28_000 : 72_000;
@@ -170,10 +211,24 @@ public sealed partial class QuizLlmService
                     break;
 
                 int batchesLeft = batchCount - b;
-                int thisBatchCount = Math.Max(1, (int)Math.Ceiling(remaining / (double)batchesLeft));
+                int thisBatchCount = Math.Max(
+                    1,
+                    (int)Math.Ceiling(remaining / (double)batchesLeft)
+                );
                 var batchPages = packedBatches[b];
-                var groundedContent = PdfQuizGrounder.FormatPagesForPrompt(batchPages, maxChars: int.MaxValue, out _);
-                var usrPrompt = BuildUserPrompt(request, groundedContent, thisBatchCount, b + 1, batchCount, modality);
+                var groundedContent = PdfQuizGrounder.FormatPagesForPrompt(
+                    batchPages,
+                    maxChars: int.MaxValue,
+                    out _
+                );
+                var usrPrompt = BuildUserPrompt(
+                    request,
+                    groundedContent,
+                    thisBatchCount,
+                    b + 1,
+                    batchCount,
+                    modality
+                );
 
                 var rawResponse = await CallOpenAiCompatibleChatAsync(
                     request.ProviderBaseUrl,
@@ -181,7 +236,8 @@ public sealed partial class QuizLlmService
                     request.ModelName,
                     sysPrompt,
                     usrPrompt,
-                    ct);
+                    ct
+                );
 
                 var batchDto = ParseQuizResponseJson(rawResponse);
                 firstTitle ??= batchDto.QuizTitle;
@@ -194,8 +250,10 @@ public sealed partial class QuizLlmService
             {
                 QuizTitle = firstTitle ?? string.Empty,
                 CourseTerm = firstTerm ?? string.Empty,
-                KeyConceptsCovered = allConcepts.Distinct(StringComparer.OrdinalIgnoreCase).ToList(),
-                Questions = allQuestions.Take(desiredCount).ToList()
+                KeyConceptsCovered = allConcepts
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList(),
+                Questions = allQuestions.Take(desiredCount).ToList(),
             };
             modelLabel = request.ModelName;
         }
@@ -206,13 +264,20 @@ public sealed partial class QuizLlmService
     public async Task<QuizSessionRecord> ImportQuizFromJsonAsync(
         QuizGenerationRequest request,
         string rawJson,
-        CancellationToken ct = default)
+        CancellationToken ct = default
+    )
     {
         if (string.IsNullOrWhiteSpace(rawJson))
             throw new ArgumentException("JSON input cannot be empty.", nameof(rawJson));
 
         var dto = await Task.Run(() => ParseQuizResponseJson(rawJson), ct);
-        return await BuildGroundAndPersistSessionAsync(request, dto, "Imported Web AI JSON", [], ct);
+        return await BuildGroundAndPersistSessionAsync(
+            request,
+            dto,
+            "Imported Web AI JSON",
+            [],
+            ct
+        );
     }
 
     private static async Task<QuizSessionRecord> BuildGroundAndPersistSessionAsync(
@@ -220,22 +285,24 @@ public sealed partial class QuizLlmService
         QuizGenerationResponseDto dto,
         string modelLabel,
         IReadOnlyList<GroundedPdfPage> pages,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         var inferredTerm = TaskItem.NormalizeTerm(dto.CourseTerm)
-                           ?? TaskItem.NormalizeTerm(request.Term)
-                           ?? pages.FirstOrDefault(p => p.Term is not null)?.Term;
+            ?? TaskItem.NormalizeTerm(request.Term)
+            ?? pages.FirstOrDefault(p => p.Term is not null)?.Term;
 
         var defaultTitle = !string.IsNullOrWhiteSpace(dto.QuizTitle)
             ? dto.QuizTitle.Trim()
             : $"{request.CourseTitle} — {inferredTerm ?? "Comprehensive"} ({request.Preset})";
 
-        var sessionSourcePath = request.HasPdfSource
-            ? request.SourcePdfPath
+        var sessionSourcePath =
+            request.HasPdfSource ? request.SourcePdfPath
             : request.HasFileSources
                 ? request.SourceFilePaths.FirstOrDefault(p =>
-                      StudySourceClassifier.Classify(p).Kind != StudySourceKind.Image) ?? request.SourceFilePaths[0]
-                : request.SourcePdfPath;
+                    StudySourceClassifier.Classify(p).Kind != StudySourceKind.Image
+                ) ?? request.SourceFilePaths[0]
+            : request.SourcePdfPath;
         var groundItems = new List<(QuizQuestionRecord, EvidenceAnchorDto?)>();
 
         var session = new QuizSessionRecord
@@ -249,7 +316,7 @@ public sealed partial class QuizLlmService
                 ? File.GetLastWriteTimeUtc(request.SourcePdfPath).Ticks
                 : null,
             ModelUsed = modelLabel,
-            CreatedAtUtc = DateTimeOffset.UtcNow
+            CreatedAtUtc = DateTimeOffset.UtcNow,
         };
 
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -265,26 +332,46 @@ public sealed partial class QuizLlmService
             if (!string.IsNullOrEmpty(stemKey) && !seenStemKeys.Add(stemKey))
                 continue;
 
-            var kind = Enum.TryParse<QuizQuestionKind>(qDto.Kind, ignoreCase: true, out var parsedKind)
+            var kind = Enum.TryParse<QuizQuestionKind>(
+                qDto.Kind,
+                ignoreCase: true,
+                out var parsedKind
+            )
                 ? parsedKind
                 : QuizQuestionKind.MultipleChoice;
 
-            var cog = Enum.TryParse<CognitiveLevel>(qDto.CognitiveLevel, ignoreCase: true, out var parsedCog)
+            var cog = Enum.TryParse<CognitiveLevel>(
+                qDto.CognitiveLevel,
+                ignoreCase: true,
+                out var parsedCog
+            )
                 ? parsedCog
                 : CognitiveLevel.Comprehension;
 
-            var (options, correctAnswer) = CanonicalizeOptionsAndAnswer(kind, qDto.Options, qDto.CorrectAnswer);
+            var (options, correctAnswer) = CanonicalizeOptionsAndAnswer(
+                kind,
+                qDto.Options,
+                qDto.CorrectAnswer
+            );
 
-            var mathLatex = string.IsNullOrWhiteSpace(qDto.MathLatex) ? null : qDto.MathLatex.Trim();
-            var codeSnippet = string.IsNullOrWhiteSpace(qDto.CodeSnippet) ? null : qDto.CodeSnippet.Trim();
-            var codeLanguage = string.IsNullOrWhiteSpace(qDto.CodeLanguage) ? null : qDto.CodeLanguage.Trim();
+            var mathLatex = string.IsNullOrWhiteSpace(qDto.MathLatex)
+                ? null
+                : qDto.MathLatex.Trim();
+            var codeSnippet = string.IsNullOrWhiteSpace(qDto.CodeSnippet)
+                ? null
+                : qDto.CodeSnippet.Trim();
+            var codeLanguage = string.IsNullOrWhiteSpace(qDto.CodeLanguage)
+                ? null
+                : qDto.CodeLanguage.Trim();
             var diagram = string.IsNullOrWhiteSpace(qDto.Diagram) ? null : qDto.Diagram.Trim();
 
             // Strict Math Guardrail: symbolic/LaTeX math questions must use MultipleChoice/Situational
             // when options are available so students never have to type raw LaTeX into an Identification box.
-            if (!string.IsNullOrWhiteSpace(mathLatex) &&
-                kind is QuizQuestionKind.Identification or QuizQuestionKind.FillInTheBlank &&
-                options.Count >= 2)
+            if (
+                !string.IsNullOrWhiteSpace(mathLatex)
+                && kind is QuizQuestionKind.Identification or QuizQuestionKind.FillInTheBlank
+                && options.Count >= 2
+            )
             {
                 kind = QuizQuestionKind.MultipleChoice;
             }
@@ -300,7 +387,11 @@ public sealed partial class QuizLlmService
                 Prompt = cleanPrompt,
                 Options = options,
                 CorrectAnswer = correctAnswer,
-                AcceptedAliases = qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList() ?? [],
+                AcceptedAliases = qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a))
+                    .Select(a => a.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                    ?? [],
                 Explanation = (qDto.Explanation ?? string.Empty).Trim(),
                 Hint = string.IsNullOrWhiteSpace(qDto.Hint) ? null : qDto.Hint.Trim(),
                 Archetype = CanonicalizeArchetype(qDto.Archetype),
@@ -309,18 +400,27 @@ public sealed partial class QuizLlmService
                 MathLatex = mathLatex,
                 Diagram = diagram,
                 SourcePdfPath = sessionSourcePath,
-                SourcePage = qDto.Evidence?.PageNumber > 0 ? qDto.Evidence.PageNumber : (pages.FirstOrDefault()?.PageNumber ?? 1),
+                SourcePage =
+                    qDto.Evidence?.PageNumber > 0
+                        ? qDto.Evidence.PageNumber
+                        : (pages.FirstOrDefault()?.PageNumber ?? 1),
                 SectionTitle = qDto.Evidence?.SectionTitle ?? string.Empty,
                 VerbatimQuote = qDto.Evidence?.VerbatimQuote ?? string.Empty,
-                EvidenceAnchors = (request.HasFileSources && !request.IncludePdfWithFileSources) ? [] : qDto.Evidence?.SecondaryQuotes?
-                    .Where(sq => !string.IsNullOrWhiteSpace(sq))
-                    .Select(sq => new GroundedEvidenceAnchor(
-                        qDto.Evidence.PageNumber > 0 ? qDto.Evidence.PageNumber : 1,
-                        qDto.Evidence.SectionTitle ?? string.Empty,
-                        sq.Trim(),
-                        []))
-                    .ToList() ?? [],
-                SrsDueDate = today
+                EvidenceAnchors =
+                    (request.HasFileSources && !request.IncludePdfWithFileSources)
+                        ? []
+                        : qDto.Evidence?.SecondaryQuotes?.Where(sq =>
+                                !string.IsNullOrWhiteSpace(sq)
+                            )
+                            .Select(sq => new GroundedEvidenceAnchor(
+                                qDto.Evidence.PageNumber > 0 ? qDto.Evidence.PageNumber : 1,
+                                qDto.Evidence.SectionTitle ?? string.Empty,
+                                sq.Trim(),
+                                []
+                            ))
+                            .ToList()
+                            ?? [],
+                SrsDueDate = today,
             };
 
             session.Questions.Add(qRecord);
@@ -328,7 +428,9 @@ public sealed partial class QuizLlmService
         }
 
         if (session.Questions.Count == 0)
-            throw new InvalidOperationException("No valid questions were produced from the response.");
+            throw new InvalidOperationException(
+                "No valid questions were produced from the response."
+            );
 
         // Deterministically ground each question against its matching source (PDF highlight rects or file line range / image)
         if (request.IsMixedSources)
@@ -338,7 +440,11 @@ public sealed partial class QuizLlmService
             foreach (var item in groundItems)
             {
                 bool matchesFile =
-                    FileSourceQuizSupport.TryMatchSourceFile(request.SourceFilePaths, item.Item2?.File) is not null;
+                    FileSourceQuizSupport.TryMatchSourceFile(
+                        request.SourceFilePaths,
+                        item.Item2?.File
+                    )
+                    is not null;
                 if (matchesFile)
                 {
                     item.Item1.EvidenceAnchors.Clear();
@@ -350,29 +456,51 @@ public sealed partial class QuizLlmService
                 }
             }
 
-            await Task.Run(() =>
-            {
-                if (fileItems.Count > 0)
-                    FileSourceQuizSupport.GroundQuestionsToFiles(request.SourceFilePaths, fileItems);
-                if (pdfQuestions.Count > 0)
-                    PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, pdfQuestions);
-            }, ct);
+            await Task.Run(
+                () =>
+                {
+                    if (fileItems.Count > 0)
+                        FileSourceQuizSupport.GroundQuestionsToFiles(
+                            request.SourceFilePaths,
+                            fileItems
+                        );
+                    if (pdfQuestions.Count > 0)
+                        PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, pdfQuestions);
+                },
+                ct
+            );
         }
         else if (request.HasFileSources)
         {
-            await Task.Run(() => FileSourceQuizSupport.GroundQuestionsToFiles(request.SourceFilePaths, groundItems), ct);
+            await Task.Run(
+                () =>
+                    FileSourceQuizSupport.GroundQuestionsToFiles(
+                        request.SourceFilePaths,
+                        groundItems
+                    ),
+                ct
+            );
         }
         else
         {
-            await Task.Run(() => PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, session.Questions), ct);
+            await Task.Run(
+                () =>
+                    PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, session.Questions),
+                ct
+            );
         }
 
         if (!string.IsNullOrWhiteSpace(request.BasinRoot))
         {
             if (!string.IsNullOrWhiteSpace(request.AppendToQuizId))
             {
-                var existingList = await ScholarFlowDatabase.LoadQuizSessionsAsync(request.BasinRoot, ct: ct);
-                var existing = existingList.FirstOrDefault(x => string.Equals(x.Id, request.AppendToQuizId, StringComparison.OrdinalIgnoreCase));
+                var existingList = await ScholarFlowDatabase.LoadQuizSessionsAsync(
+                    request.BasinRoot,
+                    ct: ct
+                );
+                var existing = existingList.FirstOrDefault(x =>
+                    string.Equals(x.Id, request.AppendToQuizId, StringComparison.OrdinalIgnoreCase)
+                );
                 if (existing is not null)
                 {
                     foreach (var nq in session.Questions)
@@ -399,11 +527,12 @@ public sealed partial class QuizLlmService
         string? rawCorrectAnswer
     )
     {
-        var options = rawOptions?
-            .Where(o => !string.IsNullOrWhiteSpace(o))
+        var options = rawOptions
+            ?.Where(o => !string.IsNullOrWhiteSpace(o))
             .Select(StripLeadingOptionMarker)
             .Where(o => o.Length > 0)
-            .ToList() ?? [];
+            .ToList()
+            ?? [];
 
         var correct = StripLeadingOptionMarker(rawCorrectAnswer ?? string.Empty);
 
@@ -424,7 +553,10 @@ public sealed partial class QuizLlmService
             return (options, correct);
         }
 
-        if (kind is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational && options.Count > 0)
+        if (
+            kind is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational
+            && options.Count > 0
+        )
         {
             // Resolve letter-only answers like "A", "B)", "Option C" directly to the matching option text
             var trimmedRaw = (rawCorrectAnswer ?? string.Empty).Trim();
@@ -448,9 +580,20 @@ public sealed partial class QuizLlmService
     private static string StripLeadingOptionMarker(string raw)
     {
         var t = raw.Trim();
-        if (t.Length >= 3 && char.IsLetter(t[0]) && (t[1] is ')' or '.' or ':') && char.IsWhiteSpace(t[2]))
+        if (
+            t.Length >= 3
+            && char.IsLetter(t[0])
+            && (t[1] is ')' or '.' or ':')
+            && char.IsWhiteSpace(t[2])
+        )
             return t[3..].Trim();
-        if (t.Length >= 4 && t[0] == '(' && char.IsLetter(t[1]) && t[2] == ')' && char.IsWhiteSpace(t[3]))
+        if (
+            t.Length >= 4
+            && t[0] == '('
+            && char.IsLetter(t[1])
+            && t[2] == ')'
+            && char.IsWhiteSpace(t[3])
+        )
             return t[4..].Trim();
         return t;
     }
@@ -510,9 +653,14 @@ public sealed partial class QuizLlmService
         if (string.IsNullOrWhiteSpace(raw))
             return null;
         var clean = raw.Trim();
-        if (Enum.TryParse<QuestionArchetype>(clean.Replace("-", "").Replace(" ", ""), ignoreCase: true, out var parsed))
+        if (
+            Enum.TryParse<QuestionArchetype>(
+                clean.Replace("-", "").Replace(" ", ""),
+                ignoreCase: true,
+                out var parsed
+            )
+        )
             return parsed.ToString();
         return clean;
     }
-
 }

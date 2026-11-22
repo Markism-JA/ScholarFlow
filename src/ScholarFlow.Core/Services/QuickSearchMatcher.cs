@@ -6,8 +6,7 @@ namespace ScholarFlow.Core.Services;
 /// </summary>
 public static class QuickSearchMatcher
 {
-    public static bool Matches(string? query, params string?[] fields) =>
-        Score(query, fields) > 0;
+    public static bool Matches(string? query, params string?[] fields) => Score(query, fields) > 0;
 
     /// <summary>
     /// Returns a positive relevance score if every whitespace-separated token in <paramref name="query"/>
@@ -19,10 +18,12 @@ public static class QuickSearchMatcher
         if (string.IsNullOrWhiteSpace(query))
             return 1;
 
-        var tokens = query.Trim().Split(
-            [' ', '\t'],
-            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-        );
+        var tokens = query
+            .Trim()
+            .Split(
+                [' ', '\t'],
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            );
         if (tokens.Length == 0)
             return 1;
 

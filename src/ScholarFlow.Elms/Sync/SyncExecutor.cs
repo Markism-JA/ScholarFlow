@@ -15,8 +15,8 @@ namespace ScholarFlow.Elms.Sync;
 public sealed class SyncExecutor(HttpClient httpClient) : ISyncExecutor
 {
     private const int MaxRetries = 3;
-    private readonly HttpClient _httpClient =
-        httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+    private readonly HttpClient _httpClient = httpClient
+        ?? throw new ArgumentNullException(nameof(httpClient));
 
     public async Task<SyncResult> ExecuteAsync(
         SyncPlan plan,
@@ -290,8 +290,8 @@ public sealed class SyncExecutor(HttpClient httpClient) : ISyncExecutor
         if (!string.IsNullOrEmpty(ext))
             return resource.SanitizedFileName;
 
-        var cdName =
-            headers.ContentDisposition?.FileNameStar ?? headers.ContentDisposition?.FileName;
+        var cdName = headers.ContentDisposition?.FileNameStar
+            ?? headers.ContentDisposition?.FileName;
         if (!string.IsNullOrEmpty(cdName))
         {
             var cdExt = Path.GetExtension(cdName.Trim('"'));

@@ -17,8 +17,7 @@ public sealed partial class MainWindowViewModel
 
     public void SelectTermView(string? term)
     {
-        var normalized =
-            TaskItem.NormalizeTerm(term)
+        var normalized = TaskItem.NormalizeTerm(term)
             ?? (string.IsNullOrWhiteSpace(term) ? null : term.Trim());
         if (ActiveMode == WorkspaceTabMode.CourseWorkspace)
         {
@@ -128,11 +127,10 @@ public sealed partial class MainWindowViewModel
     {
         var currentPdf = PdfReader.CurrentFilePath;
         var currentPage = PdfReader.CurrentPage;
-        var matchedCourse =
-            Courses.FirstOrDefault(c =>
-                !string.IsNullOrWhiteSpace(currentPdf)
-                && currentPdf.Contains(c.FolderName, StringComparison.OrdinalIgnoreCase)
-            ) ?? ActiveCourse;
+        var matchedCourse = Courses.FirstOrDefault(c =>
+            !string.IsNullOrWhiteSpace(currentPdf)
+            && currentPdf.Contains(c.FolderName, StringComparison.OrdinalIgnoreCase)
+        ) ?? ActiveCourse;
 
         _ = SelectQuizStudioViewAsync(matchedCourse, currentPdf, currentPage);
     }

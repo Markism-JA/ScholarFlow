@@ -1,5 +1,4 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <AssemblyName>ScholarFlow</AssemblyName>
@@ -13,7 +12,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\assets\scholarflow.ico" LogicalName="ScholarFlow.Assets.scholarflow.ico" />
+    <EmbeddedResource
+      Include="..\..\assets\scholarflow.ico"
+      LogicalName="ScholarFlow.Assets.scholarflow.ico"
+    />
   </ItemGroup>
 
   <ItemGroup>
@@ -37,5 +39,4 @@
     <PackageReference Include="PdfSharpCore" Version="1.3.67" />
     <PackageReference Include="YamlDotNet" Version="18.1.0" />
   </ItemGroup>
-
 </Project>

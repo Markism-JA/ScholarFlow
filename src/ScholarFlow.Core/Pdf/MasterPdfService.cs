@@ -158,10 +158,7 @@ public sealed partial class MasterPdfService
                         Models.SyncProviderIds.StiElms,
                         StringComparison.OrdinalIgnoreCase
                     );
-                    return (
-                        explicitTerms ?? cfg.Terms,
-                        explicitStiFallback ?? isSti
-                    );
+                    return (explicitTerms ?? cfg.Terms, explicitStiFallback ?? isSti);
                 }
             }
             catch
@@ -660,7 +657,9 @@ public sealed partial class MasterPdfService
                 while (pos < displayLine.Length)
                 {
                     int len = Math.Min(maxCols, displayLine.Length - pos);
-                    visualLines.Add((first ? i + 1 : 0, displayLine.Substring(pos, len), isHeading));
+                    visualLines.Add(
+                        (first ? i + 1 : 0, displayLine.Substring(pos, len), isHeading)
+                    );
                     pos += len;
                     first = false;
                 }
@@ -719,7 +718,12 @@ public sealed partial class MasterPdfService
                         text,
                         headingFont,
                         XBrushes.Black,
-                        new XRect(marginLeft, y, TargetWidth - marginLeft - marginRight, lineHeight + 2),
+                        new XRect(
+                            marginLeft,
+                            y,
+                            TargetWidth - marginLeft - marginRight,
+                            lineHeight + 2
+                        ),
                         XStringFormats.TopLeft
                     );
                     y += lineHeight + 3;
@@ -902,20 +906,17 @@ public sealed partial class MasterPdfService
 
         bool modified = false;
         var patched = UnsignedPdfPermissionRegex()
-            .Replace(
-                text,
-                m =>
+            .Replace(text, m =>
+            {
+                if (uint.TryParse(m.Groups[1].Value, out uint u) && u > int.MaxValue)
                 {
-                    if (uint.TryParse(m.Groups[1].Value, out uint u) && u > int.MaxValue)
-                    {
-                        modified = true;
-                        int signed = unchecked((int)u);
-                        var rep = $"/P {signed}";
-                        return rep.PadRight(m.Value.Length, ' ');
-                    }
-                    return m.Value;
+                    modified = true;
+                    int signed = unchecked((int)u);
+                    var rep = $"/P {signed}";
+                    return rep.PadRight(m.Value.Length, ' ');
                 }
-            );
+                return m.Value;
+            });
 
         if (modified)
         {
@@ -1243,10 +1244,9 @@ public sealed partial class MasterPdfService
         bool useStiSyllabusFallback = true
     )
     {
-        var effectiveTerms =
-            configuredTerms is not null
-                ? configuredTerms.Where(t => !string.IsNullOrWhiteSpace(t)).ToList()
-                : ["Prelims", "Midterms", "Prefinals", "Finals"];
+        var effectiveTerms = configuredTerms is not null
+            ? configuredTerms.Where(t => !string.IsNullOrWhiteSpace(t)).ToList()
+            : ["Prelims", "Midterms", "Prefinals", "Finals"];
 
         var config = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
         foreach (var t in effectiveTerms)
@@ -1436,9 +1436,9 @@ public sealed partial class MasterPdfService
 
         await using var stream = File.OpenRead(statePath);
         return await JsonSerializer.DeserializeAsync<Dictionary<string, string>>(
-                stream,
-                cancellationToken: ct
-            ) ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            stream,
+            cancellationToken: ct
+        ) ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
     }
 
     private static async Task SaveStateAsync(
@@ -1503,7 +1503,12 @@ public sealed partial class MasterPdfService
             {
                 if (OperatingSystem.IsWindows())
                 {
-                    yield return WinFont(isBold && isItalic ? "consolaz.ttf" : isBold ? "consolab.ttf" : isItalic ? "consolai.ttf" : "consola.ttf");
+                    yield return WinFont(
+                        isBold && isItalic ? "consolaz.ttf"
+                        : isBold ? "consolab.ttf"
+                        : isItalic ? "consolai.ttf"
+                        : "consola.ttf"
+                    );
                     yield return WinFont(isBold ? "courbd.ttf" : "cour.ttf");
                 }
                 if (isBold && isItalic)
@@ -1534,7 +1539,12 @@ public sealed partial class MasterPdfService
             {
                 if (OperatingSystem.IsWindows())
                 {
-                    yield return WinFont(isBold && isItalic ? "timesbi.ttf" : isBold ? "timesbd.ttf" : isItalic ? "timesi.ttf" : "times.ttf");
+                    yield return WinFont(
+                        isBold && isItalic ? "timesbi.ttf"
+                        : isBold ? "timesbd.ttf"
+                        : isItalic ? "timesi.ttf"
+                        : "times.ttf"
+                    );
                     yield return WinFont(isBold ? "georgiab.ttf" : "georgia.ttf");
                 }
                 if (isBold && isItalic)
@@ -1565,8 +1575,18 @@ public sealed partial class MasterPdfService
             // Sans (default & fallback)
             if (OperatingSystem.IsWindows())
             {
-                yield return WinFont(isBold && isItalic ? "segoeuiz.ttf" : isBold ? "segoeuib.ttf" : isItalic ? "segoeuii.ttf" : "segoeui.ttf");
-                yield return WinFont(isBold && isItalic ? "arialbi.ttf" : isBold ? "arialbd.ttf" : isItalic ? "ariali.ttf" : "arial.ttf");
+                yield return WinFont(
+                    isBold && isItalic ? "segoeuiz.ttf"
+                    : isBold ? "segoeuib.ttf"
+                    : isItalic ? "segoeuii.ttf"
+                    : "segoeui.ttf"
+                );
+                yield return WinFont(
+                    isBold && isItalic ? "arialbi.ttf"
+                    : isBold ? "arialbd.ttf"
+                    : isItalic ? "ariali.ttf"
+                    : "arial.ttf"
+                );
                 yield return WinFont(isBold ? "calibrib.ttf" : "calibri.ttf");
             }
             if (isBold && isItalic)
@@ -1621,10 +1641,9 @@ public sealed partial class MasterPdfService
                 if (!Directory.Exists(dir))
                     continue;
 
-                var anyTtf =
-                    Directory
-                        .EnumerateFiles(dir, "*Sans-Regular.ttf", SearchOption.AllDirectories)
-                        .FirstOrDefault()
+                var anyTtf = Directory
+                    .EnumerateFiles(dir, "*Sans-Regular.ttf", SearchOption.AllDirectories)
+                    .FirstOrDefault()
                     ?? Directory
                         .EnumerateFiles(dir, "*-Regular.ttf", SearchOption.AllDirectories)
                         .FirstOrDefault()

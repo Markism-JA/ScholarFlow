@@ -17,10 +17,7 @@ public static class PdfBitmapRenderer
     public static RenderedPdfPixels RenderPagePixels(byte[] pdfBytes, int zeroBasedPage, int dpi)
     {
 #pragma warning disable CA1416
-        var renderOpts = new PDFtoImage.RenderOptions(
-            Dpi: dpi,
-            BackgroundColor: SKColors.White
-        );
+        var renderOpts = new PDFtoImage.RenderOptions(Dpi: dpi, BackgroundColor: SKColors.White);
         using var raw = PDFtoImage.Conversion.ToImage(
             pdfBytes,
             page: (Index)zeroBasedPage,
@@ -35,7 +32,12 @@ public static class PdfBitmapRenderer
             return new RenderedPdfPixels(pixels, raw.Width, raw.Height);
         }
 
-        var targetInfo = new SKImageInfo(raw.Width, raw.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        var targetInfo = new SKImageInfo(
+            raw.Width,
+            raw.Height,
+            SKColorType.Bgra8888,
+            SKAlphaType.Premul
+        );
         using var converted = new SKBitmap(targetInfo);
         using (var canvas = new SKCanvas(converted))
         {
@@ -68,10 +70,7 @@ public static class PdfBitmapRenderer
     )
     {
 #pragma warning disable CA1416
-        var renderOpts = new PDFtoImage.RenderOptions(
-            Dpi: dpi,
-            BackgroundColor: SKColors.White
-        );
+        var renderOpts = new PDFtoImage.RenderOptions(Dpi: dpi, BackgroundColor: SKColors.White);
         using var pageBmp = PDFtoImage.Conversion.ToImage(
             pdfBytes,
             page: (Index)zeroBasedPage,
@@ -79,10 +78,22 @@ public static class PdfBitmapRenderer
         );
 #pragma warning restore CA1416
 
-        int x = Math.Clamp((int)Math.Floor(region.X * pageBmp.Width), 0, Math.Max(0, pageBmp.Width - 2));
-        int y = Math.Clamp((int)Math.Floor(region.Y * pageBmp.Height), 0, Math.Max(0, pageBmp.Height - 2));
+        int x = Math.Clamp(
+            (int)Math.Floor(region.X * pageBmp.Width),
+            0,
+            Math.Max(0, pageBmp.Width - 2)
+        );
+        int y = Math.Clamp(
+            (int)Math.Floor(region.Y * pageBmp.Height),
+            0,
+            Math.Max(0, pageBmp.Height - 2)
+        );
         int w = Math.Clamp((int)Math.Ceiling(region.Width * pageBmp.Width), 2, pageBmp.Width - x);
-        int h = Math.Clamp((int)Math.Ceiling(region.Height * pageBmp.Height), 2, pageBmp.Height - y);
+        int h = Math.Clamp(
+            (int)Math.Ceiling(region.Height * pageBmp.Height),
+            2,
+            pageBmp.Height - y
+        );
 
         var cropRect = new SKRectI(x, y, x + w, y + h);
         using var cropped = new SKBitmap(w, h, pageBmp.ColorType, pageBmp.AlphaType);

@@ -48,15 +48,37 @@ public static class QuizQualityCritic
         RegexOptions.IgnoreCase | RegexOptions.Compiled
     );
 
-    private static readonly Regex BlankMarkerRegex = new(
-        @"_{3,}",
-        RegexOptions.Compiled
-    );
+    private static readonly Regex BlankMarkerRegex = new(@"_{3,}", RegexOptions.Compiled);
 
     private static readonly HashSet<string> StemStopwords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "the", "a", "an", "is", "are", "was", "were", "of", "in", "on", "to", "for", "with",
-        "and", "or", "by", "that", "this", "which", "what", "how", "why", "when", "where", "from", "be", "it"
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "of",
+        "in",
+        "on",
+        "to",
+        "for",
+        "with",
+        "and",
+        "or",
+        "by",
+        "that",
+        "this",
+        "which",
+        "what",
+        "how",
+        "why",
+        "when",
+        "where",
+        "from",
+        "be",
+        "it",
     };
 
     public static QuizQualityReport Audit(QuizSessionRecord? session)
@@ -78,9 +100,7 @@ public static class QuizQualityCritic
         }
 
         // Cross-question duplicate / near-duplicate stem detection
-        var tokenSets = questions
-            .Select(q => TokenizeStem(q.Prompt))
-            .ToList();
+        var tokenSets = questions.Select(q => TokenizeStem(q.Prompt)).ToList();
 
         var alreadyMarkedDup = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < questions.Count; i++)
@@ -111,10 +131,7 @@ public static class QuizQualityCritic
         return new QuizQualityReport(issues);
     }
 
-    private static void AuditSingleQuestion(
-        QuizQuestionRecord q,
-        List<QuestionQualityIssue> issues
-    )
+    private static void AuditSingleQuestion(QuizQuestionRecord q, List<QuestionQualityIssue> issues)
     {
         // 1. Options & CorrectAnswer integrity
         if (q.Kind is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational)
@@ -144,8 +161,8 @@ public static class QuizQualityCritic
             }
 
             // Duplicate options check
-            var distinctOpts = q.Options
-                .Select(o => o.Trim().ToLowerInvariant())
+            var distinctOpts = q
+                .Options.Select(o => o.Trim().ToLowerInvariant())
                 .Distinct()
                 .Count();
             if (distinctOpts < q.Options.Count)
@@ -181,8 +198,8 @@ public static class QuizQualityCritic
             if (q.Options.Count >= 4)
             {
                 var correctOpt = q.Options.FirstOrDefault(o => q.EvaluateAnswer(o));
-                var distractors = q.Options
-                    .Where(o => !string.Equals(o, correctOpt, StringComparison.Ordinal))
+                var distractors = q
+                    .Options.Where(o => !string.Equals(o, correctOpt, StringComparison.Ordinal))
                     .Select(o => o.Trim().Length)
                     .OrderBy(len => len)
                     .ToList();
@@ -260,10 +277,7 @@ public static class QuizQualityCritic
         var cleanAns = (q.CorrectAnswer ?? string.Empty).Trim();
         if (cleanAns.Length >= 4)
         {
-            if (
-                !string.IsNullOrWhiteSpace(q.Hint)
-                && ContainsWholeWord(q.Hint, cleanAns)
-            )
+            if (!string.IsNullOrWhiteSpace(q.Hint) && ContainsWholeWord(q.Hint, cleanAns))
             {
                 issues.Add(
                     new QuestionQualityIssue(
@@ -275,10 +289,7 @@ public static class QuizQualityCritic
                 );
             }
 
-            if (
-                q.Kind == QuizQuestionKind.FillInTheBlank
-                && ContainsWholeWord(q.Prompt, cleanAns)
-            )
+            if (q.Kind == QuizQuestionKind.FillInTheBlank && ContainsWholeWord(q.Prompt, cleanAns))
             {
                 issues.Add(
                     new QuestionQualityIssue(

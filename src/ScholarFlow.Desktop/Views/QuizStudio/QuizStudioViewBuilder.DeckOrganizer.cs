@@ -135,9 +135,10 @@ public static partial class QuizStudioViewBuilder
                     },
                     new TextBlock
                     {
-                        Text = courseQuizzes.Count > 0
-                            ? "Pick a saved quiz from this subject below, or open the Quiz Catalog:"
-                            : "Generate a quiz in Builder or open the Quiz Catalog to curate decks.",
+                        Text =
+                            courseQuizzes.Count > 0
+                                ? "Pick a saved quiz from this subject below, or open the Quiz Catalog:"
+                                : "Generate a quiz in Builder or open the Quiz Catalog to curate decks.",
                         FontSize = 12,
                         Foreground = ThemeService.Brush(ThemeService.TextMuted),
                     },
@@ -176,11 +177,7 @@ public static partial class QuizStudioViewBuilder
             );
         }
 
-        var rootGrid = new Grid
-        {
-            RowDefinitions = RowDefinitions.Parse("Auto,*"),
-            RowSpacing = 8,
-        };
+        var rootGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*"), RowSpacing = 8 };
 
         // 1. Compact Header + Collapsible Filter Strip
         var metaCard = new StackPanel { Spacing = 8 };
@@ -251,15 +248,12 @@ public static partial class QuizStudioViewBuilder
         Grid.SetColumn(filterToggleBtn, col++);
         topRow.Children.Add(filterToggleBtn);
 
-        var shufflePlayBtn = UiBuilder.GhostButton(
-            "Play",
-            MaterialIconKind.PlayOutline,
-            () =>
-                studio.StartQuizSession(
-                    deck,
-                    shuffleQuestionsOverride: true,
-                    shuffleOptionsOverride: true
-                )
+        var shufflePlayBtn = UiBuilder.GhostButton("Play", MaterialIconKind.PlayOutline, () =>
+            studio.StartQuizSession(
+                deck,
+                shuffleQuestionsOverride: true,
+                shuffleOptionsOverride: true
+            )
         );
         Grid.SetColumn(shufflePlayBtn, col++);
         topRow.Children.Add(shufflePlayBtn);
@@ -318,7 +312,11 @@ public static partial class QuizStudioViewBuilder
 
         moreFlyout.Items.Add(new Separator());
 
-        async Task SaveDeckPdfWithOptionsAsync(string suffix, string dialogTitle, QuizPdfExportOptions options)
+        async Task SaveDeckPdfWithOptionsAsync(
+            string suffix,
+            string dialogTitle,
+            QuizPdfExportOptions options
+        )
         {
             var top = TopLevel.GetTopLevel(moreBtn);
             if (top?.StorageProvider is null)
@@ -339,19 +337,40 @@ public static partial class QuizStudioViewBuilder
                 await studio.ExportQuizToPdfFileAsync(deck, outPath, options);
         }
 
-        var exportPdfItem = new MenuItem { Header = "Export Printable Exam PDF (Worksheet + Hints + Key)" };
+        var exportPdfItem = new MenuItem
+        {
+            Header = "Export Printable Exam PDF (Worksheet + Hints + Key)",
+        };
         exportPdfItem.Click += async (_, _) =>
-            await SaveDeckPdfWithOptionsAsync("_Exam", "Export Printable Exam PDF", QuizPdfExportOptions.ExamDefault);
+            await SaveDeckPdfWithOptionsAsync(
+                "_Exam",
+                "Export Printable Exam PDF",
+                QuizPdfExportOptions.ExamDefault
+            );
         moreFlyout.Items.Add(exportPdfItem);
 
-        var exportStudyGuideItem = new MenuItem { Header = "Export Study Guide PDF (Inline Answers & Feedback)" };
+        var exportStudyGuideItem = new MenuItem
+        {
+            Header = "Export Study Guide PDF (Inline Answers & Feedback)",
+        };
         exportStudyGuideItem.Click += async (_, _) =>
-            await SaveDeckPdfWithOptionsAsync("_StudyGuide", "Export Study Guide PDF", QuizPdfExportOptions.StudyGuide);
+            await SaveDeckPdfWithOptionsAsync(
+                "_StudyGuide",
+                "Export Study Guide PDF",
+                QuizPdfExportOptions.StudyGuide
+            );
         moreFlyout.Items.Add(exportStudyGuideItem);
 
-        var exportBlankExamItem = new MenuItem { Header = "Export Questions-Only PDF (Blank Exam Sheet)" };
+        var exportBlankExamItem = new MenuItem
+        {
+            Header = "Export Questions-Only PDF (Blank Exam Sheet)",
+        };
         exportBlankExamItem.Click += async (_, _) =>
-            await SaveDeckPdfWithOptionsAsync("_QuestionsOnly", "Export Questions-Only PDF", QuizPdfExportOptions.QuestionsOnly);
+            await SaveDeckPdfWithOptionsAsync(
+                "_QuestionsOnly",
+                "Export Questions-Only PDF",
+                QuizPdfExportOptions.QuestionsOnly
+            );
         moreFlyout.Items.Add(exportBlankExamItem);
 
         var exportJsonItem = new MenuItem { Header = "Export Deck JSON" };
@@ -393,11 +412,10 @@ public static partial class QuizStudioViewBuilder
         {
             var regroundItem = new MenuItem
             {
-                Header = !File.Exists(deck.SourcePdfPath)
-                    ? "Re-ground via Master PDF"
-                    : deck.IsSourcePdfStale()
-                        ? "Re-ground Stale PDF"
-                        : "Re-ground PDF",
+                Header =
+                    !File.Exists(deck.SourcePdfPath) ? "Re-ground via Master PDF"
+                    : deck.IsSourcePdfStale() ? "Re-ground Stale PDF"
+                    : "Re-ground PDF",
             };
             regroundItem.Click += async (_, _) => await studio.RegroundQuizAsync(deck);
             moreFlyout.Items.Add(regroundItem);
@@ -471,7 +489,11 @@ public static partial class QuizStudioViewBuilder
             foreach (var term in vm.ActiveTerms)
             {
                 var capturedTerm = term;
-                bool isCurrTerm = string.Equals(deck.Term, term, StringComparison.OrdinalIgnoreCase);
+                bool isCurrTerm = string.Equals(
+                    deck.Term,
+                    term,
+                    StringComparison.OrdinalIgnoreCase
+                );
                 var termSub = new MenuItem { Header = isCurrTerm ? $"✓ {term}" : term };
                 termSub.Click += (_, _) =>
                 {
@@ -616,11 +638,7 @@ public static partial class QuizStudioViewBuilder
         };
 
         var expandedCardTarget = visibleQuestions.FirstOrDefault(q =>
-            string.Equals(
-                q.Id,
-                studio.EditingQuestionId,
-                StringComparison.OrdinalIgnoreCase
-            )
+            string.Equals(q.Id, studio.EditingQuestionId, StringComparison.OrdinalIgnoreCase)
         );
         var (cardListBox, scrollCardToItem) = CreateCleanVirtualizedListBox(
             $"quiz-organizer-cards:{deck.Id}",
@@ -735,7 +753,9 @@ public static partial class QuizStudioViewBuilder
                                             FontWeight = isSelected
                                                 ? FontWeight.SemiBold
                                                 : FontWeight.Normal,
-                                            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                                            Foreground = ThemeService.Brush(
+                                                ThemeService.TextPrimary
+                                            ),
                                             TextTrimming = TextTrimming.CharacterEllipsis,
                                             MaxLines = 1,
                                         },
@@ -967,10 +987,12 @@ public static partial class QuizStudioViewBuilder
         return rootGrid;
     }
 
-    private static readonly Dictionary<string, Vector> SavedOrganizerScrollOffsets =
-        new(StringComparer.Ordinal);
-    private static readonly Dictionary<string, string?> SavedOrganizerAnchorIds =
-        new(StringComparer.Ordinal);
+    private static readonly Dictionary<string, Vector> SavedOrganizerScrollOffsets = new(
+        StringComparer.Ordinal
+    );
+    private static readonly Dictionary<string, string?> SavedOrganizerAnchorIds = new(
+        StringComparer.Ordinal
+    );
 
     private static (ListBox ListBox, Action<T> ScrollToItem) CreateCleanVirtualizedListBox<T>(
         string scrollKey,
@@ -988,8 +1010,8 @@ public static partial class QuizStudioViewBuilder
             Focusable = false,
             SelectionMode = SelectionMode.Single,
             ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
-            ItemTemplate = new FuncDataTemplate<T>((item, _) =>
-                item is null ? new Border() : templateBuilder(item)
+            ItemTemplate = new FuncDataTemplate<T>(
+                (item, _) => item is null ? new Border() : templateBuilder(item)
             ),
         };
 
@@ -1241,9 +1263,7 @@ public static partial class QuizStudioViewBuilder
         };
         rowActions.Children.Add(
             UiBuilder.IconButton(
-                isDeckFixChecked
-                    ? MaterialIconKind.Flag
-                    : MaterialIconKind.FlagOutline,
+                isDeckFixChecked ? MaterialIconKind.Flag : MaterialIconKind.FlagOutline,
                 () => studio.ToggleDeckAiFixTarget(q.Id),
                 14,
                 isDeckFixChecked
@@ -1270,10 +1290,8 @@ public static partial class QuizStudioViewBuilder
         if (File.Exists(q.SourcePdfPath))
         {
             rowActions.Children.Add(
-                UiBuilder.GhostButton(
-                    q.EvidenceChipLabel,
-                    MaterialIconKind.Marker,
-                    () => studio.OpenQuestionEvidenceInPdfReader(q)
+                UiBuilder.GhostButton(q.EvidenceChipLabel, MaterialIconKind.Marker, () =>
+                    studio.OpenQuestionEvidenceInPdfReader(q)
                 )
             );
         }
@@ -1286,10 +1304,8 @@ public static partial class QuizStudioViewBuilder
             )
         );
         rowActions.Children.Add(
-            UiBuilder.GhostButton(
-                "Edit",
-                MaterialIconKind.PencilOutline,
-                () => studio.ToggleEditQuestion(q.Id)
+            UiBuilder.GhostButton("Edit", MaterialIconKind.PencilOutline, () =>
+                studio.ToggleEditQuestion(q.Id)
             )
         );
         rowActions.Children.Add(
@@ -1339,9 +1355,10 @@ public static partial class QuizStudioViewBuilder
     )
     {
         var draft = studio.EditingQuestionDraft!;
-        int curPage = studio.EditingSnipPageNumber > 0
-            ? studio.EditingSnipPageNumber
-            : Math.Max(1, draft.SourcePage);
+        int curPage =
+            studio.EditingSnipPageNumber > 0
+                ? studio.EditingSnipPageNumber
+                : Math.Max(1, draft.SourcePage);
         int totalPages = Math.Max(1, studio.EditingSnipTotalPages);
         var activeNode = studio.FindActiveSnipBookmarkNode(curPage);
 
@@ -1417,15 +1434,13 @@ public static partial class QuizStudioViewBuilder
             Margin = new Thickness(0, 0, 10, 0),
         };
         navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.PageFirst,
-                async () => await studio.LoadEditorSnipPageAsync(1)
+            UiBuilder.IconButton(MaterialIconKind.PageFirst, async () =>
+                await studio.LoadEditorSnipPageAsync(1)
             )
         );
         navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.ChevronLeft,
-                async () => await studio.LoadEditorSnipPageAsync(Math.Max(1, curPage - 1))
+            UiBuilder.IconButton(MaterialIconKind.ChevronLeft, async () =>
+                await studio.LoadEditorSnipPageAsync(Math.Max(1, curPage - 1))
             )
         );
         navRow.Children.Add(
@@ -1445,15 +1460,13 @@ public static partial class QuizStudioViewBuilder
             }
         );
         navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.ChevronRight,
-                async () => await studio.LoadEditorSnipPageAsync(Math.Min(totalPages, curPage + 1))
+            UiBuilder.IconButton(MaterialIconKind.ChevronRight, async () =>
+                await studio.LoadEditorSnipPageAsync(Math.Min(totalPages, curPage + 1))
             )
         );
         navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.PageLast,
-                async () => await studio.LoadEditorSnipPageAsync(totalPages)
+            UiBuilder.IconButton(MaterialIconKind.PageLast, async () =>
+                await studio.LoadEditorSnipPageAsync(totalPages)
             )
         );
         rightControls.Children.Add(navRow);
@@ -1473,9 +1486,8 @@ public static partial class QuizStudioViewBuilder
             )
         );
         zoomRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.MagnifyMinusOutline,
-                async () => await studio.ZoomSnipAsync(-25)
+            UiBuilder.IconButton(MaterialIconKind.MagnifyMinusOutline, async () =>
+                await studio.ZoomSnipAsync(-25)
             )
         );
         zoomRow.Children.Add(
@@ -1486,9 +1498,8 @@ public static partial class QuizStudioViewBuilder
             )
         );
         zoomRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.MagnifyPlusOutline,
-                async () => await studio.ZoomSnipAsync(+25)
+            UiBuilder.IconButton(MaterialIconKind.MagnifyPlusOutline, async () =>
+                await studio.ZoomSnipAsync(+25)
             )
         );
         zoomRow.Children.Add(
@@ -1596,20 +1607,13 @@ public static partial class QuizStudioViewBuilder
             };
             pageLayer.Children.Add(img);
             pageLayer.Children.Add(
-                new PdfVisualSnipperControl(
-                    pageHighlights,
-                    async (rect, additive) =>
-                    {
-                        if (studio.SnipMode == SnipCaptureMode.CaptureImage)
-                            await studio.CaptureQuestionImageFromSnipperAsync(rect);
-                        else
-                            await studio.ApplyVisualSnipRegionAsync(rect, additive);
-                    }
-                )
+                new PdfVisualSnipperControl(pageHighlights, async (rect, additive) =>
                 {
-                    HorizontalAlignment = HorizontalAlignment.Stretch,
-                    VerticalAlignment = VerticalAlignment.Stretch,
-                }
+                    if (studio.SnipMode == SnipCaptureMode.CaptureImage)
+                        await studio.CaptureQuestionImageFromSnipperAsync(rect);
+                    else
+                        await studio.ApplyVisualSnipRegionAsync(rect, additive);
+                }) { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch }
             );
 
             var sheet = new Border
@@ -1670,9 +1674,10 @@ public static partial class QuizStudioViewBuilder
         railStack.Children.Add(
             new TextBlock
             {
-                Text = studio.SnipMode == SnipCaptureMode.CaptureImage
-                    ? "Mode: Capture Image — drag a box around any diagram/figure to attach it as the question's image."
-                    : "Mode: Pin Highlight — drag on the PDF to pin an anchor (Shift+Drag adds boxes to this page).",
+                Text =
+                    studio.SnipMode == SnipCaptureMode.CaptureImage
+                        ? "Mode: Capture Image — drag a box around any diagram/figure to attach it as the question's image."
+                        : "Mode: Pin Highlight — drag on the PDF to pin an anchor (Shift+Drag adds boxes to this page).",
                 FontSize = 11,
                 Foreground = ThemeService.Brush(ThemeService.TextMuted),
                 TextWrapping = TextWrapping.Wrap,
@@ -1683,16 +1688,17 @@ public static partial class QuizStudioViewBuilder
         if (!string.IsNullOrWhiteSpace(capturedImgFull))
         {
             railStack.Children.Add(
-                QuizRichContentRenderer.BuildQuestionImageCard(
-                    capturedImgFull,
-                    () => studio.OpenImageZoom(draft.ImagePath)
+                QuizRichContentRenderer.BuildQuestionImageCard(capturedImgFull, () =>
+                    studio.OpenImageZoom(draft.ImagePath)
                 )
             );
         }
 
         if (studio.SnipExtractedFigures.Count > 0)
         {
-            railStack.Children.Add(UiBuilder.SectionHeader($"Embedded Figures ({studio.SnipExtractedFigures.Count})"));
+            railStack.Children.Add(
+                UiBuilder.SectionHeader($"Embedded Figures ({studio.SnipExtractedFigures.Count})")
+            );
             for (int fi = 0; fi < studio.SnipExtractedFigures.Count; fi++)
             {
                 var figPath = studio.SnipExtractedFigures[fi];
@@ -1748,9 +1754,10 @@ public static partial class QuizStudioViewBuilder
                 new Border
                 {
                     Background = ThemeService.Brush(ThemeService.BgBase),
-                    BorderBrush = anchor.PageNumber == curPage
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
-                        : ThemeService.Brush(ThemeService.BorderSubtle),
+                    BorderBrush =
+                        anchor.PageNumber == curPage
+                            ? ThemeService.Brush(ThemeService.AccentPrimary)
+                            : ThemeService.Brush(ThemeService.BorderSubtle),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(8, 6),
@@ -1794,7 +1801,11 @@ public static partial class QuizStudioViewBuilder
                 VerticalAlignment = VerticalAlignment.Center,
             }
         );
-        var closeBtn = UiBuilder.GhostButton("Close", MaterialIconKind.Close, studio.CloseDeckAiFixModal);
+        var closeBtn = UiBuilder.GhostButton(
+            "Close",
+            MaterialIconKind.Close,
+            studio.CloseDeckAiFixModal
+        );
         Grid.SetColumn(closeBtn, 1);
         header.Children.Add(closeBtn);
         modalStack.Children.Add(header);
@@ -1885,7 +1896,8 @@ public static partial class QuizStudioViewBuilder
         var instrBox = new TextBox
         {
             Text = studio.DeckAiFixInstructions,
-            Watermark = "e.g., Fix inaccurate answers on flagged items, add C code snippets where relevant, and add 2 new questions on Virtual Memory...",
+            Watermark =
+                "e.g., Fix inaccurate answers on flagged items, add C code snippets where relevant, and add 2 new questions on Virtual Memory...",
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             MinHeight = 64,
@@ -1941,7 +1953,8 @@ public static partial class QuizStudioViewBuilder
             var pasteBox = new TextBox
             {
                 Text = studio.DeckAiFixJsonInput,
-                Watermark = "Paste the { \"updatedQuestions\": [...], \"newQuestions\": [...] } JSON response here...",
+                Watermark =
+                    "Paste the { \"updatedQuestions\": [...], \"newQuestions\": [...] } JSON response here...",
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.Wrap,
                 MinHeight = 90,
@@ -1987,7 +2000,9 @@ public static partial class QuizStudioViewBuilder
                     "Apply Deck Fix JSON",
                     MaterialIconKind.CheckDecagramOutline,
                     async () =>
-                        await studio.ApplyDeckComprehensiveAiFixJsonAsync(pasteBox.Text ?? string.Empty)
+                        await studio.ApplyDeckComprehensiveAiFixJsonAsync(
+                            pasteBox.Text ?? string.Empty
+                        )
                 )
             );
         }
@@ -2094,7 +2109,8 @@ public static partial class QuizStudioViewBuilder
             previewStack.Children.Add(
                 new TextBlock
                 {
-                    Text = $"Explanation: {QuizRichContentRenderer.FormatInlineMath(q.Explanation)}",
+                    Text =
+                        $"Explanation: {QuizRichContentRenderer.FormatInlineMath(q.Explanation)}",
                     FontSize = 11.5,
                     Foreground = ThemeService.Brush(ThemeService.TextMuted),
                     TextWrapping = TextWrapping.Wrap,
@@ -2204,11 +2220,8 @@ public static partial class QuizStudioViewBuilder
             UiBuilder.GhostButton("Cancel", null, studio.CloseQuestionAiFixModal)
         );
         rightActions.Children.Add(
-            UiBuilder.PrimaryButton(
-                "Apply Pasted JSON",
-                MaterialIconKind.Check,
-                async () =>
-                    await studio.ApplyQuestionAiFixAsync(q, fixJsonBox.Text ?? string.Empty)
+            UiBuilder.PrimaryButton("Apply Pasted JSON", MaterialIconKind.Check, async () =>
+                await studio.ApplyQuestionAiFixAsync(q, fixJsonBox.Text ?? string.Empty)
             )
         );
         Grid.SetColumn(rightActions, 1);
@@ -2279,9 +2292,8 @@ public static partial class QuizStudioViewBuilder
         var resolvedImg = studio.ResolveQuestionImageFullPath(q.ImagePath);
         if (!string.IsNullOrWhiteSpace(resolvedImg))
             targetStack.Children.Add(
-                QuizRichContentRenderer.BuildQuestionImageCard(
-                    resolvedImg,
-                    () => studio.OpenImageZoom(q.ImagePath)
+                QuizRichContentRenderer.BuildQuestionImageCard(resolvedImg, () =>
+                    studio.OpenImageZoom(q.ImagePath)
                 )
             );
 

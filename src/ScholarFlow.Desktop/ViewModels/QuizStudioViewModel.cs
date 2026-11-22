@@ -75,7 +75,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         public int? StartPage { get; set; }
         public int? EndPage { get; set; }
         public HashSet<string> SelectedSectionKeys { get; } = new(StringComparer.OrdinalIgnoreCase);
-        public HashSet<string> SelectedFileSourcePaths { get; } = new(StringComparer.OrdinalIgnoreCase);
+        public HashSet<string> SelectedFileSourcePaths { get; } =
+            new(StringComparer.OrdinalIgnoreCase);
         public bool IncludePdfWithFiles { get; set; }
         public bool ShowStudyFiles { get; set; }
         public bool IsCodeAwareMixActive { get; set; }
@@ -83,13 +84,17 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         public QuizBuilderOutputMode BuilderOutputMode { get; set; } = QuizBuilderOutputMode.AiApi;
         public int QuestionCount { get; set; } = 10;
         public QuizPresetMode SelectedPreset { get; set; } = QuizPresetMode.ExamSimulator;
-        public QuestionAllocationMode AllocationMode { get; set; } = QuestionAllocationMode.Percentages;
+        public QuestionAllocationMode AllocationMode { get; set; } =
+            QuestionAllocationMode.Percentages;
         public Dictionary<QuizQuestionKind, int> KindAllocations { get; set; } =
             QuizGenerationRequest.GetDefaultAllocationsForPreset(QuizPresetMode.ExamSimulator);
         public CognitiveMixPreset CognitiveMix { get; set; } = CognitiveMixPreset.Balanced;
         public Dictionary<CognitiveLevel, int> CognitiveAllocations { get; set; } =
-            QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(QuizPresetMode.ExamSimulator);
-        public QuizContentModalityMode ModalityMode { get; set; } = QuizContentModalityMode.AutoDetect;
+            QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(
+                QuizPresetMode.ExamSimulator
+            );
+        public QuizContentModalityMode ModalityMode { get; set; } =
+            QuizContentModalityMode.AutoDetect;
         public HashSet<QuestionArchetype> SelectedArchetypes { get; } = [];
         public bool FocusWeakSpots { get; set; }
         public bool EnableContrastiveExplanations { get; set; } = true;
@@ -99,8 +104,9 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         public bool IsManualJsonModalOpen { get; set; }
     }
 
-    private readonly Dictionary<string, CourseStudioState> _courseStates =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, CourseStudioState> _courseStates = new(
+        StringComparer.OrdinalIgnoreCase
+    );
 
     public QuizStudioSubTab ActiveSubTab { get; private set; } = QuizStudioSubTab.Catalog;
     public BasinCourseEntry? SelectedCourse { get; private set; }
@@ -170,7 +176,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public QuizSessionRecord? OrganizerQuiz { get; private set; }
     public QuizQuestionKind? OrganizerKindFilter { get; private set; }
     public string? OrganizerTopicFilter { get; private set; }
-    public OrganizerHealthFilter OrganizerHealthFilter { get; private set; } = OrganizerHealthFilter.All;
+    public OrganizerHealthFilter OrganizerHealthFilter { get; private set; } =
+        OrganizerHealthFilter.All;
     public string OrganizerSearchQuery { get; private set; } = string.Empty;
     public string? SelectedOrganizerQuestionId { get; private set; }
     public bool IsOrganizerDirty { get; private set; }

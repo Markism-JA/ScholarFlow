@@ -145,11 +145,7 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
-    public void RemapSourcePdfPaths(
-        string oldPathOrPrefix,
-        string newPathOrPrefix,
-        bool isPrefix
-    )
+    public void RemapSourcePdfPaths(string oldPathOrPrefix, string newPathOrPrefix, bool isPrefix)
     {
         void RemapSession(QuizSessionRecord? session)
         {
@@ -203,7 +199,8 @@ public sealed partial class QuizStudioViewModel
             && !quiz.SourcePdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
         )
         {
-            StatusMessage = "Re-grounding applies to PDF sources only; code/text evidence uses exact line ranges.";
+            StatusMessage =
+                "Re-grounding applies to PDF sources only; code/text evidence uses exact line ranges.";
             IsStatusError = false;
             _mainVm.RequestUiRefresh();
             return;
@@ -248,7 +245,11 @@ public sealed partial class QuizStudioViewModel
                 if (pdfOnlyQuestions.Count == quiz.Questions.Count)
                     return PdfQuizGrounder.RegroundSessionToPdf(quiz);
 
-                PdfQuizGrounder.GroundQuestionsToPdf(quiz.SourcePdfPath, pdfOnlyQuestions, forceUpdateSection: true);
+                PdfQuizGrounder.GroundQuestionsToPdf(
+                    quiz.SourcePdfPath,
+                    pdfOnlyQuestions,
+                    forceUpdateSection: true
+                );
                 if (File.Exists(quiz.SourcePdfPath))
                     quiz.SourcePdfMtimeTicks = File.GetLastWriteTimeUtc(quiz.SourcePdfPath).Ticks;
                 return pdfOnlyQuestions.Count(q => q.HighlightRects.Count > 0);
@@ -440,7 +441,10 @@ public sealed partial class QuizStudioViewModel
             EvidenceAnchors =
             [
                 .. orig.EvidenceAnchors.Select(a =>
-                    a with { HighlightRects = [.. a.HighlightRects] }
+                    a with
+                    {
+                        HighlightRects = [.. a.HighlightRects],
+                    }
                 ),
             ],
             SrsIntervalDays = orig.SrsIntervalDays,
@@ -494,18 +498,16 @@ public sealed partial class QuizStudioViewModel
                 )
                 && OrganizerHealthFilter switch
                 {
-                    OrganizerHealthFilter.QualityIssues =>
-                        qualityFlaggedIds is not null && qualityFlaggedIds.Contains(q.Id),
-                    OrganizerHealthFilter.MissingEvidence =>
-                        string.IsNullOrWhiteSpace(q.VerbatimQuote)
-                        || (q.IsPdfSource && q.HighlightRects.Count == 0),
-                    OrganizerHealthFilter.HasRichMedia =>
-                        !string.IsNullOrWhiteSpace(q.CodeSnippet)
+                    OrganizerHealthFilter.QualityIssues => qualityFlaggedIds is not null
+                        && qualityFlaggedIds.Contains(q.Id),
+                    OrganizerHealthFilter.MissingEvidence => string.IsNullOrWhiteSpace(
+                        q.VerbatimQuote
+                    ) || (q.IsPdfSource && q.HighlightRects.Count == 0),
+                    OrganizerHealthFilter.HasRichMedia => !string.IsNullOrWhiteSpace(q.CodeSnippet)
                         || !string.IsNullOrWhiteSpace(q.MathLatex)
                         || !string.IsNullOrWhiteSpace(q.Diagram)
                         || !string.IsNullOrWhiteSpace(q.ImagePath),
-                    OrganizerHealthFilter.FlaggedForAi =>
-                        DeckAiFixSelectedIds.Contains(q.Id)
+                    OrganizerHealthFilter.FlaggedForAi => DeckAiFixSelectedIds.Contains(q.Id)
                         || string.Equals(
                             FlaggingQuestionId,
                             q.Id,
@@ -601,7 +603,8 @@ public sealed partial class QuizStudioViewModel
 
     public void SetOrganizerHealthFilter(OrganizerHealthFilter health)
     {
-        OrganizerHealthFilter = OrganizerHealthFilter == health ? OrganizerHealthFilter.All : health;
+        OrganizerHealthFilter =
+            OrganizerHealthFilter == health ? OrganizerHealthFilter.All : health;
         _mainVm.RequestUiRefresh();
     }
 
@@ -664,9 +667,10 @@ public sealed partial class QuizStudioViewModel
         EditingSnipPageBitmap = null;
         EditingSnipPageNumber = 0;
         IsDedicatedSnipperOpen = false;
-        EditingGroundStatus = target.HighlightRects.Count > 0
-            ? $"✓ Highlighted ({target.HighlightRects.Count} box(es) on p.{target.SourcePage})"
-            : null;
+        EditingGroundStatus =
+            target.HighlightRects.Count > 0
+                ? $"✓ Highlighted ({target.HighlightRects.Count} box(es) on p.{target.SourcePage})"
+                : null;
         IsEditingAdvancedOpen =
             !string.IsNullOrWhiteSpace(target.CodeSnippet)
             || !string.IsNullOrWhiteSpace(target.MathLatex)
@@ -692,7 +696,12 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
 
         var extracted = await Task.Run(() =>
-            PdfQuizGrounder.ExtractGroundedPages(pdfPath, startPage: page, endPage: page, maxPages: 1)
+            PdfQuizGrounder.ExtractGroundedPages(
+                pdfPath,
+                startPage: page,
+                endPage: page,
+                maxPages: 1
+            )
         );
         if (extracted.Count > 0)
         {
@@ -722,9 +731,10 @@ public sealed partial class QuizStudioViewModel
 
         draft.SourcePdfPath = pdfPath;
         PdfQuizGrounder.GroundQuestionsToPdf(pdfPath, [draft], forceUpdateSection: true);
-        EditingGroundStatus = draft.HighlightRects.Count > 0
-            ? $"✓ Grounded ({draft.HighlightRects.Count} highlight box(es) on p.{draft.SourcePage})"
-            : $"⚠ Quote not matched on p.{draft.SourcePage} — check spelling or load page text.";
+        EditingGroundStatus =
+            draft.HighlightRects.Count > 0
+                ? $"✓ Grounded ({draft.HighlightRects.Count} highlight box(es) on p.{draft.SourcePage})"
+                : $"⚠ Quote not matched on p.{draft.SourcePage} — check spelling or load page text.";
         _mainVm.RequestUiRefresh();
     }
 
@@ -825,9 +835,10 @@ public sealed partial class QuizStudioViewModel
         if (EditingQuestionDraft is null)
             return;
         IsDedicatedSnipperOpen = true;
-        int startPage = EditingSnipPageNumber > 0
-            ? EditingSnipPageNumber
-            : Math.Max(1, EditingQuestionDraft.SourcePage);
+        int startPage =
+            EditingSnipPageNumber > 0
+                ? EditingSnipPageNumber
+                : Math.Max(1, EditingQuestionDraft.SourcePage);
         await LoadEditorSnipPageAsync(startPage);
     }
 
@@ -896,7 +907,13 @@ public sealed partial class QuizStudioViewModel
                 ext = ".png";
             var destName = $"{EditingQuestionDraft.Id}_{DateTime.UtcNow:yyyyMMddHHmmss}{ext}";
             var destFull = Path.Combine(mediaDir, destName);
-            if (!string.Equals(Path.GetFullPath(filePath), Path.GetFullPath(destFull), StringComparison.OrdinalIgnoreCase))
+            if (
+                !string.Equals(
+                    Path.GetFullPath(filePath),
+                    Path.GetFullPath(destFull),
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
                 File.Copy(filePath, destFull, overwrite: true);
             EditingQuestionDraft.ImagePath = Path.GetRelativePath(_mainVm.BasinRoot, destFull);
         }
@@ -918,9 +935,15 @@ public sealed partial class QuizStudioViewModel
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
 
-        int page = EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
+        int page =
+            EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
         var mediaDir = !string.IsNullOrWhiteSpace(_mainVm.BasinRoot)
-            ? Path.Combine(_mainVm.BasinRoot, ".scholarflow", "quiz_media", OrganizerQuiz?.Id ?? "manual")
+            ? Path.Combine(
+                _mainVm.BasinRoot,
+                ".scholarflow",
+                "quiz_media",
+                OrganizerQuiz?.Id ?? "manual"
+            )
             : Path.Combine(Path.GetTempPath(), "ScholarFlow-QuizMedia");
         var outFull = Path.Combine(mediaDir, $"{draft.Id}_p{page}_{DateTime.UtcNow:HHmmss}.png");
 
@@ -939,7 +962,13 @@ public sealed partial class QuizStudioViewModel
                 }
                 pdfBytes = _cachedPdfBytes;
             }
-            Services.PdfBitmapRenderer.CropAndSavePageRegion(pdfBytes, page - 1, region, outFull, dpi: 220);
+            Services.PdfBitmapRenderer.CropAndSavePageRegion(
+                pdfBytes,
+                page - 1,
+                region,
+                outFull,
+                dpi: 220
+            );
         });
 
         draft.ImagePath = !string.IsNullOrWhiteSpace(_mainVm.BasinRoot)
@@ -959,15 +988,17 @@ public sealed partial class QuizStudioViewModel
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
 
-        int page = EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
+        int page =
+            EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
         var outDir = Path.Combine(Path.GetTempPath(), "ScholarFlow-ExtractedFigs", draft.Id);
         var figs = await Task.Run(() =>
             PdfQuizGrounder.ExtractEmbeddedImagesFromPage(pdfPath, page, outDir)
         );
         SnipExtractedFigures = figs;
-        EditingGroundStatus = figs.Count > 0
-            ? $"Found {figs.Count} embedded figure(s) on p.{page} — click one to attach."
-            : $"No embedded raster images on p.{page} (use Capture Image drag-crop for vector diagrams).";
+        EditingGroundStatus =
+            figs.Count > 0
+                ? $"Found {figs.Count} embedded figure(s) on p.{page} — click one to attach."
+                : $"No embedded raster images on p.{page} (use Capture Image drag-crop for vector diagrams).";
         _mainVm.RequestUiRefresh();
     }
 
@@ -990,7 +1021,10 @@ public sealed partial class QuizStudioViewModel
         {
             foreach (var n in nodes)
             {
-                if (n.PageNumber <= currentPage && (best is null || n.PageNumber >= best.PageNumber))
+                if (
+                    n.PageNumber <= currentPage
+                    && (best is null || n.PageNumber >= best.PageNumber)
+                )
                     best = n;
                 if (n.Children.Count > 0)
                     Walk(n.Children);
@@ -1000,7 +1034,10 @@ public sealed partial class QuizStudioViewModel
         return best;
     }
 
-    private readonly Dictionary<(string Path, int Page, int Dpi), Avalonia.Media.Imaging.Bitmap> _snipBitmapCache = [];
+    private readonly Dictionary<
+        (string Path, int Page, int Dpi),
+        Avalonia.Media.Imaging.Bitmap
+    > _snipBitmapCache = [];
 
     public void ZoomPreview(int delta)
     {
@@ -1069,7 +1106,11 @@ public sealed partial class QuizStudioViewModel
             _mainVm.RequestUiRefresh();
         }
 
-        bool needOutline = !string.Equals(_snipOutlinePdfPath, pdfPath, StringComparison.OrdinalIgnoreCase);
+        bool needOutline = !string.Equals(
+            _snipOutlinePdfPath,
+            pdfPath,
+            StringComparison.OrdinalIgnoreCase
+        );
 
         try
         {
@@ -1140,7 +1181,8 @@ public sealed partial class QuizStudioViewModel
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
 
-        int page = EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
+        int page =
+            EditingSnipPageNumber > 0 ? EditingSnipPageNumber : Math.Max(1, draft.SourcePage);
         draft.SourcePdfPath = pdfPath;
 
         var (quote, sectionTitle, _) = await Task.Run(() =>
@@ -1152,11 +1194,10 @@ public sealed partial class QuizStudioViewModel
         {
             var prev = draft.EvidenceAnchors[existingOnPageIdx];
             var updatedRects = new List<NormalizedHighlightRect>(prev.HighlightRects) { region };
-            var mergedQuote = string.IsNullOrWhiteSpace(quote)
-                ? prev.VerbatimQuote
-                : string.IsNullOrWhiteSpace(prev.VerbatimQuote)
-                    ? quote
-                    : $"{prev.VerbatimQuote} ... {quote}";
+            var mergedQuote =
+                string.IsNullOrWhiteSpace(quote) ? prev.VerbatimQuote
+                : string.IsNullOrWhiteSpace(prev.VerbatimQuote) ? quote
+                : $"{prev.VerbatimQuote} ... {quote}";
             draft.EvidenceAnchors[existingOnPageIdx] = new GroundedEvidenceAnchor(
                 page,
                 !string.IsNullOrWhiteSpace(sectionTitle) ? sectionTitle : prev.SectionTitle,
@@ -1167,17 +1208,13 @@ public sealed partial class QuizStudioViewModel
         else
         {
             draft.EvidenceAnchors.Add(
-                new GroundedEvidenceAnchor(
-                    page,
-                    sectionTitle,
-                    quote,
-                    [region]
-                )
+                new GroundedEvidenceAnchor(page, sectionTitle, quote, [region])
             );
         }
 
         SyncPrimaryEvidenceFromAnchors(draft);
-        EditingGroundStatus = $"✓ {draft.EvidenceAnchors.Count} evidence anchor(s) pinned (latest on p.{page})";
+        EditingGroundStatus =
+            $"✓ {draft.EvidenceAnchors.Count} evidence anchor(s) pinned (latest on p.{page})";
         _mainVm.RequestUiRefresh();
     }
 
@@ -1189,9 +1226,10 @@ public sealed partial class QuizStudioViewModel
 
         draft.EvidenceAnchors.RemoveAt(index);
         SyncPrimaryEvidenceFromAnchors(draft);
-        EditingGroundStatus = draft.EvidenceAnchors.Count > 0
-            ? $"✓ {draft.EvidenceAnchors.Count} evidence anchor(s) remaining"
-            : "Cleared all evidence anchors.";
+        EditingGroundStatus =
+            draft.EvidenceAnchors.Count > 0
+                ? $"✓ {draft.EvidenceAnchors.Count} evidence anchor(s) remaining"
+                : "Cleared all evidence anchors.";
         _mainVm.RequestUiRefresh();
     }
 
@@ -1399,9 +1437,12 @@ public sealed partial class QuizStudioViewModel
     )
     {
         await Task.Run(() => QuizExportService.ExportDeckToPrintablePdf(quiz, filePath, options));
-        var modeLabel = options?.Mode == QuizPdfExportMode.StudyGuideInline
-            ? "Study Guide PDF"
-            : (options?.IncludeAnswerKey == false ? "Questions-Only PDF" : "Printable Exam PDF");
+        var modeLabel =
+            options?.Mode == QuizPdfExportMode.StudyGuideInline
+                ? "Study Guide PDF"
+                : (
+                    options?.IncludeAnswerKey == false ? "Questions-Only PDF" : "Printable Exam PDF"
+                );
         StatusMessage = $"Exported {modeLabel} to {Path.GetFileName(filePath)}.";
         IsStatusError = false;
         _mainVm.RequestUiRefresh();
@@ -1465,8 +1506,7 @@ public sealed partial class QuizStudioViewModel
     public string BuildQuestionAiFixPrompt(QuizQuestionRecord question, string problemDescription)
     {
         FlagProblemDescription = problemDescription;
-        var deck =
-            OrganizerQuiz
+        var deck = OrganizerQuiz
             ?? new QuizSessionRecord
             {
                 Title = "Quiz Deck",
@@ -1505,7 +1545,8 @@ public sealed partial class QuizStudioViewModel
 
     public async Task RunSingleQuestionAiFixWithApiAsync(
         QuizQuestionRecord question,
-        string problemDescription)
+        string problemDescription
+    )
     {
         if (IsGenerating)
             return;
@@ -1513,7 +1554,8 @@ public sealed partial class QuizStudioViewModel
         var aiStatus = GetActiveAiEngineStatus();
         if (!aiStatus.IsConfigured)
         {
-            StatusMessage = $"AI Engine not configured: {aiStatus.MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
+            StatusMessage =
+                $"AI Engine not configured: {aiStatus.MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
             IsStatusError = true;
             IsAiSettingsOpen = true;
             _mainVm.RequestUiRefresh();
@@ -1594,17 +1636,19 @@ public sealed partial class QuizStudioViewModel
             var distinctCodes = report.Issues.Select(i => i.Code).Distinct().ToList();
             var directives = new List<string>
             {
-                $"Repair the {report.FlaggedQuestionIds.Count} quality-critic flagged question(s) ({string.Join(", ", distinctCodes)}):"
+                $"Repair the {report.FlaggedQuestionIds.Count} quality-critic flagged question(s) ({string.Join(", ", distinctCodes)}):",
             };
             foreach (var issue in report.Issues.Take(15))
             {
-                int qNum = OrganizerQuiz.Questions.FindIndex(x =>
-                    string.Equals(x.Id, issue.QuestionId, StringComparison.OrdinalIgnoreCase)
-                ) + 1;
+                int qNum =
+                    OrganizerQuiz.Questions.FindIndex(x =>
+                        string.Equals(x.Id, issue.QuestionId, StringComparison.OrdinalIgnoreCase)
+                    ) + 1;
                 directives.Add($"- Q{qNum} [{issue.Code}]: {issue.Message}");
             }
             DeckAiFixInstructions = string.Join("\n", directives);
-            DeckAiFixFeedback = $"Selected {DeckAiFixSelectedIds.Count} question(s) with quality issues and pre-filled repair notes.";
+            DeckAiFixFeedback =
+                $"Selected {DeckAiFixSelectedIds.Count} question(s) with quality issues and pre-filled repair notes.";
             IsDeckAiFixError = false;
         }
         else
@@ -1657,7 +1701,8 @@ public sealed partial class QuizStudioViewModel
             targets,
             DeckAiFixInstructions
         );
-        DeckAiFixFeedback = $"Built & copied fix prompt for {targets.Count} targeted question(s). Paste the AI JSON response below.";
+        DeckAiFixFeedback =
+            $"Built & copied fix prompt for {targets.Count} targeted question(s). Paste the AI JSON response below.";
         IsDeckAiFixError = false;
         _mainVm.RequestUiRefresh();
         return DeckAiFixPromptPreview;
@@ -1671,7 +1716,8 @@ public sealed partial class QuizStudioViewModel
         var aiStatus = GetActiveAiEngineStatus();
         if (!aiStatus.IsConfigured)
         {
-            StatusMessage = $"AI Engine not configured: {aiStatus.MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
+            StatusMessage =
+                $"AI Engine not configured: {aiStatus.MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
             IsStatusError = true;
             IsAiSettingsOpen = true;
             _mainVm.RequestUiRefresh();

@@ -63,8 +63,7 @@ public static partial class AssignmentParser
             kind = summary.Kind;
 
         // Query #fixedSectionHeader h2 first so we don't accidentally match the module h1 ("Standalone assignment")
-        var titleEl =
-            centre.QuerySelector("#fixedSectionHeader h2")
+        var titleEl = centre.QuerySelector("#fixedSectionHeader h2")
             ?? centre.QuerySelector("h2.assignment-title, .assignment-title")
             ?? centre.QuerySelector("h2, h3, h1, .page-title");
 
@@ -115,8 +114,7 @@ public static partial class AssignmentParser
         }
 
         var year = referenceYear ?? DateTimeOffset.Now.Year;
-        var dueDate =
-            TryParseFlexibleDate(dueRaw, year)
+        var dueDate = TryParseFlexibleDate(dueRaw, year)
             ?? summary?.DueDate
             ?? TryParseDueDateFromPageText(centre.TextContent, year);
 
@@ -234,8 +232,8 @@ public static partial class AssignmentParser
     )
     {
         var doc = HtmlParsingHelpers.ParseDocument(html);
-        var leftCol =
-            doc.QuerySelector("#centreColumn .leftColumn, #mainContent .leftColumn") ?? doc.Body;
+        var leftCol = doc.QuerySelector("#centreColumn .leftColumn, #mainContent .leftColumn")
+            ?? doc.Body;
 
         return HtmlParsingHelpers.ExtractFileResources(
             leftCol,

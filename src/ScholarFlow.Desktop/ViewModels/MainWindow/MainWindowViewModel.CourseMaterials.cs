@@ -16,7 +16,8 @@ public sealed partial class MainWindowViewModel
     public string MaterialsSearchQuery { get; private set; } = string.Empty;
     public string MaterialsTypeFilter { get; private set; } = "All";
     public FileImportMode MaterialsImportMode { get; private set; } = FileImportMode.Copy;
-    public HashSet<string> CollapsedMaterialFolders { get; } = new(StringComparer.OrdinalIgnoreCase);
+    public HashSet<string> CollapsedMaterialFolders { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
     public bool IsNewMaterialFolderBarOpen { get; private set; }
     public string? RenamingMaterialPath { get; private set; }
     public string? ConfirmingDeleteMaterialPath { get; private set; }
@@ -253,14 +254,18 @@ public sealed partial class MainWindowViewModel
             return;
 
         // Reorder list and normalize 2-digit prefixes (01_, 02_, ...) so disk order matches user order
-        (editableDirs[idx], editableDirs[targetIdx]) = (
-            editableDirs[targetIdx],
-            editableDirs[idx]
-        );
+        (editableDirs[idx], editableDirs[targetIdx]) = (editableDirs[targetIdx], editableDirs[idx]);
 
         try
         {
-            var renames = new List<(string OldPath, string TempPath, string FinalPath, string OldRel, string NewRel)>();
+            var renames =
+                new List<(
+                    string OldPath,
+                    string TempPath,
+                    string FinalPath,
+                    string OldRel,
+                    string NewRel
+                )>();
             for (int i = 0; i < editableDirs.Count; i++)
             {
                 var currentPath = editableDirs[i];
@@ -457,11 +462,10 @@ public sealed partial class MainWindowViewModel
                 FileImportMode.Symlink => anyFallbackToCopy ? "Copied" : "Linked",
                 _ => "Copied",
             };
-            var suffix = anyFallbackToCopy
-                ? " (symlink requires Developer Mode on Windows — copied instead)"
-                : skipped > 0
-                    ? $" ({skipped} already in folder)"
-                    : string.Empty;
+            var suffix =
+                anyFallbackToCopy ? " (symlink requires Developer Mode on Windows — copied instead)"
+                : skipped > 0 ? $" ({skipped} already in folder)"
+                : string.Empty;
 
             StatusText = $"{verb} {imported} item(s) into '{destLabel}'{suffix}";
             NotifyStateChanged(UiChangeKind.SearchOrTaskList);
@@ -473,11 +477,7 @@ public sealed partial class MainWindowViewModel
         }
     }
 
-    public void RenameMaterialFile(
-        BasinCourseEntry course,
-        string oldFilePath,
-        string rawNewName
-    )
+    public void RenameMaterialFile(BasinCourseEntry course, string oldFilePath, string rawNewName)
     {
         if (
             string.IsNullOrWhiteSpace(BasinRoot)
@@ -498,10 +498,7 @@ public sealed partial class MainWindowViewModel
             return;
         }
 
-        if (
-            !string.IsNullOrEmpty(originalExt)
-            && string.IsNullOrEmpty(Path.GetExtension(cleaned))
-        )
+        if (!string.IsNullOrEmpty(originalExt) && string.IsNullOrEmpty(Path.GetExtension(cleaned)))
         {
             cleaned += originalExt;
         }
@@ -648,12 +645,7 @@ public sealed partial class MainWindowViewModel
         if (string.IsNullOrWhiteSpace(BasinRoot))
             return;
 
-        ScholarFlowDatabase.RemapQuizSourcePdfPaths(
-            BasinRoot,
-            oldFullPath,
-            newFullPath,
-            isPrefix
-        );
+        ScholarFlowDatabase.RemapQuizSourcePdfPaths(BasinRoot, oldFullPath, newFullPath, isPrefix);
         QuizStudio.RemapSourcePdfPaths(oldFullPath, newFullPath, isPrefix);
     }
 
@@ -735,11 +727,7 @@ public sealed partial class MainWindowViewModel
             CoursePacketPlan.SavePlan(courseDir, plan);
     }
 
-    private static void RemovePacketPlanPaths(
-        string courseDir,
-        string pathOrPrefix,
-        bool isPrefix
-    )
+    private static void RemovePacketPlanPaths(string courseDir, string pathOrPrefix, bool isPrefix)
     {
         var plan = CoursePacketPlan.TryLoadSavedPlan(courseDir);
         if (plan is null)
@@ -750,10 +738,7 @@ public sealed partial class MainWindowViewModel
         {
             int removed = sec.Items.RemoveAll(item =>
                 isPrefix
-                    ? item.RelativePath.StartsWith(
-                        pathOrPrefix,
-                        StringComparison.OrdinalIgnoreCase
-                    )
+                    ? item.RelativePath.StartsWith(pathOrPrefix, StringComparison.OrdinalIgnoreCase)
                     : string.Equals(
                         item.RelativePath,
                         pathOrPrefix,

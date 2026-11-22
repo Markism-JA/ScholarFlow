@@ -259,7 +259,9 @@ public sealed partial class QuizStudioViewModel
         IsAnswerRevealed = true;
         SessionResults[q.Id] = (answer, isCorrect);
 
-        var appliedConfidence = UseConfidenceCalibration ? SelectedConfidence : ConfidenceLevel.None;
+        var appliedConfidence = UseConfidenceCalibration
+            ? SelectedConfidence
+            : ConfidenceLevel.None;
         await ScholarFlowDatabase.RecordQuestionAttemptAsync(
             _mainVm.BasinRoot,
             q,

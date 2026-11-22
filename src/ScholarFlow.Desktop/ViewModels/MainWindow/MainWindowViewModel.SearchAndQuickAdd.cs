@@ -215,8 +215,7 @@ public sealed partial class MainWindowViewModel
         bool wantCourses = SearchCategoryFilter is "All" or "Courses";
         bool wantTasks = SearchCategoryFilter is "All" or "Tasks";
         bool wantQuizzes = SearchCategoryFilter is "All" or "Quizzes";
-        bool wantFiles =
-            (SearchCategoryFilter is "All" or "Files") && !ExcludeFilesInQuickSearch;
+        bool wantFiles = (SearchCategoryFilter is "All" or "Files") && !ExcludeFilesInQuickSearch;
 
         // 1. Matching Courses
         if (wantCourses)
@@ -298,7 +297,9 @@ public sealed partial class MainWindowViewModel
                 var badge = !string.IsNullOrWhiteSpace(t.CourseAlias)
                     ? $"#{t.CourseAlias}"
                     : $"P{(int)t.Priority}";
-                results.Add(new SearchResultItem(SearchResultKind.Task, t.Title, sub, badge, Task: t));
+                results.Add(
+                    new SearchResultItem(SearchResultKind.Task, t.Title, sub, badge, Task: t)
+                );
 
                 if (SearchCategoryFilter == "All" && results.Count >= 18)
                     break;
@@ -416,7 +417,13 @@ public sealed partial class MainWindowViewModel
             foreach (var qz in QuizStudio.SavedQuizzes)
             {
                 bool matchesQuiz =
-                    QuickSearchMatcher.Matches(q, qz.Title, qz.CourseTitle, qz.Term, "quiz test recall")
+                    QuickSearchMatcher.Matches(
+                        q,
+                        qz.Title,
+                        qz.CourseTitle,
+                        qz.Term,
+                        "quiz test recall"
+                    )
                     || qz.Questions.Any(qq =>
                         QuickSearchMatcher.Matches(q, qq.Prompt, qq.TopicTag)
                     );

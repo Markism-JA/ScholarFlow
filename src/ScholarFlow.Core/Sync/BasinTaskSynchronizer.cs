@@ -76,7 +76,8 @@ public static class BasinTaskSynchronizer
         var incomingTasks = new List<TaskItem>();
         foreach (var a in assignments)
         {
-            var isDone = a.Status is SyncedAssignmentStatus.Submitted or SyncedAssignmentStatus.Graded;
+            var isDone =
+                a.Status is SyncedAssignmentStatus.Submitted or SyncedAssignmentStatus.Graded;
             var noteSubfolder = isDone ? "completed" : "ongoing";
             var noteFileName = FilenameSanitizer.SanitizeFileName(a.Title, ".md");
             var assignmentStem = FilenameSanitizer.SanitizeFileName(a.Title, "").TrimEnd('.');
@@ -139,11 +140,7 @@ public static class BasinTaskSynchronizer
                 );
             }
 
-            var inferredTags = BasinService.InferAcademicTags(
-                a.Title,
-                resolvedTerm,
-                a.Kind
-            );
+            var inferredTags = BasinService.InferAcademicTags(a.Title, resolvedTerm, a.Kind);
 
             var priority = ComputeInitialPriority(a);
             var task = new TaskItem

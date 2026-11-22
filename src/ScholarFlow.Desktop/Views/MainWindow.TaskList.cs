@@ -282,10 +282,8 @@ public sealed partial class MainWindow
                         TextTrimming = TextTrimming.CharacterEllipsis,
                     }
                 );
-                var trackBtn = UiBuilder.GhostButton(
-                    "Track",
-                    MaterialIconKind.Plus,
-                    async () => await vm.RegisterOngoingFileAsync(file)
+                var trackBtn = UiBuilder.GhostButton("Track", MaterialIconKind.Plus, async () =>
+                    await vm.RegisterOngoingFileAsync(file)
                 );
                 Grid.SetColumn(trackBtn, 1);
                 fRow.Children.Add(trackBtn);
@@ -450,13 +448,7 @@ public sealed partial class MainWindow
         if (groupingMode == TaskGroupingMode.Term)
         {
             var termGroups = new List<(string Title, List<TaskItem> Tasks, bool IsUrgent)>();
-            var configuredTerms = new List<string>
-            {
-                "Prelims",
-                "Midterms",
-                "Prefinals",
-                "Finals",
-            };
+            var configuredTerms = new List<string> { "Prelims", "Midterms", "Prefinals", "Finals" };
             foreach (
                 var custom in tasks
                     .Select(t => TaskItem.NormalizeTerm(t.Term) ?? t.Term?.Trim())
@@ -480,9 +472,7 @@ public sealed partial class MainWindow
                 }
             }
 
-            var uncategorized = tasks
-                .Where(t => !matchedIds.Contains(t.Id))
-                .ToList();
+            var uncategorized = tasks.Where(t => !matchedIds.Contains(t.Id)).ToList();
             if (uncategorized.Count > 0)
                 termGroups.Add(("General / Uncategorized", uncategorized, false));
 
@@ -704,20 +694,16 @@ public sealed partial class MainWindow
         if (!string.IsNullOrWhiteSpace(primaryPdf))
         {
             rightRow.Children.Add(
-                UiBuilder.GhostButton(
-                    "PDF",
-                    MaterialIconKind.FilePdfBox,
-                    () => vm.OpenTaskFile(task, primaryPdf)
+                UiBuilder.GhostButton("PDF", MaterialIconKind.FilePdfBox, () =>
+                    vm.OpenTaskFile(task, primaryPdf)
                 )
             );
         }
         else if (task.AllFiles.Count > 0)
         {
             rightRow.Children.Add(
-                UiBuilder.GhostButton(
-                    "File",
-                    MaterialIconKind.Paperclip,
-                    () => vm.OpenTaskFile(task, task.AllFiles[0])
+                UiBuilder.GhostButton("File", MaterialIconKind.Paperclip, () =>
+                    vm.OpenTaskFile(task, task.AllFiles[0])
                 )
             );
         }
@@ -963,7 +949,11 @@ public sealed partial class MainWindow
 
     private static bool IsClickInsideChildButton(Visual? source, Visual boundary)
     {
-        for (var cur = source; cur is not null && !ReferenceEquals(cur, boundary); cur = cur.GetVisualParent())
+        for (
+            var cur = source;
+            cur is not null && !ReferenceEquals(cur, boundary);
+            cur = cur.GetVisualParent()
+        )
         {
             if (cur is Button)
                 return true;

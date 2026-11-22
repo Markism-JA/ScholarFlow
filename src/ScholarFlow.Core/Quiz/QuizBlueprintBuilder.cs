@@ -9,9 +9,12 @@ namespace ScholarFlow.Core.Quiz;
 /// </summary>
 public static class QuizBlueprintBuilder
 {
-    public static (int Recall, int Comprehension, int Application, int Analysis) GetCognitiveWeights(
-        CognitiveMixPreset preset
-    ) =>
+    public static (
+        int Recall,
+        int Comprehension,
+        int Application,
+        int Analysis
+    ) GetCognitiveWeights(CognitiveMixPreset preset) =>
         preset switch
         {
             CognitiveMixPreset.Foundations => (40, 35, 20, 5),
@@ -46,12 +49,16 @@ public static class QuizBlueprintBuilder
         return clean switch
         {
             var s when s.Contains("Transfer", StringComparison.OrdinalIgnoreCase) => "Far-Transfer",
-            var s when s.Contains("Contrast", StringComparison.OrdinalIgnoreCase) => "Contrast X vs Y",
-            var s when s.Contains("Causal", StringComparison.OrdinalIgnoreCase)
-                || s.Contains("Perturb", StringComparison.OrdinalIgnoreCase)
-                || s.Contains("WhatIf", StringComparison.OrdinalIgnoreCase) => "What-If / Causal",
-            var s when s.Contains("Flaw", StringComparison.OrdinalIgnoreCase)
-                || s.Contains("Bug", StringComparison.OrdinalIgnoreCase) => "Spot-the-Flaw",
+            var s when s.Contains("Contrast", StringComparison.OrdinalIgnoreCase) =>
+                "Contrast X vs Y",
+            var s
+                when s.Contains("Causal", StringComparison.OrdinalIgnoreCase)
+                    || s.Contains("Perturb", StringComparison.OrdinalIgnoreCase)
+                    || s.Contains("WhatIf", StringComparison.OrdinalIgnoreCase) =>
+                "What-If / Causal",
+            var s
+                when s.Contains("Flaw", StringComparison.OrdinalIgnoreCase)
+                    || s.Contains("Bug", StringComparison.OrdinalIgnoreCase) => "Spot-the-Flaw",
             var s when s.Contains("Dual", StringComparison.OrdinalIgnoreCase) => "Dual-Coding",
             _ => clean,
         };
@@ -99,7 +106,11 @@ public static class QuizBlueprintBuilder
                 QuestionArchetype.DiscriminativeContrast,
                 QuestionArchetype.CausalPerturbation,
                 QuestionArchetype.SpotTheFlaw,
-                ..(hasDiagrams || hasMath ? new[] { QuestionArchetype.DualCoding } : Array.Empty<QuestionArchetype>()),
+                .. (
+                    hasDiagrams || hasMath
+                        ? new[] { QuestionArchetype.DualCoding }
+                        : Array.Empty<QuestionArchetype>()
+                ),
             ];
 
         sb.AppendLine(
@@ -127,18 +138,18 @@ public static class QuizBlueprintBuilder
                     sb.AppendLine(
                         hasCode
                             ? "  * \"CausalPerturbation\": Ask \"What-If\" code/system perturbation questions (\"If condition X, line Y, or parameter Z is modified, how does the output or state change?\")."
-                            : hasMath
-                                ? "  * \"CausalPerturbation\": Ask \"What-If\" parameter perturbation questions (\"If variable X doubles or constraint Y changes, how does the formula or bound behave?\")."
-                                : "  * \"CausalPerturbation\": Ask \"What-If\" causal-chain questions (\"If step B fails, doubles, or is omitted, what happens downstream?\")."
+                        : hasMath
+                            ? "  * \"CausalPerturbation\": Ask \"What-If\" parameter perturbation questions (\"If variable X doubles or constraint Y changes, how does the formula or bound behave?\")."
+                        : "  * \"CausalPerturbation\": Ask \"What-If\" causal-chain questions (\"If step B fails, doubles, or is omitted, what happens downstream?\")."
                     );
                     break;
                 case QuestionArchetype.SpotTheFlaw:
                     sb.AppendLine(
                         hasCode
                             ? "  * \"SpotTheFlaw\": Present a code snippet or trace with ONE subtle bug, edge-case failure, or off-by-one/resource flaw and ask the student to diagnose or fix it."
-                            : hasMath
-                                ? "  * \"SpotTheFlaw\": Present a derivation or formula application with ONE subtle flawed step or violated assumption and ask the student to identify the flaw."
-                                : "  * \"SpotTheFlaw\": Present a plausible explanation, argument, or scenario containing ONE subtle conceptual flaw and ask the student to diagnose or correct it."
+                        : hasMath
+                            ? "  * \"SpotTheFlaw\": Present a derivation or formula application with ONE subtle flawed step or violated assumption and ask the student to identify the flaw."
+                        : "  * \"SpotTheFlaw\": Present a plausible explanation, argument, or scenario containing ONE subtle conceptual flaw and ask the student to diagnose or correct it."
                     );
                     break;
                 case QuestionArchetype.DualCoding:
@@ -150,8 +161,7 @@ public static class QuizBlueprintBuilder
         }
 
         // 3. Weak-Spot Remediation
-        bool targetWeakSpots =
-            req.FocusWeakSpots || req.Preset == QuizPresetMode.WeakTopicDrill;
+        bool targetWeakSpots = req.FocusWeakSpots || req.Preset == QuizPresetMode.WeakTopicDrill;
         if (targetWeakSpots && weakTopics.Count > 0)
         {
             sb.AppendLine(
@@ -203,8 +213,7 @@ public static class QuizBlueprintBuilder
 
         var today = todayOverride ?? DateOnly.FromDateTime(DateTime.Today);
 
-        var ranked = pool
-            .OrderBy(q => q.LastAnsweredCorrect == false ? 0 : 1)
+        var ranked = pool.OrderBy(q => q.LastAnsweredCorrect == false ? 0 : 1)
             .ThenByDescending(q => q.SrsLapses)
             .ThenBy(q => !q.SrsDueDate.HasValue || q.SrsDueDate.Value <= today ? 0 : 1)
             .ThenBy(q => q.SrsDueDate ?? today)
@@ -254,7 +263,10 @@ public static class QuizBlueprintBuilder
                     fallbackTopicIdx = i;
             }
 
-            int chosenIdx = pickIdx >= 0 ? pickIdx : (fallbackTopicIdx >= 0 ? fallbackTopicIdx : fallbackAnyIdx);
+            int chosenIdx =
+                pickIdx >= 0
+                    ? pickIdx
+                    : (fallbackTopicIdx >= 0 ? fallbackTopicIdx : fallbackAnyIdx);
             var chosen = buckets[chosenIdx].Dequeue();
             result.Add(chosen);
             lastTopic = chosen.TopicTag;
@@ -273,7 +285,9 @@ public static class QuizBlueprintBuilder
 
     private static string NormalizeBucketKey(QuizQuestionRecord q)
     {
-        var tag = string.IsNullOrWhiteSpace(q.TopicTag) ? "general" : q.TopicTag.Trim().ToLowerInvariant();
+        var tag = string.IsNullOrWhiteSpace(q.TopicTag)
+            ? "general"
+            : q.TopicTag.Trim().ToLowerInvariant();
         var quiz = string.IsNullOrWhiteSpace(q.QuizId) ? "" : q.QuizId.Trim().ToLowerInvariant();
         return $"{quiz}::{tag}";
     }

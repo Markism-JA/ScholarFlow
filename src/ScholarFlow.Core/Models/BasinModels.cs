@@ -21,7 +21,8 @@ public sealed class BasinConfig
     public string AccountKey { get; set; } = "default";
     public bool BackgroundSyncEnabled { get; set; } = true;
     public string ElmsBaseUrl { get; set; } = "https://elms.sti.edu";
-    public Dictionary<string, string> ProviderSettings { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, string> ProviderSettings { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
     public int FastPollIntervalMinutes { get; set; } = 15;
     public int FullSyncIntervalMinutes { get; set; } = 60;
     public bool AutoCompileMasterPdf { get; set; } = true;

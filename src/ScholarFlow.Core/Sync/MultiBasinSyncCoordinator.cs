@@ -34,19 +34,24 @@ public sealed class MultiBasinSyncCoordinator(
     ILogger<MultiBasinSyncCoordinator>? logger = null
 ) : IAsyncDisposable
 {
-    private readonly BasinSyncProviderRegistry _registry =
-        registry ?? throw new ArgumentNullException(nameof(registry));
+    private readonly BasinSyncProviderRegistry _registry = registry
+        ?? throw new ArgumentNullException(nameof(registry));
     private readonly BasinService _basinService = basinService ?? new BasinService();
     private readonly ILogger<MultiBasinSyncCoordinator>? _logger = logger;
 
-    private readonly ConcurrentDictionary<string, RegisteredBasinSyncState> _basins =
-        new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _providerLocks =
-        new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _basinWriteLocks =
-        new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, (bool IsPaused, DateTimeOffset? PausedUntilUtc)> _providerPauseStates =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, RegisteredBasinSyncState> _basins = new(
+        StringComparer.OrdinalIgnoreCase
+    );
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _providerLocks = new(
+        StringComparer.OrdinalIgnoreCase
+    );
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _basinWriteLocks = new(
+        StringComparer.OrdinalIgnoreCase
+    );
+    private readonly ConcurrentDictionary<
+        string,
+        (bool IsPaused, DateTimeOffset? PausedUntilUtc)
+    > _providerPauseStates = new(StringComparer.OrdinalIgnoreCase);
 
     public event EventHandler? StateChanged;
     public event EventHandler<BasinNotificationEvent>? NotificationEmitted;
@@ -148,7 +153,9 @@ public sealed class MultiBasinSyncCoordinator(
 
     public void PauseProvider(string concurrencyKey, TimeSpan? duration = null)
     {
-        DateTimeOffset? until = duration.HasValue ? DateTimeOffset.UtcNow.Add(duration.Value) : null;
+        DateTimeOffset? until = duration.HasValue
+            ? DateTimeOffset.UtcNow.Add(duration.Value)
+            : null;
         _providerPauseStates[concurrencyKey] = (true, until);
         StateChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -161,8 +168,14 @@ public sealed class MultiBasinSyncCoordinator(
 
     public void PauseAllSingleSessionProviders(TimeSpan? duration = null)
     {
-        DateTimeOffset? until = duration.HasValue ? DateTimeOffset.UtcNow.Add(duration.Value) : null;
-        foreach (var b in _basins.Values.Where(x => x.Provider.Capabilities.EnforcesSingleConcurrentSession))
+        DateTimeOffset? until = duration.HasValue
+            ? DateTimeOffset.UtcNow.Add(duration.Value)
+            : null;
+        foreach (
+            var b in _basins.Values.Where(x =>
+                x.Provider.Capabilities.EnforcesSingleConcurrentSession
+            )
+        )
         {
             _providerPauseStates[b.Provider.GetConcurrencyKey(b.Config)] = (true, until);
         }
@@ -171,7 +184,11 @@ public sealed class MultiBasinSyncCoordinator(
 
     public void ResumeAllSingleSessionProviders()
     {
-        foreach (var b in _basins.Values.Where(x => x.Provider.Capabilities.EnforcesSingleConcurrentSession))
+        foreach (
+            var b in _basins.Values.Where(x =>
+                x.Provider.Capabilities.EnforcesSingleConcurrentSession
+            )
+        )
         {
             _providerPauseStates[b.Provider.GetConcurrencyKey(b.Config)] = (false, null);
         }
@@ -201,7 +218,10 @@ public sealed class MultiBasinSyncCoordinator(
                 state.LastSyncUtc = DateTimeOffset.UtcNow;
                 state.LastStatus = $"Poll complete ({notifs.Count} update(s))";
                 foreach (var n in notifs)
-                    NotificationEmitted?.Invoke(this, new BasinNotificationEvent(state.BasinRoot, n));
+                    NotificationEmitted?.Invoke(
+                        this,
+                        new BasinNotificationEvent(state.BasinRoot, n)
+                    );
                 return notifs;
             },
             fallbackOnAuthSkip: [],
@@ -237,10 +257,22 @@ public sealed class MultiBasinSyncCoordinator(
                 state.LastStatus =
                     $"Synced {report.CoursesSynced} course(s) (+{report.FilesDownloaded} files)";
                 foreach (var n in report.Notifications)
-                    NotificationEmitted?.Invoke(this, new BasinNotificationEvent(state.BasinRoot, n));
+                    NotificationEmitted?.Invoke(
+                        this,
+                        new BasinNotificationEvent(state.BasinRoot, n)
+                    );
                 return report;
             },
-            fallbackOnAuthSkip: new BasinSyncReport(0, 0, 0, 0, 0, 0, [], ["Authentication required"]),
+            fallbackOnAuthSkip: new BasinSyncReport(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                [],
+                ["Authentication required"]
+            ),
             ct: ct
         );
     }
@@ -270,10 +302,22 @@ public sealed class MultiBasinSyncCoordinator(
                 state.LastSyncUtc = DateTimeOffset.UtcNow;
                 state.LastStatus = $"Synced {courseFolder} (+{report.FilesDownloaded} new)";
                 foreach (var n in report.Notifications)
-                    NotificationEmitted?.Invoke(this, new BasinNotificationEvent(state.BasinRoot, n));
+                    NotificationEmitted?.Invoke(
+                        this,
+                        new BasinNotificationEvent(state.BasinRoot, n)
+                    );
                 return report;
             },
-            fallbackOnAuthSkip: new BasinSyncReport(0, 0, 0, 0, 0, 0, [], ["Authentication required"]),
+            fallbackOnAuthSkip: new BasinSyncReport(
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                [],
+                ["Authentication required"]
+            ),
             ct: ct
         );
     }
@@ -294,7 +338,9 @@ public sealed class MultiBasinSyncCoordinator(
             {
                 var ok = await state.Provider.SyncSingleTaskAsync(state.BasinRoot, task, ct);
                 state.LastSyncUtc = DateTimeOffset.UtcNow;
-                state.LastStatus = ok ? $"Refreshed '{task.Title}'" : $"Could not refresh '{task.Title}'";
+                state.LastStatus = ok
+                    ? $"Refreshed '{task.Title}'"
+                    : $"Could not refresh '{task.Title}'";
                 return ok;
             },
             fallbackOnAuthSkip: false,
@@ -343,7 +389,11 @@ public sealed class MultiBasinSyncCoordinator(
         {
             state.LastStatus = "Needs login";
             if (_logger?.IsEnabled(LogLevel.Information) == true)
-                _logger.LogInformation("Sync deferred for {Basin}: {Message}", state.Config.Name, ex.Message);
+                _logger.LogInformation(
+                    "Sync deferred for {Basin}: {Message}",
+                    state.Config.Name,
+                    ex.Message
+                );
             return fallbackOnAuthSkip;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
@@ -408,7 +458,9 @@ public sealed class MultiBasinSyncCoordinator(
                 if (!await timer.WaitForNextTickAsync(ct))
                     break;
 
-                if (!state.Provider.Capabilities.SupportsSync || !state.Config.BackgroundSyncEnabled)
+                if (
+                    !state.Provider.Capabilities.SupportsSync || !state.Config.BackgroundSyncEnabled
+                )
                     continue;
 
                 var concurrencyKey = state.Provider.GetConcurrencyKey(state.Config);
@@ -417,12 +469,21 @@ public sealed class MultiBasinSyncCoordinator(
 
                 if (DateTimeOffset.UtcNow - lastFullSync >= fullInterval)
                 {
-                    await TriggerFullSyncAsync(state.BasinRoot, force: false, allowInteractiveAuth: false, ct: ct);
+                    await TriggerFullSyncAsync(
+                        state.BasinRoot,
+                        force: false,
+                        allowInteractiveAuth: false,
+                        ct: ct
+                    );
                     lastFullSync = DateTimeOffset.UtcNow;
                 }
                 else
                 {
-                    await TriggerFastPollAsync(state.BasinRoot, allowInteractiveAuth: false, ct: ct);
+                    await TriggerFastPollAsync(
+                        state.BasinRoot,
+                        allowInteractiveAuth: false,
+                        ct: ct
+                    );
                 }
             }
             catch (OperationCanceledException)

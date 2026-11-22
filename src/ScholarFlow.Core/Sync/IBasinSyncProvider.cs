@@ -25,8 +25,10 @@ public sealed record BasinSyncReport(
 /// Exception thrown by a pluggable provider when non-interactive background sync encounters
 /// an expired or missing remote session, allowing the coordinator to defer without crashing.
 /// </summary>
-public class ProviderAuthenticationRequiredException(string message, Exception? innerException = null)
-    : InvalidOperationException(message, innerException);
+public class ProviderAuthenticationRequiredException(
+    string message,
+    Exception? innerException = null
+) : InvalidOperationException(message, innerException);
 
 /// <summary>
 /// Describes a configurable provider setting displayed dynamically in Basin/Onboarding UI.
@@ -79,11 +81,8 @@ public interface IBasinSyncProvider
         CancellationToken ct = default
     ) => Task.FromResult(new ProviderAuthStatus(true, "Connected"));
 
-    Task DisconnectAsync(
-        string basinRoot,
-        BasinConfig config,
-        CancellationToken ct = default
-    ) => Task.CompletedTask;
+    Task DisconnectAsync(string basinRoot, BasinConfig config, CancellationToken ct = default) =>
+        Task.CompletedTask;
 
     Task<IReadOnlyList<DiscoveredCourse>> DiscoverCoursesAsync(
         string basinRoot,
@@ -112,11 +111,7 @@ public interface IBasinSyncProvider
         CancellationToken ct = default
     );
 
-    Task<bool> SyncSingleTaskAsync(
-        string basinRoot,
-        TaskItem task,
-        CancellationToken ct = default
-    );
+    Task<bool> SyncSingleTaskAsync(string basinRoot, TaskItem task, CancellationToken ct = default);
 
     Task<bool> OpenExternalUrlAsync(
         string basinRoot,
@@ -180,8 +175,9 @@ public sealed class LocalKnowledgeBasinSyncProvider : IBasinSyncProvider
 
 public sealed class BasinSyncProviderRegistry
 {
-    private readonly Dictionary<string, IBasinSyncProvider> _providers =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, IBasinSyncProvider> _providers = new(
+        StringComparer.OrdinalIgnoreCase
+    );
 
     public BasinSyncProviderRegistry(IEnumerable<IBasinSyncProvider> providers)
     {
@@ -190,8 +186,7 @@ public sealed class BasinSyncProviderRegistry
             Register(p);
     }
 
-    public void Register(IBasinSyncProvider provider) =>
-        _providers[provider.ProviderId] = provider;
+    public void Register(IBasinSyncProvider provider) => _providers[provider.ProviderId] = provider;
 
     public IBasinSyncProvider Resolve(string? providerId)
     {

@@ -51,16 +51,12 @@ public sealed partial class MainWindow
         var selectorsWrap = new WrapPanel { Orientation = Orientation.Horizontal };
         void AddTokenBtn(string label, MaterialIconKind? icon, string token, string replaceRegex)
         {
-            var b = UiBuilder.GhostButton(
-                label,
-                icon,
-                () =>
-                {
-                    _vm.InsertQuickAddToken(token, replaceRegex);
-                    _quickAddBox.Focus();
-                    _quickAddBox.CaretIndex = _quickAddBox.Text?.Length ?? 0;
-                }
-            );
+            var b = UiBuilder.GhostButton(label, icon, () =>
+            {
+                _vm.InsertQuickAddToken(token, replaceRegex);
+                _quickAddBox.Focus();
+                _quickAddBox.CaretIndex = _quickAddBox.Text?.Length ?? 0;
+            });
             b.Margin = new Thickness(0, 0, 5, 5);
             selectorsWrap.Children.Add(b);
         }
@@ -100,8 +96,8 @@ public sealed partial class MainWindow
             {
                 if (picked.HasValue)
                 {
-                    var token = picked.Value
-                        .ToString("h:mmtt", System.Globalization.CultureInfo.InvariantCulture)
+                    var token = picked
+                        .Value.ToString("h:mmtt", System.Globalization.CultureInfo.InvariantCulture)
                         .ToLowerInvariant();
                     _vm.InsertQuickAddToken(token, timeRegex);
                 }
@@ -331,10 +327,12 @@ public sealed partial class MainWindow
             {
                 SearchResultKind.Course => MaterialIconKind.Pound,
                 SearchResultKind.PdfDocument => MaterialIconKind.FilePdfBox,
-                SearchResultKind.CourseFile =>
-                    item.PdfPath?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true
-                        ? MaterialIconKind.FilePdfBox
-                        : MaterialIconKind.FileDocumentOutline,
+                SearchResultKind.CourseFile => item.PdfPath?.EndsWith(
+                    ".pdf",
+                    StringComparison.OrdinalIgnoreCase
+                ) == true
+                    ? MaterialIconKind.FilePdfBox
+                    : MaterialIconKind.FileDocumentOutline,
                 SearchResultKind.Quiz => MaterialIconKind.HeadLightbulbOutline,
                 _ => MaterialIconKind.CheckboxBlankCircleOutline,
             };
@@ -342,10 +340,12 @@ public sealed partial class MainWindow
             var iconFg = item.Kind switch
             {
                 SearchResultKind.PdfDocument => ThemeService.Brush(ThemeService.AccentPrimary),
-                SearchResultKind.CourseFile =>
-                    item.PdfPath?.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) == true
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
-                        : ThemeService.Brush(ThemeService.TextSecondary),
+                SearchResultKind.CourseFile => item.PdfPath?.EndsWith(
+                    ".pdf",
+                    StringComparison.OrdinalIgnoreCase
+                ) == true
+                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    : ThemeService.Brush(ThemeService.TextSecondary),
                 SearchResultKind.Course => ThemeService.Brush(ThemeService.PriorityP3Fg),
                 SearchResultKind.Quiz => ThemeService.Brush(ThemeService.PriorityP2Fg),
                 _ => ThemeService.Brush(ThemeService.TextSecondary),

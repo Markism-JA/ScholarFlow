@@ -358,11 +358,10 @@ public sealed class KnowledgeSearchViewModel : IDisposable
         if (target is null)
             return;
 
-        var matchedCourse =
-            _mainVm.Courses.FirstOrDefault(c =>
-                c.FolderName.Equals(target.CourseFolder, StringComparison.OrdinalIgnoreCase)
-                || c.EffectiveAlias.Equals(target.CourseAlias, StringComparison.OrdinalIgnoreCase)
-            ) ?? _mainVm.ActiveCourse;
+        var matchedCourse = _mainVm.Courses.FirstOrDefault(c =>
+            c.FolderName.Equals(target.CourseFolder, StringComparison.OrdinalIgnoreCase)
+            || c.EffectiveAlias.Equals(target.CourseAlias, StringComparison.OrdinalIgnoreCase)
+        ) ?? _mainVm.ActiveCourse;
 
         var kind = target.SourceKind.ToLowerInvariant();
 

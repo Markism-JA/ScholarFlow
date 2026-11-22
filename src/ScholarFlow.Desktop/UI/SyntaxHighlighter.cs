@@ -48,39 +48,243 @@ public static class SyntaxHighlighter
 
     private static readonly HashSet<string> CommonKeywords = new(StringComparer.Ordinal)
     {
-        "if", "else", "elif", "for", "foreach", "while", "do", "switch", "case", "default",
-        "break", "continue", "return", "yield", "try", "catch", "except", "finally", "throw",
-        "raise", "new", "delete", "class", "struct", "interface", "enum", "record", "namespace",
-        "using", "import", "from", "export", "package", "module", "public", "private", "protected",
-        "internal", "static", "readonly", "const", "final", "virtual", "override", "abstract",
-        "sealed", "async", "await", "var", "let", "val", "def", "fn", "func", "function",
-        "lambda", "in", "is", "as", "not", "and", "or", "true", "false", "True", "False",
-        "null", "None", "nil", "nullptr", "this", "self", "super", "base", "with", "pass",
-        "sizeof", "typeof", "nameof", "ref", "out", "params", "where", "match", "mut", "pub",
-        "impl", "trait", "use", "mod", "defer", "go", "chan", "range", "then", "fi", "esac",
-        "done", "echo", "exit", "local",
+        "if",
+        "else",
+        "elif",
+        "for",
+        "foreach",
+        "while",
+        "do",
+        "switch",
+        "case",
+        "default",
+        "break",
+        "continue",
+        "return",
+        "yield",
+        "try",
+        "catch",
+        "except",
+        "finally",
+        "throw",
+        "raise",
+        "new",
+        "delete",
+        "class",
+        "struct",
+        "interface",
+        "enum",
+        "record",
+        "namespace",
+        "using",
+        "import",
+        "from",
+        "export",
+        "package",
+        "module",
+        "public",
+        "private",
+        "protected",
+        "internal",
+        "static",
+        "readonly",
+        "const",
+        "final",
+        "virtual",
+        "override",
+        "abstract",
+        "sealed",
+        "async",
+        "await",
+        "var",
+        "let",
+        "val",
+        "def",
+        "fn",
+        "func",
+        "function",
+        "lambda",
+        "in",
+        "is",
+        "as",
+        "not",
+        "and",
+        "or",
+        "true",
+        "false",
+        "True",
+        "False",
+        "null",
+        "None",
+        "nil",
+        "nullptr",
+        "this",
+        "self",
+        "super",
+        "base",
+        "with",
+        "pass",
+        "sizeof",
+        "typeof",
+        "nameof",
+        "ref",
+        "out",
+        "params",
+        "where",
+        "match",
+        "mut",
+        "pub",
+        "impl",
+        "trait",
+        "use",
+        "mod",
+        "defer",
+        "go",
+        "chan",
+        "range",
+        "then",
+        "fi",
+        "esac",
+        "done",
+        "echo",
+        "exit",
+        "local",
     };
 
     private static readonly HashSet<string> SqlKeywords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "SELECT", "FROM", "WHERE", "INSERT", "INTO", "VALUES", "UPDATE", "SET", "DELETE",
-        "CREATE", "TABLE", "VIEW", "INDEX", "DROP", "ALTER", "ADD", "JOIN", "INNER", "LEFT",
-        "RIGHT", "OUTER", "FULL", "ON", "GROUP", "BY", "ORDER", "ASC", "DESC", "HAVING",
-        "LIMIT", "OFFSET", "DISTINCT", "AS", "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE",
-        "BETWEEN", "EXISTS", "CASE", "WHEN", "THEN", "ELSE", "END", "PRIMARY", "KEY",
-        "FOREIGN", "REFERENCES", "UNION", "ALL", "COUNT", "SUM", "AVG", "MIN", "MAX",
-        "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION", "CONSTRAINT", "UNIQUE", "DEFAULT",
+        "SELECT",
+        "FROM",
+        "WHERE",
+        "INSERT",
+        "INTO",
+        "VALUES",
+        "UPDATE",
+        "SET",
+        "DELETE",
+        "CREATE",
+        "TABLE",
+        "VIEW",
+        "INDEX",
+        "DROP",
+        "ALTER",
+        "ADD",
+        "JOIN",
+        "INNER",
+        "LEFT",
+        "RIGHT",
+        "OUTER",
+        "FULL",
+        "ON",
+        "GROUP",
+        "BY",
+        "ORDER",
+        "ASC",
+        "DESC",
+        "HAVING",
+        "LIMIT",
+        "OFFSET",
+        "DISTINCT",
+        "AS",
+        "AND",
+        "OR",
+        "NOT",
+        "IN",
+        "IS",
+        "NULL",
+        "LIKE",
+        "BETWEEN",
+        "EXISTS",
+        "CASE",
+        "WHEN",
+        "THEN",
+        "ELSE",
+        "END",
+        "PRIMARY",
+        "KEY",
+        "FOREIGN",
+        "REFERENCES",
+        "UNION",
+        "ALL",
+        "COUNT",
+        "SUM",
+        "AVG",
+        "MIN",
+        "MAX",
+        "BEGIN",
+        "COMMIT",
+        "ROLLBACK",
+        "TRANSACTION",
+        "CONSTRAINT",
+        "UNIQUE",
+        "DEFAULT",
     };
 
     private static readonly HashSet<string> CommonTypes = new(StringComparer.Ordinal)
     {
-        "void", "int", "long", "short", "byte", "sbyte", "uint", "ulong", "float", "double",
-        "decimal", "bool", "boolean", "char", "string", "String", "object", "dynamic",
-        "size_t", "uint8_t", "uint16_t", "uint32_t", "uint64_t", "int32_t", "int64_t",
-        "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64", "usize", "isize",
-        "str", "Vec", "Option", "Result", "List", "Dictionary", "HashSet", "Task", "IEnumerable",
-        "IReadOnlyList", "Array", "Map", "Set", "Promise", "number", "any", "unknown", "never",
-        "VARCHAR", "INTEGER", "TEXT", "REAL", "BLOB", "BOOLEAN", "TIMESTAMP", "DATE",
+        "void",
+        "int",
+        "long",
+        "short",
+        "byte",
+        "sbyte",
+        "uint",
+        "ulong",
+        "float",
+        "double",
+        "decimal",
+        "bool",
+        "boolean",
+        "char",
+        "string",
+        "String",
+        "object",
+        "dynamic",
+        "size_t",
+        "uint8_t",
+        "uint16_t",
+        "uint32_t",
+        "uint64_t",
+        "int32_t",
+        "int64_t",
+        "i8",
+        "i16",
+        "i32",
+        "i64",
+        "u8",
+        "u16",
+        "u32",
+        "u64",
+        "f32",
+        "f64",
+        "usize",
+        "isize",
+        "str",
+        "Vec",
+        "Option",
+        "Result",
+        "List",
+        "Dictionary",
+        "HashSet",
+        "Task",
+        "IEnumerable",
+        "IReadOnlyList",
+        "Array",
+        "Map",
+        "Set",
+        "Promise",
+        "number",
+        "any",
+        "unknown",
+        "never",
+        "VARCHAR",
+        "INTEGER",
+        "TEXT",
+        "REAL",
+        "BLOB",
+        "BOOLEAN",
+        "TIMESTAMP",
+        "DATE",
     };
 
     public static void PopulateInlines(TextBlock target, string code, string? language = null)
@@ -120,13 +324,7 @@ public static class SyntaxHighlighter
             var trimmed = line.TrimStart();
             if (trimmed.StartsWith('#'))
             {
-                inlines.Add(
-                    new Run(line)
-                    {
-                        Foreground = p.Keyword,
-                        FontWeight = FontWeight.Bold,
-                    }
-                );
+                inlines.Add(new Run(line) { Foreground = p.Keyword, FontWeight = FontWeight.Bold });
             }
             else if (trimmed.StartsWith("```", StringComparison.Ordinal))
             {
@@ -134,13 +332,7 @@ public static class SyntaxHighlighter
             }
             else if (trimmed.StartsWith('>'))
             {
-                inlines.Add(
-                    new Run(line)
-                    {
-                        Foreground = p.Comment,
-                        FontStyle = FontStyle.Italic,
-                    }
-                );
+                inlines.Add(new Run(line) { Foreground = p.Comment, FontStyle = FontStyle.Italic });
             }
             else if (
                 trimmed.StartsWith("- ", StringComparison.Ordinal)
@@ -165,14 +357,19 @@ public static class SyntaxHighlighter
         }
     }
 
-    private static void HighlightCode(
-        InlineCollection inlines,
-        string code,
-        string lang,
-        Palette p
-    )
+    private static void HighlightCode(InlineCollection inlines, string code, string lang, Palette p)
     {
-        bool isHashComment = lang is "python" or "py" or "bash" or "sh" or "yaml" or "yml" or "ruby" or "powershell" or "ps1";
+        bool isHashComment =
+            lang
+            is "python"
+                or "py"
+                or "bash"
+                or "sh"
+                or "yaml"
+                or "yml"
+                or "ruby"
+                or "powershell"
+                or "ps1";
         bool isSql = lang is "sql";
         bool isJson = lang is "json";
         bool isCStyle = !isHashComment && !isSql && !isJson;
@@ -195,11 +392,7 @@ public static class SyntaxHighlighter
                 while (i < n && code[i] != '\n')
                     i++;
                 inlines.Add(
-                    new Run(code[start..i])
-                    {
-                        Foreground = p.Comment,
-                        FontStyle = FontStyle.Italic,
-                    }
+                    new Run(code[start..i]) { Foreground = p.Comment, FontStyle = FontStyle.Italic }
                 );
                 continue;
             }
@@ -213,11 +406,7 @@ public static class SyntaxHighlighter
                     i++;
                 i = Math.Min(n, i + 2);
                 inlines.Add(
-                    new Run(code[start..i])
-                    {
-                        Foreground = p.Comment,
-                        FontStyle = FontStyle.Italic,
-                    }
+                    new Run(code[start..i]) { Foreground = p.Comment, FontStyle = FontStyle.Italic }
                 );
                 continue;
             }
@@ -260,10 +449,7 @@ public static class SyntaxHighlighter
                 }
 
                 inlines.Add(
-                    new Run(code[start..i])
-                    {
-                        Foreground = isJsonKey ? p.TypeName : p.StringLit,
-                    }
+                    new Run(code[start..i]) { Foreground = isJsonKey ? p.TypeName : p.StringLit }
                 );
                 continue;
             }
@@ -273,14 +459,7 @@ public static class SyntaxHighlighter
             {
                 int start = i;
                 i++;
-                while (
-                    i < n
-                    && (
-                        char.IsLetterOrDigit(code[i])
-                        || code[i] == '.'
-                        || code[i] == '_'
-                    )
-                )
+                while (i < n && (char.IsLetterOrDigit(code[i]) || code[i] == '.' || code[i] == '_'))
                     i++;
                 inlines.Add(new Run(code[start..i]) { Foreground = p.Number });
                 continue;

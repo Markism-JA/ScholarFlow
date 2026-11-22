@@ -13,8 +13,7 @@ public static class ElmsBrowserLauncher
     {
         var authOptions = options ?? new AuthOptions();
         var targetUrl = HtmlParsingHelpers.ToAbsoluteUrl(urlOrPath, authOptions.BaseUrl);
-        var executable =
-            FindChromiumExecutable()
+        var executable = FindChromiumExecutable()
             ?? throw new FileNotFoundException(
                 "Could not locate Playwright Chromium or system chromium executable."
             );

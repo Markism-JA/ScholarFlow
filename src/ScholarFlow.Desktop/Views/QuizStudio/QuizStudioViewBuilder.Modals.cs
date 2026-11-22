@@ -176,15 +176,15 @@ public static partial class QuizStudioViewBuilder
         bool isTruncated =
             studio.ManualPromptTotalPages > 0
             && studio.ManualPromptIncludedPages < studio.ManualPromptTotalPages;
-        string coverageText = studio.IsBuildingPrompt
-            ? "Calculating scope coverage..."
+        string coverageText =
+            studio.IsBuildingPrompt ? "Calculating scope coverage..."
             : studio.ManualPromptTotalPages > 0
                 ? (
                     isTruncated
                         ? $"⚠ Truncated: {studio.ManualPromptIncludedPages}/{studio.ManualPromptTotalPages} pages ({studio.GeneratedPromptPreview.Length:N0} chars)"
                         : $"Coverage: {studio.ManualPromptIncludedPages}/{studio.ManualPromptTotalPages} pages (100% · {studio.GeneratedPromptPreview.Length:N0} chars)"
                 )
-                : "Select a PDF scope";
+            : "Select a PDF scope";
 
         var coveragePill = UiBuilder.Pill(
             coverageText,
@@ -199,7 +199,14 @@ public static partial class QuizStudioViewBuilder
         coveragePill.Margin = new Thickness(0, 0, 8, 4);
         controlsRow.Children.Add(coveragePill);
 
-        foreach (var (label, limit) in new[] { ("48k", 48_000), ("160k", 160_000), ("Uncapped", int.MaxValue) })
+        foreach (
+            var (label, limit) in new[]
+            {
+                ("48k", 48_000),
+                ("160k", 160_000),
+                ("Uncapped", int.MaxValue),
+            }
+        )
         {
             int capturedLimit = limit;
             var budgetBtn = UiBuilder.GhostButton(
@@ -259,7 +266,9 @@ public static partial class QuizStudioViewBuilder
                 if (
                     studio.IsFileSourceMode
                     && !studio.IsMixedSourceMode
-                    && !studio.SelectedFileSourcePaths.Any(ScholarFlow.Core.Knowledge.ImagePacketPacker.IsImage)
+                    && !studio.SelectedFileSourcePaths.Any(
+                        ScholarFlow.Core.Knowledge.ImagePacketPacker.IsImage
+                    )
                 )
                 {
                     await studio.ExportScopedPdfForUploadAsync(top?.Clipboard);
@@ -273,20 +282,20 @@ public static partial class QuizStudioViewBuilder
                         studio.SelectedCourse?.Alias ?? "ScholarFlow",
                         ""
                     );
-                    var suggested = studio.IsMixedSourceMode
-                        ? $"{courseTag}_Combined_Packet_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
+                    var suggested =
+                        studio.IsMixedSourceMode
+                            ? $"{courseTag}_Combined_Packet_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
                         : studio.IsFileSourceMode
                             ? $"{courseTag}_Images_Packet_{DateTime.Now:yyyyMMdd_HHmm}.pdf"
-                            : $"{courseTag}_Scoped_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
+                        : $"{courseTag}_Scoped_{DateTime.Now:yyyyMMdd_HHmm}.pdf";
 
                     var saved = await top.StorageProvider.SaveFilePickerAsync(
                         new Avalonia.Platform.Storage.FilePickerSaveOptions
                         {
-                            Title = studio.IsMixedSourceMode
-                                ? "Save Combined PDF + Images Packet"
-                                : studio.IsFileSourceMode
-                                    ? "Save Packed Images PDF"
-                                    : "Save Scoped PDF for Upload",
+                            Title =
+                                studio.IsMixedSourceMode ? "Save Combined PDF + Images Packet"
+                                : studio.IsFileSourceMode ? "Save Packed Images PDF"
+                                : "Save Scoped PDF for Upload",
                             SuggestedFileName = suggested,
                             DefaultExtension = "pdf",
                             FileTypeChoices =
@@ -300,7 +309,9 @@ public static partial class QuizStudioViewBuilder
                     );
                     chosenPath = saved is null
                         ? null
-                        : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(saved);
+                        : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(
+                            saved
+                        );
                     if (string.IsNullOrWhiteSpace(chosenPath))
                         return;
                 }

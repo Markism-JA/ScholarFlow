@@ -32,13 +32,19 @@ public sealed class BasinWatcher : IDisposable
         if (!Directory.Exists(basinRoot))
             throw new DirectoryNotFoundException($"Basin directory does not exist: {basinRoot}");
 
-        _debounceTimer = new Timer(_ => OnDebounceElapsed(), null, Timeout.Infinite, Timeout.Infinite);
+        _debounceTimer = new Timer(
+            _ => OnDebounceElapsed(),
+            null,
+            Timeout.Infinite,
+            Timeout.Infinite
+        );
 
         _watcher = new FileSystemWatcher(basinRoot)
         {
             IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.DirectoryName,
-            EnableRaisingEvents = true
+            NotifyFilter =
+                NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.DirectoryName,
+            EnableRaisingEvents = true,
         };
 
         _watcher.Changed += (_, e) => ScheduleIfRelevant(e.FullPath, debounceMs);
@@ -52,13 +58,15 @@ public sealed class BasinWatcher : IDisposable
         if (IsSuppressed)
             return;
 
-        if (fullPath.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase) ||
-            fullPath.Contains(".tmp.", StringComparison.OrdinalIgnoreCase) ||
-            fullPath.EndsWith(".db", StringComparison.OrdinalIgnoreCase) ||
-            fullPath.EndsWith(".db-wal", StringComparison.OrdinalIgnoreCase) ||
-            fullPath.EndsWith(".db-shm", StringComparison.OrdinalIgnoreCase) ||
-            fullPath.EndsWith(".db-journal", StringComparison.OrdinalIgnoreCase) ||
-            fullPath.EndsWith("poll_state.json", StringComparison.OrdinalIgnoreCase))
+        if (
+            fullPath.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
+            || fullPath.Contains(".tmp.", StringComparison.OrdinalIgnoreCase)
+            || fullPath.EndsWith(".db", StringComparison.OrdinalIgnoreCase)
+            || fullPath.EndsWith(".db-wal", StringComparison.OrdinalIgnoreCase)
+            || fullPath.EndsWith(".db-shm", StringComparison.OrdinalIgnoreCase)
+            || fullPath.EndsWith(".db-journal", StringComparison.OrdinalIgnoreCase)
+            || fullPath.EndsWith("poll_state.json", StringComparison.OrdinalIgnoreCase)
+        )
         {
             return;
         }

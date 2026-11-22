@@ -74,7 +74,11 @@ public static partial class SourceEvidenceGrounder
                 if (
                     fl.Equals(ql, StringComparison.OrdinalIgnoreCase)
                     || fl.Contains(ql, StringComparison.OrdinalIgnoreCase)
-                    || (ql.Length >= 12 && ql.Contains(fl, StringComparison.OrdinalIgnoreCase) && fl.Length >= 8)
+                    || (
+                        ql.Length >= 12
+                        && ql.Contains(fl, StringComparison.OrdinalIgnoreCase)
+                        && fl.Length >= 8
+                    )
                 )
                 {
                     matchedLines++;

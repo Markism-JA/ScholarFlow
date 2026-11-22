@@ -90,16 +90,19 @@ public sealed class PdfReaderViewModel : IDisposable
         var token = cts.Token;
         try
         {
-            var (bytes, pageCount, roots) = await Task.Run(() =>
-            {
-                token.ThrowIfCancellationRequested();
-                var data = File.ReadAllBytes(filePath);
-                token.ThrowIfCancellationRequested();
-                using var doc = PdfDocument.Open(data);
-                int pages = doc.NumberOfPages;
-                var tree = ExtractBookmarkRoots(doc);
-                return (data, pages, tree);
-            }, token);
+            var (bytes, pageCount, roots) = await Task.Run(
+                () =>
+                {
+                    token.ThrowIfCancellationRequested();
+                    var data = File.ReadAllBytes(filePath);
+                    token.ThrowIfCancellationRequested();
+                    using var doc = PdfDocument.Open(data);
+                    int pages = doc.NumberOfPages;
+                    var tree = ExtractBookmarkRoots(doc);
+                    return (data, pages, tree);
+                },
+                token
+            );
 
             if (token.IsCancellationRequested || _loadCts != cts)
                 return;
@@ -178,7 +181,8 @@ public sealed class PdfReaderViewModel : IDisposable
         int dpi,
         string? filePath,
         bool notifyOnComplete,
-        bool showLoadingIndicator = true)
+        bool showLoadingIndicator = true
+    )
     {
         var key = (zeroBased, dpi);
         if (!_pendingPageRenders.Add(key))
@@ -189,8 +193,8 @@ public sealed class PdfReaderViewModel : IDisposable
 
         try
         {
-            var rendered = await Task.Run(
-                () => PdfBitmapRenderer.RenderPagePixels(pdfBytes, zeroBased, dpi)
+            var rendered = await Task.Run(() =>
+                PdfBitmapRenderer.RenderPagePixels(pdfBytes, zeroBased, dpi)
             );
 
             Dispatcher.UIThread.Post(() =>
@@ -219,7 +223,13 @@ public sealed class PdfReaderViewModel : IDisposable
                     // Prefetch next page silently for smooth paging on large textbooks
                     if (zeroBased + 1 < PageCount && !_pageCache.ContainsKey((zeroBased + 1, dpi)))
                     {
-                        _ = RenderPageInBackgroundAsync(pdfBytes, zeroBased + 1, dpi, filePath, notifyOnComplete: false);
+                        _ = RenderPageInBackgroundAsync(
+                            pdfBytes,
+                            zeroBased + 1,
+                            dpi,
+                            filePath,
+                            notifyOnComplete: false
+                        );
                     }
                 }
             });
@@ -230,7 +240,10 @@ public sealed class PdfReaderViewModel : IDisposable
             {
                 _pendingPageRenders.Remove(key);
                 IsRenderingPage = _pendingPageRenders.Count > 0;
-                if (notifyOnComplete && string.Equals(CurrentFilePath, filePath, StringComparison.OrdinalIgnoreCase))
+                if (
+                    notifyOnComplete
+                    && string.Equals(CurrentFilePath, filePath, StringComparison.OrdinalIgnoreCase)
+                )
                 {
                     ErrorMessage = $"Render error: {ex.Message}";
                     Changed?.Invoke(this, EventArgs.Empty);

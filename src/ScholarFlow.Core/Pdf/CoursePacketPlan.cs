@@ -152,7 +152,12 @@ public sealed class CoursePacketPlan
             return saved;
         }
 
-        return BuildDefaultPlan(courseDir, discoveredFiles, configuredTerms, useStiSyllabusFallback);
+        return BuildDefaultPlan(
+            courseDir,
+            discoveredFiles,
+            configuredTerms,
+            useStiSyllabusFallback
+        );
     }
 
     public static List<PacketItemPlan> DiscoverCoursePdfItems(string courseDir) =>
@@ -181,7 +186,10 @@ public sealed class CoursePacketPlan
             if (kind == StudySourceKind.Image)
                 return PackableImageExtensions.Contains(Path.GetExtension(filePath));
 
-            return kind is StudySourceKind.Markdown or StudySourceKind.PlainText or StudySourceKind.Code;
+            return kind
+                is StudySourceKind.Markdown
+                    or StudySourceKind.PlainText
+                    or StudySourceKind.Code;
         }
 
         // 1. Direct PDFs & non-PDF study files in root of courseDir (excluding compiled *_Master.pdf)
@@ -200,7 +208,10 @@ public sealed class CoursePacketPlan
                 if (
                     fileName.EndsWith("_Master.pdf", StringComparison.OrdinalIgnoreCase)
                     || fileName.EndsWith("_.pdf", StringComparison.OrdinalIgnoreCase)
-                    || fileName.Equals($"{courseFolderName}.pdf", StringComparison.OrdinalIgnoreCase)
+                    || fileName.Equals(
+                        $"{courseFolderName}.pdf",
+                        StringComparison.OrdinalIgnoreCase
+                    )
                 )
                 {
                     continue;
@@ -210,7 +221,9 @@ public sealed class CoursePacketPlan
                     new PacketItemPlan
                     {
                         RelativePath = fileName,
-                        DisplayTitle = Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ').Trim(),
+                        DisplayTitle = Path.GetFileNameWithoutExtension(fileName)
+                            .Replace('_', ' ')
+                            .Trim(),
                         IsActivity = IsActivityName(fileName),
                         IsExcluded = false,
                         ForceRotateLandscape = fileName.Contains(
@@ -226,7 +239,9 @@ public sealed class CoursePacketPlan
                     new PacketItemPlan
                     {
                         RelativePath = fileName,
-                        DisplayTitle = Path.GetFileNameWithoutExtension(fileName).Replace('_', ' ').Trim(),
+                        DisplayTitle = Path.GetFileNameWithoutExtension(fileName)
+                            .Replace('_', ' ')
+                            .Trim(),
                         IsActivity = IsActivityName(fileName),
                         IsExcluded = !includeNonPdfByDefault,
                     }
@@ -281,7 +296,10 @@ public sealed class CoursePacketPlan
             foreach (
                 var nonPdf in Directory
                     .GetFiles(dir, "*", SearchOption.TopDirectoryOnly)
-                    .Where(f => !f.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) && IsSupportedNonPdfPacketFile(f))
+                    .Where(f =>
+                        !f.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)
+                        && IsSupportedNonPdfPacketFile(f)
+                    )
                     .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)
             )
             {
@@ -323,10 +341,9 @@ public sealed class CoursePacketPlan
             assignedPaths.Add(syl.RelativePath);
         }
 
-        var effectiveTerms =
-            configuredTerms is not null
-                ? configuredTerms.Where(t => !string.IsNullOrWhiteSpace(t)).ToList()
-                : ["Prelims", "Midterms", "Prefinals", "Finals"];
+        var effectiveTerms = configuredTerms is not null
+            ? configuredTerms.Where(t => !string.IsNullOrWhiteSpace(t)).ToList()
+            : ["Prelims", "Midterms", "Prefinals", "Finals"];
 
         // Case 1: Local / Manual basin with zero terms configured -> flat single section
         if (effectiveTerms.Count == 0)
@@ -424,8 +441,7 @@ public sealed class CoursePacketPlan
         if (missing.Count == 0)
             return;
 
-        var targetSec =
-            plan.Sections.LastOrDefault()
+        var targetSec = plan.Sections.LastOrDefault()
             ?? new PacketSectionPlan { Title = "Study Materials" };
         if (plan.Sections.Count == 0)
             plan.Sections.Add(targetSec);
@@ -453,7 +469,11 @@ public sealed class CoursePacketPlan
             var dashIdx = part.IndexOf('-');
             if (dashIdx < 0)
             {
-                if (int.TryParse(part.Trim(), out int single) && single >= 1 && single <= totalPages)
+                if (
+                    int.TryParse(part.Trim(), out int single)
+                    && single >= 1
+                    && single <= totalPages
+                )
                     allowed.Add(single);
             }
             else

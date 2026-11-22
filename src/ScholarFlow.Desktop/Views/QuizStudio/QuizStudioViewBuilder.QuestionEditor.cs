@@ -42,7 +42,11 @@ public static partial class QuizStudioViewBuilder
             ColumnSpacing = 6,
             Margin = new Thickness(0, 0, 0, 8),
         };
-        var titleStack = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+        var titleStack = new StackPanel
+        {
+            Spacing = 1,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
         titleStack.Children.Add(
             new TextBlock
             {
@@ -55,7 +59,8 @@ public static partial class QuizStudioViewBuilder
         titleStack.Children.Add(
             new TextBlock
             {
-                Text = $"{draft.Kind} · {draft.CognitiveLevel}"
+                Text =
+                    $"{draft.Kind} · {draft.CognitiveLevel}"
                     + (
                         string.IsNullOrWhiteSpace(draft.Archetype)
                             ? ""
@@ -93,10 +98,8 @@ public static partial class QuizStudioViewBuilder
         Grid.SetColumn(cancelBtn, 3);
         headerGrid.Children.Add(cancelBtn);
 
-        var doneBtn = UiBuilder.PrimaryButton(
-            "Save",
-            MaterialIconKind.Check,
-            () => studio.CommitEditingQuestionDraft(0)
+        var doneBtn = UiBuilder.PrimaryButton("Save", MaterialIconKind.Check, () =>
+            studio.CommitEditingQuestionDraft(0)
         );
         doneBtn.IsEnabled = !string.IsNullOrWhiteSpace(draft.Prompt);
         Grid.SetColumn(doneBtn, 4);
@@ -631,7 +634,9 @@ public static partial class QuizStudioViewBuilder
             };
             answerStack.Children.Add(correctBox);
 
-            answerStack.Children.Add(EditorFieldLabel("Accepted Aliases / Synonyms (comma-separated)"));
+            answerStack.Children.Add(
+                EditorFieldLabel("Accepted Aliases / Synonyms (comma-separated)")
+            );
             var aliasBox = new TextBox
             {
                 Text = string.Join(", ", draft.AcceptedAliases),
@@ -665,7 +670,8 @@ public static partial class QuizStudioViewBuilder
         var hintBox = new TextBox
         {
             Text = draft.Hint ?? string.Empty,
-            Watermark = "e.g. Think about what happens to page-table lookups when the TLB misses...",
+            Watermark =
+                "e.g. Think about what happens to page-table lookups when the TLB misses...",
             TextWrapping = TextWrapping.Wrap,
             FontSize = 12,
         };
@@ -987,7 +993,8 @@ public static partial class QuizStudioViewBuilder
             var diagBox = new TextBox
             {
                 Text = draft.Diagram ?? string.Empty,
-                Watermark = "Optional Diagram (A -> B -> C, flowchart LR/TD, or sequenceDiagram)...",
+                Watermark =
+                    "Optional Diagram (A -> B -> C, flowchart LR/TD, or sequenceDiagram)...",
                 AcceptsReturn = true,
                 TextWrapping = TextWrapping.NoWrap,
                 MinHeight = 52,
@@ -1097,9 +1104,8 @@ public static partial class QuizStudioViewBuilder
             if (!string.IsNullOrWhiteSpace(resolvedDraftImg))
             {
                 advStack.Children.Add(
-                    QuizRichContentRenderer.BuildQuestionImageCard(
-                        resolvedDraftImg,
-                        () => studio.OpenImageZoom(draft.ImagePath)
+                    QuizRichContentRenderer.BuildQuestionImageCard(resolvedDraftImg, () =>
+                        studio.OpenImageZoom(draft.ImagePath)
                     )
                 );
             }
@@ -1108,18 +1114,12 @@ public static partial class QuizStudioViewBuilder
         }
 
         // Compose Sticky Header + Validation Banner + Scrollable Body inside Responsive Modal Shell
-        var shellGrid = new Grid
-        {
-            RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
-        };
+        var shellGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,Auto,*") };
         shellGrid.Children.Add(headerGrid);
         Grid.SetRow(validationBanner, 1);
         shellGrid.Children.Add(validationBanner);
 
-        var scroller = UiBuilder.PersistentScrollViewer(
-            $"quiz-q-editor:{draft.Id}",
-            bodyStack
-        );
+        var scroller = UiBuilder.PersistentScrollViewer($"quiz-q-editor:{draft.Id}", bodyStack);
         Grid.SetRow(scroller, 2);
         shellGrid.Children.Add(scroller);
 
@@ -1165,8 +1165,11 @@ public static partial class QuizStudioViewBuilder
             Child = child,
         };
 
-    private static (string WhyCorrect, string WhyDistractors, string CorePrinciple)
-        SplitContrastiveExplanation(string? raw)
+    private static (
+        string WhyCorrect,
+        string WhyDistractors,
+        string CorePrinciple
+    ) SplitContrastiveExplanation(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw))
             return (string.Empty, string.Empty, string.Empty);

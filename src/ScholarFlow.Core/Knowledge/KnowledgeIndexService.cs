@@ -58,10 +58,9 @@ public sealed partial class KnowledgeIndexService
                 ct
             );
 
-            var activeCourses =
-                courses ?? await new BasinService().LoadCoursesAsync(basinRoot);
-            var activeQuizzes =
-                quizzes ?? await ScholarFlowDatabase.LoadQuizSessionsAsync(basinRoot, ct: ct);
+            var activeCourses = courses ?? await new BasinService().LoadCoursesAsync(basinRoot);
+            var activeQuizzes = quizzes
+                ?? await ScholarFlowDatabase.LoadQuizSessionsAsync(basinRoot, ct: ct);
 
             var courseAliasMap = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var c in activeCourses)
@@ -99,9 +98,7 @@ public sealed partial class KnowledgeIndexService
                 toIndex.Add(target);
             }
 
-            var toDelete = existingSnapshot
-                .Keys.Where(k => !seenKeys.Contains(k))
-                .ToList();
+            var toDelete = existingSnapshot.Keys.Where(k => !seenKeys.Contains(k)).ToList();
 
             if (toIndex.Count == 0 && toDelete.Count == 0)
             {
@@ -151,13 +148,12 @@ public sealed partial class KnowledgeIndexService
             var upsertList = extractedBag.ToList();
             int chunksWritten = upsertList.Sum(e => e.Chunks.Count);
 
-            var (totalFiles, totalChunks) =
-                await ScholarFlowDatabase.ApplyKnowledgeIndexBatchAsync(
-                    basinRoot,
-                    upsertList,
-                    toDelete,
-                    ct
-                );
+            var (totalFiles, totalChunks) = await ScholarFlowDatabase.ApplyKnowledgeIndexBatchAsync(
+                basinRoot,
+                upsertList,
+                toDelete,
+                ct
+            );
 
             sw.Stop();
             return new KnowledgeIndexSummary(
@@ -218,7 +214,9 @@ public sealed partial class KnowledgeIndexService
             }
 
             // 2. Course Non-PDF Study Files (Code, Markdown, PlainText, Image)
-            foreach (var desc in FileSourceQuizSupport.DiscoverCourseStudyFiles(courseDir, maxFiles: 500))
+            foreach (
+                var desc in FileSourceQuizSupport.DiscoverCourseStudyFiles(courseDir, maxFiles: 500)
+            )
             {
                 if (!addedPhysicalPaths.Add(desc.FilePath))
                     continue;
@@ -251,10 +249,7 @@ public sealed partial class KnowledgeIndexService
             foreach (var dir in Directory.EnumerateDirectories(basinRoot))
             {
                 var folderName = Path.GetFileName(dir);
-                if (
-                    folderName.StartsWith('.')
-                    || courseAliasMap.ContainsKey(folderName)
-                )
+                if (folderName.StartsWith('.') || courseAliasMap.ContainsKey(folderName))
                     continue;
 
                 var fallbackAlias = CourseAliasGenerator.Generate(folderName);
@@ -262,7 +257,10 @@ public sealed partial class KnowledgeIndexService
 
                 foreach (var pdfPath in DiscoverCoursePdfs(basinRoot, folderName, dir))
                 {
-                    if (!addedPhysicalPaths.Add(pdfPath) || !TryStatFile(pdfPath, out long ticks, out long size))
+                    if (
+                        !addedPhysicalPaths.Add(pdfPath)
+                        || !TryStatFile(pdfPath, out long ticks, out long size)
+                    )
                         continue;
 
                     targets.Add(
@@ -279,9 +277,14 @@ public sealed partial class KnowledgeIndexService
                     );
                 }
 
-                foreach (var desc in FileSourceQuizSupport.DiscoverCourseStudyFiles(dir, maxFiles: 300))
+                foreach (
+                    var desc in FileSourceQuizSupport.DiscoverCourseStudyFiles(dir, maxFiles: 300)
+                )
                 {
-                    if (!addedPhysicalPaths.Add(desc.FilePath) || !TryStatFile(desc.FilePath, out long ticks, out long size))
+                    if (
+                        !addedPhysicalPaths.Add(desc.FilePath)
+                        || !TryStatFile(desc.FilePath, out long ticks, out long size)
+                    )
                         continue;
 
                     var kindToken = ToSourceKindToken(desc.Kind);
@@ -789,8 +792,7 @@ public sealed partial class KnowledgeIndexService
         }
 
         var tagSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "image", ext };
-        string sectionTitle =
-            !string.IsNullOrWhiteSpace(parentDir) ? parentDir : baseName;
+        string sectionTitle = !string.IsNullOrWhiteSpace(parentDir) ? parentDir : baseName;
 
         foreach (var q in linkedQuestions)
         {
@@ -952,10 +954,8 @@ public sealed partial class KnowledgeIndexService
                     (hash * 31)
                     + StringComparer.Ordinal.GetHashCode(q.CorrectAnswer ?? string.Empty);
                 hash =
-                    (hash * 31)
-                    + StringComparer.Ordinal.GetHashCode(q.Explanation ?? string.Empty);
-                hash =
-                    (hash * 31) + StringComparer.Ordinal.GetHashCode(q.TopicTag ?? string.Empty);
+                    (hash * 31) + StringComparer.Ordinal.GetHashCode(q.Explanation ?? string.Empty);
+                hash = (hash * 31) + StringComparer.Ordinal.GetHashCode(q.TopicTag ?? string.Empty);
                 hash = (hash * 31) + StringComparer.Ordinal.GetHashCode(q.Hint ?? string.Empty);
                 totalChars +=
                     (q.Prompt?.Length ?? 0)

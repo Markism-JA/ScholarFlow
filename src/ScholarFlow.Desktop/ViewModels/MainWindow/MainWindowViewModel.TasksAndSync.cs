@@ -357,19 +357,15 @@ public sealed partial class MainWindowViewModel
             : $"Opening {provider.DisplayName} window...";
         NotifyStateChanged(UiChangeKind.FullLayout);
 
-        await SyncCoordinator.OpenExternalUrlWithPauseShieldAsync(
-            BasinRoot,
-            urlOrPath,
-            async () =>
+        await SyncCoordinator.OpenExternalUrlWithPauseShieldAsync(BasinRoot, urlOrPath, async () =>
+        {
+            await Dispatcher.UIThread.InvokeAsync(async () =>
             {
-                await Dispatcher.UIThread.InvokeAsync(async () =>
-                {
-                    StatusText = $"{provider.DisplayName} window closed — refreshing assignments...";
-                    NotifyStateChanged(UiChangeKind.FullLayout);
-                    await RunFastPollAsync();
-                });
-            }
-        );
+                StatusText = $"{provider.DisplayName} window closed — refreshing assignments...";
+                NotifyStateChanged(UiChangeKind.FullLayout);
+                await RunFastPollAsync();
+            });
+        });
 
         NotifyStateChanged(UiChangeKind.FullLayout);
     }
@@ -654,8 +650,7 @@ public sealed partial class MainWindowViewModel
         {
             var prev = SelectedTask;
             var allNodes = EnumerateAllTaskNodes(AllTasks).ToList();
-            SelectedTask =
-                TaskItem.FindById(AllTasks, prev.Id)
+            SelectedTask = TaskItem.FindById(AllTasks, prev.Id)
                 ?? allNodes.FirstOrDefault(t =>
                     (
                         !string.IsNullOrWhiteSpace(prev.LmsId)

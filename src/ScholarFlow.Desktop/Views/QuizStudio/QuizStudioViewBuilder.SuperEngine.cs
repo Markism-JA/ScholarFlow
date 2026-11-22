@@ -35,7 +35,8 @@ public static partial class QuizStudioViewBuilder
         headerGrid.Children.Add(
             new TextBlock
             {
-                Text = "Cognitive Depth Distribution (Recall · Comprehension · Application · Analysis)",
+                Text =
+                    "Cognitive Depth Distribution (Recall · Comprehension · Application · Analysis)",
                 FontSize = 11.5,
                 FontWeight = FontWeight.SemiBold,
                 Foreground = ThemeService.Brush(ThemeService.TextSecondary),
@@ -272,11 +273,7 @@ public static partial class QuizStudioViewBuilder
 
     private static Control BuildPdfPageSkeleton(int pageNumber)
     {
-        var sheetContent = new StackPanel
-        {
-            Spacing = 12,
-            Margin = new Thickness(24, 26),
-        };
+        var sheetContent = new StackPanel { Spacing = 12, Margin = new Thickness(24, 26) };
         sheetContent.Children.Add(
             new ProgressBar
             {
@@ -290,9 +287,7 @@ public static partial class QuizStudioViewBuilder
         sheetContent.Children.Add(BuildSkeletonBlock(11, null, 0.55));
         sheetContent.Children.Add(BuildSkeletonBlock(11, null, 0.50));
         sheetContent.Children.Add(BuildSkeletonBlock(11, 280, 0.45));
-        sheetContent.Children.Add(
-            BuildSkeletonBlock(110, null, 0.40, new CornerRadius(6))
-        );
+        sheetContent.Children.Add(BuildSkeletonBlock(110, null, 0.40, new CornerRadius(6)));
         sheetContent.Children.Add(BuildSkeletonBlock(11, null, 0.55));
         sheetContent.Children.Add(BuildSkeletonBlock(11, null, 0.50));
         sheetContent.Children.Add(BuildSkeletonBlock(11, 240, 0.45));
@@ -331,7 +326,8 @@ public static partial class QuizStudioViewBuilder
         // 1. Content Modality & Visual Representation
         var modHeader = new TextBlock
         {
-            Text = "Content Modality & Question Styles (Auto-adapts to Code, Math LaTeX, Diagrams & Images)",
+            Text =
+                "Content Modality & Question Styles (Auto-adapts to Code, Math LaTeX, Diagrams & Images)",
             FontSize = 11.5,
             FontWeight = FontWeight.SemiBold,
             Foreground = ThemeService.Brush(ThemeService.TextSecondary),
@@ -342,7 +338,11 @@ public static partial class QuizStudioViewBuilder
         foreach (
             var (mMode, mLabel, mIcon) in new[]
             {
-                (QuizContentModalityMode.AutoDetect, "Auto-Detect Format", MaterialIconKind.AutoFix),
+                (
+                    QuizContentModalityMode.AutoDetect,
+                    "Auto-Detect Format",
+                    MaterialIconKind.AutoFix
+                ),
                 (
                     QuizContentModalityMode.StandardProseOnly,
                     "Prose Only",
@@ -431,9 +431,7 @@ public static partial class QuizStudioViewBuilder
         var recallWrap = new WrapPanel { Orientation = Orientation.Horizontal };
 
         var weakBtn = UiBuilder.GhostButton(
-            weakTags.Count > 0
-                ? $"Target Weak Topics ({weakTags.Count})"
-                : "Target Weak Topics",
+            weakTags.Count > 0 ? $"Target Weak Topics ({weakTags.Count})" : "Target Weak Topics",
             studio.FocusWeakSpots
                 ? MaterialIconKind.CheckboxMarked
                 : MaterialIconKind.CheckboxBlankOutline,
@@ -472,7 +470,8 @@ public static partial class QuizStudioViewBuilder
             stack.Children.Add(
                 new TextBlock
                 {
-                    Text = $"Remediation focus: {string.Join("  ·  ", weakTags.Select(t => "@" + t))}",
+                    Text =
+                        $"Remediation focus: {string.Join("  ·  ", weakTags.Select(t => "@" + t))}",
                     FontSize = 11,
                     Foreground = ThemeService.Brush(ThemeService.AccentPrimary),
                     TextWrapping = TextWrapping.Wrap,
@@ -622,11 +621,10 @@ public static partial class QuizStudioViewBuilder
             bool isWhyCorrect = heading.Contains("correct", StringComparison.OrdinalIgnoreCase);
             bool isDistractor = heading.Contains("distractor", StringComparison.OrdinalIgnoreCase);
 
-            var labelBrush = isWhyCorrect
-                ? ThemeService.Brush(ThemeService.SuccessFg)
-                : isDistractor
-                    ? ThemeService.Brush(ThemeService.PriorityP2Fg)
-                    : ThemeService.Brush(ThemeService.AccentPrimary);
+            var labelBrush =
+                isWhyCorrect ? ThemeService.Brush(ThemeService.SuccessFg)
+                : isDistractor ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+                : ThemeService.Brush(ThemeService.AccentPrimary);
 
             var itemStack = new StackPanel { Spacing = 2 };
             itemStack.Children.Add(

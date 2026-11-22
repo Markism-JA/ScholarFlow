@@ -177,12 +177,10 @@ public static partial class AssignmentsListParser
         string? gradeText
     )
     {
-        var subTitle =
-            submittedCell?.QuerySelector("span[title]")?.GetAttribute("title")
+        var subTitle = submittedCell?.QuerySelector("span[title]")?.GetAttribute("title")
             ?? submittedCell?.TextContent
             ?? string.Empty;
-        var gradedTitle =
-            gradedCell?.QuerySelector("span[title]")?.GetAttribute("title")
+        var gradedTitle = gradedCell?.QuerySelector("span[title]")?.GetAttribute("title")
             ?? gradedCell?.TextContent
             ?? string.Empty;
 

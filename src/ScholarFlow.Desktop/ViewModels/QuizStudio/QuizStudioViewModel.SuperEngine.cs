@@ -253,13 +253,14 @@ public sealed partial class QuizStudioViewModel
         var distinctCodes = report.Issues.Select(i => i.Code).Distinct().ToList();
         var directives = new List<string>
         {
-            $"Repair the {report.FlaggedQuestionIds.Count} quality-critic flagged question(s) ({string.Join(", ", distinctCodes)}):"
+            $"Repair the {report.FlaggedQuestionIds.Count} quality-critic flagged question(s) ({string.Join(", ", distinctCodes)}):",
         };
         foreach (var issue in report.Issues.Take(12))
         {
-            int qNum = OrganizerQuiz.Questions.FindIndex(x =>
-                string.Equals(x.Id, issue.QuestionId, StringComparison.OrdinalIgnoreCase)
-            ) + 1;
+            int qNum =
+                OrganizerQuiz.Questions.FindIndex(x =>
+                    string.Equals(x.Id, issue.QuestionId, StringComparison.OrdinalIgnoreCase)
+                ) + 1;
             directives.Add($"- Q{qNum} [{issue.Code}]: {issue.Message}");
         }
 
@@ -312,18 +313,18 @@ public sealed partial class QuizStudioViewModel
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Count();
 
-        string scopeLabel = selectedDecksOnly
-            ? $"{deckList.Count} Selected Decks"
-            : allCourses
-                ? "All Subjects"
-                : SelectedCourse?.Title ?? "Subject";
+        string scopeLabel =
+            selectedDecksOnly ? $"{deckList.Count} Selected Decks"
+            : allCourses ? "All Subjects"
+            : SelectedCourse?.Title ?? "Subject";
 
         var session = new QuizSessionRecord
         {
             Id = "srs-deck",
             CourseFolder = allCourses ? "" : SelectedCourse?.FolderName ?? "",
             CourseTitle = scopeLabel,
-            Title = $"Interleaved Review · {scopeLabel} ({interleaved.Count} items · {distinctTopics} topics)",
+            Title =
+                $"Interleaved Review · {scopeLabel} ({interleaved.Count} items · {distinctTopics} topics)",
             SourcePdfPath = interleaved[0].SourcePdfPath,
             ModelUsed = "Interleaved Active Recall",
             Questions = interleaved,

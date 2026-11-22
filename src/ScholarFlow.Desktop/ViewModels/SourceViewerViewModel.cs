@@ -4,11 +4,7 @@ using ScholarFlow.Core.Quiz;
 
 namespace ScholarFlow.Desktop.ViewModels;
 
-public sealed record SourceViewerLineItem(
-    int LineNumber,
-    string Text,
-    bool IsHighlighted
-);
+public sealed record SourceViewerLineItem(int LineNumber, string Text, bool IsHighlighted);
 
 /// <summary>
 /// ViewModel for the built-in Knowledge Hub Source Viewer supporting Code, Markdown,

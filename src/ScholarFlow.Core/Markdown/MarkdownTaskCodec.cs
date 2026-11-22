@@ -689,8 +689,8 @@ public static partial class MarkdownTaskCodec
                 if (incoming.IsCompleted && !existing.IsCompleted)
                 {
                     existing.IsCompleted = true;
-                    existing.CompletedDate ??=
-                        incoming.CompletedDate ?? DateOnly.FromDateTime(DateTime.Today);
+                    existing.CompletedDate ??= incoming.CompletedDate
+                        ?? DateOnly.FromDateTime(DateTime.Today);
                 }
             }
             else
@@ -787,123 +787,114 @@ public static partial class MarkdownTaskCodec
         var linkedFiles = new List<string>();
 
         working = InlineFieldRegex()
-            .Replace(
-                working,
-                m =>
+            .Replace(working, m =>
+            {
+                var key = m.Groups[1].Value.ToLowerInvariant();
+                var val = m.Groups[2].Value.Trim();
+                switch (key)
                 {
-                    var key = m.Groups[1].Value.ToLowerInvariant();
-                    var val = m.Groups[2].Value.Trim();
-                    switch (key)
-                    {
-                        case "due"
-                            when DateOnly.TryParseExact(
-                                val,
-                                "yyyy-MM-dd",
-                                CultureInfo.InvariantCulture,
-                                DateTimeStyles.None,
-                                out var parsedDue
-                            ):
-                            dueDate = parsedDue;
-                            break;
-                        case "time"
-                            when TimeOnly.TryParseExact(
-                                val,
-                                "HH:mm",
-                                CultureInfo.InvariantCulture,
-                                DateTimeStyles.None,
-                                out var parsedTime
-                            ):
-                            dueTime = parsedTime;
-                            break;
-                        case "done"
-                            when DateOnly.TryParseExact(
-                                val,
-                                "yyyy-MM-dd",
-                                CultureInfo.InvariantCulture,
-                                DateTimeStyles.None,
-                                out var parsedDone
-                            ):
-                            completedDate = parsedDone;
-                            break;
-                        case "p"
-                        or "priority"
-                            when int.TryParse(val.TrimStart('p', 'P'), out var pVal)
-                                && pVal is >= 1 and <= 4:
-                            priority = (TaskPriority)pVal;
-                            break;
-                        case "diff" when int.TryParse(val, out var d):
-                            difficulty = Math.Clamp(d, 1, 5);
-                            break;
-                        case "term":
-                            term = TaskItem.NormalizeTerm(val) ?? val;
-                            break;
-                        case "section":
-                            section = val;
-                            break;
-                        case "kind":
-                            lmsKind = val;
-                            break;
-                        case "weight"
-                            when double.TryParse(
-                                val.TrimEnd('%'),
-                                NumberStyles.Any,
-                                CultureInfo.InvariantCulture,
-                                out var w
-                            ):
-                            weightPercent = w;
-                            break;
-                        case "attachment":
-                            instructionFiles.Add(val);
-                            break;
-                        case "submission":
-                            submissionFiles.Add(val);
-                            break;
-                        case "file":
-                            linkedFiles.Add(val);
-                            break;
-                        case "note":
-                            notePath = val;
-                            break;
-                        case "lms_id":
-                            lmsId = val;
-                            break;
-                        case "lms_status":
-                            lmsStatus = val;
-                            break;
-                        case "lms_score":
-                            lmsScore = val;
-                            break;
-                        case "lms_url":
-                            lmsUrl = val;
-                            break;
-                    }
-                    return string.Empty;
+                    case "due"
+                        when DateOnly.TryParseExact(
+                            val,
+                            "yyyy-MM-dd",
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None,
+                            out var parsedDue
+                        ):
+                        dueDate = parsedDue;
+                        break;
+                    case "time"
+                        when TimeOnly.TryParseExact(
+                            val,
+                            "HH:mm",
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None,
+                            out var parsedTime
+                        ):
+                        dueTime = parsedTime;
+                        break;
+                    case "done"
+                        when DateOnly.TryParseExact(
+                            val,
+                            "yyyy-MM-dd",
+                            CultureInfo.InvariantCulture,
+                            DateTimeStyles.None,
+                            out var parsedDone
+                        ):
+                        completedDate = parsedDone;
+                        break;
+                    case "p"
+                    or "priority"
+                        when int.TryParse(val.TrimStart('p', 'P'), out var pVal)
+                            && pVal is >= 1 and <= 4:
+                        priority = (TaskPriority)pVal;
+                        break;
+                    case "diff" when int.TryParse(val, out var d):
+                        difficulty = Math.Clamp(d, 1, 5);
+                        break;
+                    case "term":
+                        term = TaskItem.NormalizeTerm(val) ?? val;
+                        break;
+                    case "section":
+                        section = val;
+                        break;
+                    case "kind":
+                        lmsKind = val;
+                        break;
+                    case "weight"
+                        when double.TryParse(
+                            val.TrimEnd('%'),
+                            NumberStyles.Any,
+                            CultureInfo.InvariantCulture,
+                            out var w
+                        ):
+                        weightPercent = w;
+                        break;
+                    case "attachment":
+                        instructionFiles.Add(val);
+                        break;
+                    case "submission":
+                        submissionFiles.Add(val);
+                        break;
+                    case "file":
+                        linkedFiles.Add(val);
+                        break;
+                    case "note":
+                        notePath = val;
+                        break;
+                    case "lms_id":
+                        lmsId = val;
+                        break;
+                    case "lms_status":
+                        lmsStatus = val;
+                        break;
+                    case "lms_score":
+                        lmsScore = val;
+                        break;
+                    case "lms_url":
+                        lmsUrl = val;
+                        break;
                 }
-            );
+                return string.Empty;
+            });
 
         string? courseAlias = null;
         working = CourseTagRegex()
-            .Replace(
-                working,
-                m =>
-                {
-                    courseAlias ??= m.Groups[1].Value;
-                    return string.Empty;
-                }
-            );
+            .Replace(working, m =>
+            {
+                courseAlias ??= m.Groups[1].Value;
+                return string.Empty;
+            });
 
         var labels = new List<string>();
         working = LabelTagRegex()
-            .Replace(
-                working,
-                m =>
-                {
-                    var lbl = m.Groups[1].Value;
-                    labels.Add(lbl);
-                    term ??= TaskItem.NormalizeTerm(lbl);
-                    return string.Empty;
-                }
-            );
+            .Replace(working, m =>
+            {
+                var lbl = m.Groups[1].Value;
+                labels.Add(lbl);
+                term ??= TaskItem.NormalizeTerm(lbl);
+                return string.Empty;
+            });
 
         var cleanTitle = string.Join(
                 ' ',
@@ -963,27 +954,24 @@ public static partial class MarkdownTaskCodec
 
         DateOnly? inlineDone = null;
         cleaned = InlineFieldRegex()
-            .Replace(
-                text,
-                m =>
-                {
-                    if (
-                        m.Groups[1].Value.Equals("done", StringComparison.OrdinalIgnoreCase)
-                        && DateOnly.TryParseExact(
-                            m.Groups[2].Value.Trim(),
-                            "yyyy-MM-dd",
-                            CultureInfo.InvariantCulture,
-                            DateTimeStyles.None,
-                            out var parsedDone
-                        )
+            .Replace(text, m =>
+            {
+                if (
+                    m.Groups[1].Value.Equals("done", StringComparison.OrdinalIgnoreCase)
+                    && DateOnly.TryParseExact(
+                        m.Groups[2].Value.Trim(),
+                        "yyyy-MM-dd",
+                        CultureInfo.InvariantCulture,
+                        DateTimeStyles.None,
+                        out var parsedDone
                     )
-                    {
-                        inlineDone = parsedDone;
-                        return string.Empty;
-                    }
-                    return m.Value;
+                )
+                {
+                    inlineDone = parsedDone;
+                    return string.Empty;
                 }
-            );
+                return m.Value;
+            });
 
         return inlineDone;
     }

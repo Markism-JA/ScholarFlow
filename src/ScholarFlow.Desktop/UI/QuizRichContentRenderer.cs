@@ -280,16 +280,12 @@ public static partial class QuizRichContentRenderer
             Content = codeBlock,
         };
 
-        var copyBtn = UiBuilder.GhostButton(
-            "Copy Code",
-            MaterialIconKind.ContentCopy,
-            async () =>
-            {
-                var top = TopLevel.GetTopLevel(codeBlock);
-                if (top?.Clipboard is not null)
-                    await top.Clipboard.SetTextAsync(cleanCode);
-            }
-        );
+        var copyBtn = UiBuilder.GhostButton("Copy Code", MaterialIconKind.ContentCopy, async () =>
+        {
+            var top = TopLevel.GetTopLevel(codeBlock);
+            if (top?.Clipboard is not null)
+                await top.Clipboard.SetTextAsync(cleanCode);
+        });
         Grid.SetColumn(copyBtn, 1);
         topBar.Children.Add(copyBtn);
         outerStack.Children.Add(topBar);
@@ -525,8 +521,16 @@ public static partial class QuizRichContentRenderer
                 Padding = new Thickness(12, 10),
                 Child = new ScrollViewer
                 {
-                    HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                    VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled,
+                    HorizontalScrollBarVisibility = Avalonia
+                        .Controls
+                        .Primitives
+                        .ScrollBarVisibility
+                        .Auto,
+                    VerticalScrollBarVisibility = Avalonia
+                        .Controls
+                        .Primitives
+                        .ScrollBarVisibility
+                        .Disabled,
                     Content = diagramBody,
                 },
             }
@@ -574,7 +578,11 @@ public static partial class QuizRichContentRenderer
 
         if (onZoomClick is not null)
         {
-            var zoomBtn = UiBuilder.GhostButton("Zoom", MaterialIconKind.MagnifyPlusOutline, onZoomClick);
+            var zoomBtn = UiBuilder.GhostButton(
+                "Zoom",
+                MaterialIconKind.MagnifyPlusOutline,
+                onZoomClick
+            );
             Grid.SetColumn(zoomBtn, 1);
             header.Children.Add(zoomBtn);
         }
@@ -602,7 +610,9 @@ public static partial class QuizRichContentRenderer
             };
             if (onZoomClick is not null)
             {
-                imgBorder.Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand);
+                imgBorder.Cursor = new Avalonia.Input.Cursor(
+                    Avalonia.Input.StandardCursorType.Hand
+                );
                 imgBorder.PointerPressed += (_, _) => onZoomClick();
             }
             stack.Children.Add(imgBorder);
@@ -685,9 +695,13 @@ public static partial class QuizRichContentRenderer
             {
                 double x = isLeftToRight
                     ? 16 + li * (nodeW + gapX)
-                    : 16 + idx * (nodeW + gapX) + ((maxPerLayer - group.Count) * (nodeW + gapX)) * 0.5;
+                    : 16
+                        + idx * (nodeW + gapX)
+                        + ((maxPerLayer - group.Count) * (nodeW + gapX)) * 0.5;
                 double y = isLeftToRight
-                    ? 16 + idx * (nodeH + gapY) + ((maxPerLayer - group.Count) * (nodeH + gapY)) * 0.5
+                    ? 16
+                        + idx * (nodeH + gapY)
+                        + ((maxPerLayer - group.Count) * (nodeH + gapY)) * 0.5
                     : 16 + li * (nodeH + gapY);
                 pos[group[idx].Id] = new Point(x, y);
             }
@@ -700,7 +714,11 @@ public static partial class QuizRichContentRenderer
         };
 
         // Draw Subgraph Containers
-        foreach (var sg in nodes.Values.Where(n => !string.IsNullOrWhiteSpace(n.Subgraph)).GroupBy(n => n.Subgraph!))
+        foreach (
+            var sg in nodes
+                .Values.Where(n => !string.IsNullOrWhiteSpace(n.Subgraph))
+                .GroupBy(n => n.Subgraph!)
+        )
         {
             double minX = sg.Min(n => pos[n.Id].X) - 10;
             double minY = sg.Min(n => pos[n.Id].Y) - 22;
@@ -797,30 +815,27 @@ public static partial class QuizRichContentRenderer
             bool isCloze = n.IsCloze;
             bool isDecision = n.Shape == DiagramNodeShape.Diamond;
             bool isDb = n.Shape == DiagramNodeShape.CylinderDatabase;
-            bool isRounded = n.Shape is DiagramNodeShape.RoundedPill or DiagramNodeShape.CircleState;
+            bool isRounded =
+                n.Shape is DiagramNodeShape.RoundedPill or DiagramNodeShape.CircleState;
 
             var nodeBorder = new Border
             {
                 Width = nodeW,
                 Height = nodeH,
-                Background = isCloze
-                    ? ThemeService.Brush(ThemeService.PriorityP2Bg)
-                    : isDb
-                        ? ThemeService.Brush(ThemeService.PriorityP3Bg)
-                        : ThemeService.Brush(ThemeService.BgElevated),
-                BorderBrush = isCloze || isDecision
-                    ? ThemeService.Brush(ThemeService.PriorityP2Fg)
-                    : isDb
-                        ? ThemeService.Brush(ThemeService.PriorityP3Fg)
-                        : ThemeService.Brush(ThemeService.AccentPrimary),
+                Background =
+                    isCloze ? ThemeService.Brush(ThemeService.PriorityP2Bg)
+                    : isDb ? ThemeService.Brush(ThemeService.PriorityP3Bg)
+                    : ThemeService.Brush(ThemeService.BgElevated),
+                BorderBrush =
+                    isCloze || isDecision ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+                    : isDb ? ThemeService.Brush(ThemeService.PriorityP3Fg)
+                    : ThemeService.Brush(ThemeService.AccentPrimary),
                 BorderThickness = new Thickness(isDecision || isCloze ? 1.5 : 1),
                 CornerRadius = new CornerRadius(isRounded ? 20 : 6),
                 Padding = new Thickness(6, 4),
                 Child = new TextBlock
                 {
-                    Text = isDecision
-                        ? $"◆ {n.Label}"
-                        : (isDb ? $"[(DB)] {n.Label}" : n.Label),
+                    Text = isDecision ? $"◆ {n.Label}" : (isDb ? $"[(DB)] {n.Label}" : n.Label),
                     FontSize = 11.5,
                     FontWeight = FontWeight.SemiBold,
                     Foreground = isCloze
@@ -852,7 +867,11 @@ public static partial class QuizRichContentRenderer
         {
             estimatedH += s.Kind switch
             {
-                SequenceStepKind.Message => string.Equals(s.FromId, s.ToId, StringComparison.OrdinalIgnoreCase)
+                SequenceStepKind.Message => string.Equals(
+                    s.FromId,
+                    s.ToId,
+                    StringComparison.OrdinalIgnoreCase
+                )
                     ? 52
                     : 42,
                 SequenceStepKind.Note => 38,
@@ -949,7 +968,9 @@ public static partial class QuizRichContentRenderer
                     canvas.Children.Add(divLine);
                     var elseLbl = new TextBlock
                     {
-                        Text = string.IsNullOrWhiteSpace(step.Text) ? "[else]" : $"[else {step.Text}]",
+                        Text = string.IsNullOrWhiteSpace(step.Text)
+                            ? "[else]"
+                            : $"[else {step.Text}]",
                         FontSize = 10,
                         FontWeight = FontWeight.SemiBold,
                         Foreground = ThemeService.Brush(ThemeService.TextSecondary),

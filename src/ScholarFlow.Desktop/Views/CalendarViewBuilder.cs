@@ -17,7 +17,16 @@ namespace ScholarFlow.Desktop.Views;
 /// </summary>
 public static class CalendarViewBuilder
 {
-    private static readonly string[] FullDayNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
+    private static readonly string[] FullDayNames =
+    [
+        "SUN",
+        "MON",
+        "TUE",
+        "WED",
+        "THU",
+        "FRI",
+        "SAT",
+    ];
     private static readonly string[] CompactDayNames = ["S", "M", "T", "W", "T", "F", "S"];
 
     private enum CalendarLayoutMode
@@ -71,7 +80,11 @@ public static class CalendarViewBuilder
         if (width >= 1020 && height >= 520)
         {
             int maxPills = height >= 760 ? 3 : 2;
-            return new CalendarLayoutState(CalendarLayoutMode.WideSplit, maxPills, UseOuterScroll: false);
+            return new CalendarLayoutState(
+                CalendarLayoutMode.WideSplit,
+                maxPills,
+                UseOuterScroll: false
+            );
         }
 
         if (width >= 660)
@@ -107,10 +120,7 @@ public static class CalendarViewBuilder
         var header = BuildHeaderBar(cal, isCompact);
 
         // 2. Month Calendar Section (Day-of-week header + 42-cell grid)
-        var calendarGridSection = new Grid
-        {
-            RowDefinitions = RowDefinitions.Parse("Auto,*"),
-        };
+        var calendarGridSection = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*") };
 
         var dayLabels = isCompact ? CompactDayNames : FullDayNames;
         var dowGrid = new UniformGrid { Columns = 7, Margin = new Thickness(0, 0, 0, 4) };
@@ -450,10 +460,7 @@ public static class CalendarViewBuilder
         bool compactRows
     )
     {
-        var panel = new Grid
-        {
-            RowDefinitions = RowDefinitions.Parse("Auto,*"),
-        };
+        var panel = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*") };
 
         var headerGrid = new Grid
         {
@@ -477,8 +484,7 @@ public static class CalendarViewBuilder
         headerTitle.Children.Add(
             new TextBlock
             {
-                Text =
-                    $"{cal.SelectedDate:ddd, MMM d, yyyy} ({cal.SelectedDayTasks.Count})",
+                Text = $"{cal.SelectedDate:ddd, MMM d, yyyy} ({cal.SelectedDayTasks.Count})",
                 FontSize = 13,
                 FontWeight = FontWeight.SemiBold,
                 Foreground = ThemeService.Brush(ThemeService.TextPrimary),
@@ -488,18 +494,14 @@ public static class CalendarViewBuilder
         );
         headerGrid.Children.Add(headerTitle);
 
-        var addForDayBtn = UiBuilder.GhostButton(
-            "Add",
-            MaterialIconKind.Plus,
-            () =>
-            {
-                vm.OpenQuickAddModal();
-                vm.InsertQuickAddToken(
-                    cal.SelectedDate.ToString("yyyy-MM-dd"),
-                    @"\b(today|tomorrow|tmrw|next\s+week|\+\d+d|\d{4}-\d{2}-\d{2})\b"
-                );
-            }
-        );
+        var addForDayBtn = UiBuilder.GhostButton("Add", MaterialIconKind.Plus, () =>
+        {
+            vm.OpenQuickAddModal();
+            vm.InsertQuickAddToken(
+                cal.SelectedDate.ToString("yyyy-MM-dd"),
+                @"\b(today|tomorrow|tmrw|next\s+week|\+\d+d|\d{4}-\d{2}-\d{2})\b"
+            );
+        });
         ToolTip.SetTip(addForDayBtn, $"Quick-add a task due on {cal.SelectedDate:MMM d, yyyy}");
         Grid.SetColumn(addForDayBtn, 1);
         headerGrid.Children.Add(addForDayBtn);
@@ -633,18 +635,14 @@ public static class CalendarViewBuilder
         if (!string.IsNullOrWhiteSpace(task.PrimaryPdfFile))
         {
             AddMeta(
-                UiBuilder.GhostButton(
-                    "PDF",
-                    MaterialIconKind.FilePdfBox,
-                    () => vm.OpenTaskFile(task, task.PrimaryPdfFile)
+                UiBuilder.GhostButton("PDF", MaterialIconKind.FilePdfBox, () =>
+                    vm.OpenTaskFile(task, task.PrimaryPdfFile)
                 )
             );
         }
         AddMeta(
-            UiBuilder.GhostButton(
-                "Inspect",
-                MaterialIconKind.TuneVariant,
-                () => vm.SelectTask(task, openInspector: true)
+            UiBuilder.GhostButton("Inspect", MaterialIconKind.TuneVariant, () =>
+                vm.SelectTask(task, openInspector: true)
             )
         );
 
@@ -661,11 +659,7 @@ public static class CalendarViewBuilder
             topLine.Children.Add(titleBtn);
 
             metaWrap.Margin = new Thickness(28, 2, 0, 0);
-            rowContent = new StackPanel
-            {
-                Spacing = 2,
-                Children = { topLine, metaWrap },
-            };
+            rowContent = new StackPanel { Spacing = 2, Children = { topLine, metaWrap } };
         }
         else
         {

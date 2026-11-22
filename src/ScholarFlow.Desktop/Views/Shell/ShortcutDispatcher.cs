@@ -95,7 +95,10 @@ public static class ShortcutDispatcher
                     vm.SourceViewer.ZoomIn();
                     return;
                 }
-                if (vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen)
+                if (
+                    vm.ActiveMode == WorkspaceTabMode.QuizStudio
+                    && vm.QuizStudio.IsDedicatedSnipperOpen
+                )
                 {
                     e.Handled = true;
                     _ = vm.QuizStudio.ZoomSnipAsync(+25);
@@ -116,7 +119,10 @@ public static class ShortcutDispatcher
                     vm.SourceViewer.ZoomOut();
                     return;
                 }
-                if (vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen)
+                if (
+                    vm.ActiveMode == WorkspaceTabMode.QuizStudio
+                    && vm.QuizStudio.IsDedicatedSnipperOpen
+                )
                 {
                     e.Handled = true;
                     _ = vm.QuizStudio.ZoomSnipAsync(-25);
@@ -137,7 +143,10 @@ public static class ShortcutDispatcher
                     vm.SourceViewer.ToggleFitToWindow();
                     return;
                 }
-                if (vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen)
+                if (
+                    vm.ActiveMode == WorkspaceTabMode.QuizStudio
+                    && vm.QuizStudio.IsDedicatedSnipperOpen
+                )
                 {
                     e.Handled = true;
                     _ = vm.QuizStudio.ToggleSnipFitToWidthAsync();
@@ -276,26 +285,39 @@ public static class ShortcutDispatcher
                     vm.MoveSelection(-1);
                 break;
 
-            case Key.PageDown or Key.Right when vm.ActiveMode == WorkspaceTabMode.PdfReader:
+            case Key.PageDown
+            or Key.Right when vm.ActiveMode == WorkspaceTabMode.PdfReader:
                 e.Handled = true;
                 vm.PdfReader.NextPage();
                 break;
 
-            case Key.PageUp or Key.Left when vm.ActiveMode == WorkspaceTabMode.PdfReader:
+            case Key.PageUp
+            or Key.Left when vm.ActiveMode == WorkspaceTabMode.PdfReader:
                 e.Handled = true;
                 vm.PdfReader.PreviousPage();
                 break;
 
-            case Key.PageDown or Key.Right when vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen:
+            case Key.PageDown
+            or Key.Right
+                when vm.ActiveMode == WorkspaceTabMode.QuizStudio
+                    && vm.QuizStudio.IsDedicatedSnipperOpen:
                 e.Handled = true;
                 _ = vm.QuizStudio.LoadEditorSnipPageAsync(
-                    Math.Min(Math.Max(1, vm.QuizStudio.EditingSnipTotalPages), vm.QuizStudio.EditingSnipPageNumber + 1)
+                    Math.Min(
+                        Math.Max(1, vm.QuizStudio.EditingSnipTotalPages),
+                        vm.QuizStudio.EditingSnipPageNumber + 1
+                    )
                 );
                 break;
 
-            case Key.PageUp or Key.Left when vm.ActiveMode == WorkspaceTabMode.QuizStudio && vm.QuizStudio.IsDedicatedSnipperOpen:
+            case Key.PageUp
+            or Key.Left
+                when vm.ActiveMode == WorkspaceTabMode.QuizStudio
+                    && vm.QuizStudio.IsDedicatedSnipperOpen:
                 e.Handled = true;
-                _ = vm.QuizStudio.LoadEditorSnipPageAsync(Math.Max(1, vm.QuizStudio.EditingSnipPageNumber - 1));
+                _ = vm.QuizStudio.LoadEditorSnipPageAsync(
+                    Math.Max(1, vm.QuizStudio.EditingSnipPageNumber - 1)
+                );
                 break;
 
             case Key.Home when vm.ActiveMode == WorkspaceTabMode.PdfReader:
@@ -376,8 +398,7 @@ public static class ShortcutDispatcher
                 break;
 
             case Key.P
-                when e.KeyModifiers.HasFlag(KeyModifiers.Shift)
-                    && vm.EnforcesActiveSingleSession:
+                when e.KeyModifiers.HasFlag(KeyModifiers.Shift) && vm.EnforcesActiveSingleSession:
                 e.Handled = true;
                 vm.TogglePollingPaused();
                 break;

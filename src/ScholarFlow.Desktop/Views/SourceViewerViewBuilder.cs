@@ -54,11 +54,10 @@ public static class SourceViewerViewBuilder
             Children =
             {
                 UiBuilder.Icon(
-                    sv.Kind == StudySourceKind.Image
-                        ? MaterialIconKind.FileImageOutline
+                    sv.Kind == StudySourceKind.Image ? MaterialIconKind.FileImageOutline
                         : sv.Kind == StudySourceKind.Markdown
                             ? MaterialIconKind.LanguageMarkdownOutline
-                            : MaterialIconKind.CodeBraces,
+                        : MaterialIconKind.CodeBraces,
                     17,
                     ThemeService.Brush(ThemeService.AccentPrimary)
                 ),
@@ -148,9 +147,7 @@ public static class SourceViewerViewBuilder
                     )
                 );
             }
-            rightActions.Children.Add(
-                UiBuilder.IconButton(MaterialIconKind.Minus, sv.ZoomOut, 15)
-            );
+            rightActions.Children.Add(UiBuilder.IconButton(MaterialIconKind.Minus, sv.ZoomOut, 15));
             rightActions.Children.Add(
                 UiBuilder.GhostButton(
                     sv.IsFitToWindow ? "Fit" : $"{sv.ZoomPercent}%",
@@ -159,32 +156,24 @@ public static class SourceViewerViewBuilder
                     isActive: sv.IsFitToWindow
                 )
             );
-            rightActions.Children.Add(
-                UiBuilder.IconButton(MaterialIconKind.Plus, sv.ZoomIn, 15)
-            );
+            rightActions.Children.Add(UiBuilder.IconButton(MaterialIconKind.Plus, sv.ZoomIn, 15));
         }
         else if (!string.IsNullOrEmpty(sv.RawText))
         {
-            var copyBtn = UiBuilder.GhostButton(
-                "Copy",
-                MaterialIconKind.ContentCopy,
-                async () =>
-                {
-                    var top = TopLevel.GetTopLevel(header);
-                    if (top?.Clipboard is not null)
-                        await top.Clipboard.SetTextAsync(sv.RawText);
-                }
-            );
+            var copyBtn = UiBuilder.GhostButton("Copy", MaterialIconKind.ContentCopy, async () =>
+            {
+                var top = TopLevel.GetTopLevel(header);
+                if (top?.Clipboard is not null)
+                    await top.Clipboard.SetTextAsync(sv.RawText);
+            });
             rightActions.Children.Add(copyBtn);
         }
 
         if (!string.IsNullOrWhiteSpace(sv.CurrentFilePath))
         {
             rightActions.Children.Add(
-                UiBuilder.GhostButton(
-                    "Open Externally",
-                    MaterialIconKind.OpenInNew,
-                    () => ExternalFileLauncher.OpenLocalFile(sv.CurrentFilePath)
+                UiBuilder.GhostButton("Open Externally", MaterialIconKind.OpenInNew, () =>
+                    ExternalFileLauncher.OpenLocalFile(sv.CurrentFilePath)
                 )
             );
         }
@@ -204,10 +193,14 @@ public static class SourceViewerViewBuilder
         );
 
         // 1b. Optional Evidence / Visual Region Hint Banner (for quiz evidence jumps on code or images)
-        if (!string.IsNullOrWhiteSpace(sv.HighlightSectionTitle) || !string.IsNullOrWhiteSpace(sv.EvidenceHint))
+        if (
+            !string.IsNullOrWhiteSpace(sv.HighlightSectionTitle)
+            || !string.IsNullOrWhiteSpace(sv.EvidenceHint)
+        )
         {
             var bannerStack = new StackPanel { Spacing = 2 };
-            var labelPrefix = sv.Kind == StudySourceKind.Image ? "Visual Region Hint" : "Grounded Evidence";
+            var labelPrefix =
+                sv.Kind == StudySourceKind.Image ? "Visual Region Hint" : "Grounded Evidence";
             var rangeSuffix = sv.HighlightStartLine.HasValue
                 ? sv.HighlightEndLine.HasValue && sv.HighlightEndLine != sv.HighlightStartLine
                     ? $" · L{sv.HighlightStartLine}–L{sv.HighlightEndLine}"
@@ -233,7 +226,10 @@ public static class SourceViewerViewBuilder
                 bannerStack.Children.Add(
                     new TextBlock
                     {
-                        Text = sv.Kind == StudySourceKind.Image ? sv.EvidenceHint : $"\"{sv.EvidenceHint}\"",
+                        Text =
+                            sv.Kind == StudySourceKind.Image
+                                ? sv.EvidenceHint
+                                : $"\"{sv.EvidenceHint}\"",
                         FontSize = 12,
                         TextWrapping = TextWrapping.Wrap,
                         MaxLines = 3,
@@ -361,10 +357,16 @@ public static class SourceViewerViewBuilder
                 }
                 : new ScrollViewer
                 {
-                    HorizontalScrollBarVisibility =
-                        Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
-                    VerticalScrollBarVisibility =
-                        Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+                    HorizontalScrollBarVisibility = Avalonia
+                        .Controls
+                        .Primitives
+                        .ScrollBarVisibility
+                        .Auto,
+                    VerticalScrollBarVisibility = Avalonia
+                        .Controls
+                        .Primitives
+                        .ScrollBarVisibility
+                        .Auto,
                     Content = imgLayer,
                 };
 
@@ -390,7 +392,9 @@ public static class SourceViewerViewBuilder
 
     private static Control BuildVirtualizedCodeViewer(SourceViewerViewModel sv)
     {
-        var monoFont = new FontFamily("JetBrains Mono, Fira Code, Cascadia Code, Consolas, monospace");
+        var monoFont = new FontFamily(
+            "JetBrains Mono, Fira Code, Cascadia Code, Consolas, monospace"
+        );
         int gutterWidth = Math.Max(38, (sv.Lines.Count.ToString().Length * 9) + 18);
 
         var lb = new ListBox
@@ -401,56 +405,58 @@ public static class SourceViewerViewBuilder
             Focusable = false,
             Padding = new Thickness(0, 6, 0, 16),
             ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
-            ItemTemplate = new FuncDataTemplate<SourceViewerLineItem>((item, _) =>
-            {
-                if (item is null)
-                    return new Border();
-
-                var lineGrid = new Grid
+            ItemTemplate = new FuncDataTemplate<SourceViewerLineItem>(
+                (item, _) =>
                 {
-                    ColumnDefinitions = ColumnDefinitions.Parse($"{gutterWidth},*"),
-                    ColumnSpacing = 12,
-                };
+                    if (item is null)
+                        return new Border();
 
-                lineGrid.Children.Add(
-                    new TextBlock
+                    var lineGrid = new Grid
                     {
-                        Text = item.LineNumber.ToString(),
+                        ColumnDefinitions = ColumnDefinitions.Parse($"{gutterWidth},*"),
+                        ColumnSpacing = 12,
+                    };
+
+                    lineGrid.Children.Add(
+                        new TextBlock
+                        {
+                            Text = item.LineNumber.ToString(),
+                            FontFamily = monoFont,
+                            FontSize = 12,
+                            Foreground = item.IsHighlighted
+                                ? ThemeService.Brush(ThemeService.AccentPrimary)
+                                : ThemeService.Brush(ThemeService.TextMuted),
+                            TextAlignment = TextAlignment.Right,
+                            VerticalAlignment = VerticalAlignment.Center,
+                            Margin = new Thickness(8, 0, 0, 0),
+                        }
+                    );
+
+                    var codeTb = new TextBlock
+                    {
                         FontFamily = monoFont,
-                        FontSize = 12,
-                        Foreground = item.IsHighlighted
-                            ? ThemeService.Brush(ThemeService.AccentPrimary)
-                            : ThemeService.Brush(ThemeService.TextMuted),
-                        TextAlignment = TextAlignment.Right,
+                        FontSize = 12.5,
+                        TextWrapping = TextWrapping.NoWrap,
                         VerticalAlignment = VerticalAlignment.Center,
-                        Margin = new Thickness(8, 0, 0, 0),
-                    }
-                );
+                        [Grid.ColumnProperty] = 1,
+                    };
+                    SyntaxHighlighter.PopulateInlines(codeTb, item.Text, sv.Language);
+                    lineGrid.Children.Add(codeTb);
 
-                var codeTb = new TextBlock
-                {
-                    FontFamily = monoFont,
-                    FontSize = 12.5,
-                    TextWrapping = TextWrapping.NoWrap,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    [Grid.ColumnProperty] = 1,
-                };
-                SyntaxHighlighter.PopulateInlines(codeTb, item.Text, sv.Language);
-                lineGrid.Children.Add(codeTb);
-
-                return new Border
-                {
-                    Background = item.IsHighlighted
-                        ? ThemeService.Brush(ThemeService.AccentSoftBg)
-                        : Brushes.Transparent,
-                    BorderBrush = item.IsHighlighted
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
-                        : Brushes.Transparent,
-                    BorderThickness = new Thickness(item.IsHighlighted ? 3 : 0, 0, 0, 0),
-                    Padding = new Thickness(item.IsHighlighted ? 0 : 3, 1.5, 12, 1.5),
-                    Child = lineGrid,
-                };
-            }),
+                    return new Border
+                    {
+                        Background = item.IsHighlighted
+                            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+                            : Brushes.Transparent,
+                        BorderBrush = item.IsHighlighted
+                            ? ThemeService.Brush(ThemeService.AccentPrimary)
+                            : Brushes.Transparent,
+                        BorderThickness = new Thickness(item.IsHighlighted ? 3 : 0, 0, 0, 0),
+                        Padding = new Thickness(item.IsHighlighted ? 0 : 3, 1.5, 12, 1.5),
+                        Child = lineGrid,
+                    };
+                }
+            ),
         };
 
         lb.Styles.Add(

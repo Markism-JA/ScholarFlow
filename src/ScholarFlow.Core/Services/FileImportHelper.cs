@@ -45,8 +45,8 @@ public static class FileImportHelper
         if (string.Equals(fullSource, fullTargetDir, StringComparison.OrdinalIgnoreCase))
             return null;
 
-        var sourceParent = Path.GetDirectoryName(fullSource)?
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var sourceParent = Path.GetDirectoryName(fullSource)
+            ?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         if (
             sourceParent is not null
             && string.Equals(sourceParent, fullTargetDir, StringComparison.OrdinalIgnoreCase)

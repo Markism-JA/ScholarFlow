@@ -42,16 +42,14 @@ public static partial class KnowledgeSearchEngine
         var working = rawQuery ?? string.Empty;
 
         // 1. Extract quoted "exact phrases"
-        working = QuotedPhraseRegex().Replace(
-            working,
-            m =>
+        working = QuotedPhraseRegex()
+            .Replace(working, m =>
             {
                 var phrase = m.Groups["phrase"].Value.Trim();
                 if (!string.IsNullOrWhiteSpace(phrase))
                     phrases.Add(phrase);
                 return " ";
-            }
-        );
+            });
 
         // 2. Parse whitespace-delimited tokens
         var rawTokens = working.Split(
@@ -305,7 +303,16 @@ public static partial class KnowledgeSearchEngine
         {
             ct.ThrowIfCancellationRequested();
 
-            if (!TryScoreCandidate(cand, parsed, profile, out double score, out bool isWeak, out string? weakReason))
+            if (
+                !TryScoreCandidate(
+                    cand,
+                    parsed,
+                    profile,
+                    out double score,
+                    out bool isWeak,
+                    out string? weakReason
+                )
+            )
                 continue;
 
             var snippet = BuildHighlightedSnippet(cand, highlightTerms);
@@ -458,10 +465,7 @@ public static partial class KnowledgeSearchEngine
                 )
                     exactPhraseScore += 24.0;
                 else if (
-                    cand.Title.Contains(
-                        parsed.FreeTextCombined,
-                        StringComparison.OrdinalIgnoreCase
-                    )
+                    cand.Title.Contains(parsed.FreeTextCombined, StringComparison.OrdinalIgnoreCase)
                 )
                     exactPhraseScore += 18.0;
                 else if (
@@ -601,10 +605,7 @@ public static partial class KnowledgeSearchEngine
         var clean = text.Replace("«", string.Empty).Replace("»", string.Empty);
         var pattern = string.Join(
             '|',
-            terms
-                .Where(t => t.Length >= 2)
-                .OrderByDescending(t => t.Length)
-                .Select(Regex.Escape)
+            terms.Where(t => t.Length >= 2).OrderByDescending(t => t.Length).Select(Regex.Escape)
         );
         if (string.IsNullOrEmpty(pattern))
             return clean;

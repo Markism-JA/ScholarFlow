@@ -16,8 +16,9 @@ namespace ScholarFlow.Elms.Sync;
 /// </summary>
 public sealed class StiElmsBasinSyncProvider : IBasinSyncProvider, IAsyncDisposable
 {
-    private readonly ConcurrentDictionary<string, StiElmsClient> _clientsByKey =
-        new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, StiElmsClient> _clientsByKey = new(
+        StringComparer.OrdinalIgnoreCase
+    );
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ElmsBasinSyncService _syncService;
 
@@ -74,10 +75,9 @@ public sealed class StiElmsBasinSyncProvider : IBasinSyncProvider, IAsyncDisposa
     private StiElmsClient GetOrCreateClient(BasinConfig config)
     {
         var key = GetConcurrencyKey(config);
-        return _clientsByKey.GetOrAdd(
-            key,
-            _ => new StiElmsClient(logger: _loggerFactory?.CreateLogger<StiElmsClient>())
-        );
+        return _clientsByKey.GetOrAdd(key, _ => new StiElmsClient(
+            logger: _loggerFactory?.CreateLogger<StiElmsClient>()
+        ));
     }
 
     public async Task<ProviderAuthStatus> AuthenticateAsync(
@@ -129,7 +129,11 @@ public sealed class StiElmsBasinSyncProvider : IBasinSyncProvider, IAsyncDisposa
         var client = GetOrCreateClient(config);
         var baseUrl = config.GetProviderSetting("baseUrl", "https://elms.sti.edu");
         await client.EnsureConnectedAsync(
-            ElmsSessionStore.BuildAuthOptions(config.AccountKey, baseUrl, allowInteractiveBrowser: true),
+            ElmsSessionStore.BuildAuthOptions(
+                config.AccountKey,
+                baseUrl,
+                allowInteractiveBrowser: true
+            ),
             ct
         );
         var courses = await client.GetEnrolledCoursesAsync(ct: ct);

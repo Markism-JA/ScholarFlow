@@ -7,7 +7,6 @@ using ScholarFlow.Core.Models;
 
 namespace ScholarFlow.Core.Quiz;
 
-
 public sealed partial class QuizLlmService
 {
     private static async Task<string> CallOpenAiCompatibleChatAsync(
@@ -17,18 +16,19 @@ public sealed partial class QuizLlmService
         string systemPrompt,
         string userPrompt,
         CancellationToken ct,
-        IReadOnlyList<string>? imageDataUris = null)
+        IReadOnlyList<string>? imageDataUris = null
+    )
     {
         // Multimodal (vision) user turn: text part + one image_url part per image.
         object userContent = userPrompt;
         if (imageDataUris is { Count: > 0 })
         {
             var parts = new List<object> { new { type = "text", text = userPrompt } };
-            parts.AddRange(imageDataUris.Select(uri => (object)new
-            {
-                type = "image_url",
-                image_url = new { url = uri },
-            }));
+            parts.AddRange(
+                imageDataUris.Select(uri =>
+                    (object)new { type = "image_url", image_url = new { url = uri } }
+                )
+            );
             userContent = parts;
         }
 
@@ -50,8 +50,8 @@ public sealed partial class QuizLlmService
                     messages = new object[]
                     {
                         new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userContent }
-                    }
+                        new { role = "user", content = userContent },
+                    },
                 }
                 : new
                 {
@@ -60,8 +60,8 @@ public sealed partial class QuizLlmService
                     messages = new object[]
                     {
                         new { role = "system", content = systemPrompt },
-                        new { role = "user", content = userContent }
-                    }
+                        new { role = "user", content = userContent },
+                    },
                 };
 
             var jsonBody = JsonSerializer.Serialize(payload);
@@ -75,14 +75,18 @@ public sealed partial class QuizLlmService
                 if (includeJsonResponseFormat && (int)resp.StatusCode == 400)
                     continue;
 
-                throw new InvalidOperationException($"AI endpoint returned HTTP {(int)resp.StatusCode}: {respText}");
+                throw new InvalidOperationException(
+                    $"AI endpoint returned HTTP {(int)resp.StatusCode}: {respText}"
+                );
             }
 
             using var doc = JsonDocument.Parse(respText);
-            if (doc.RootElement.TryGetProperty("choices", out var choices) &&
-                choices.GetArrayLength() > 0 &&
-                choices[0].TryGetProperty("message", out var msg) &&
-                msg.TryGetProperty("content", out var contentEl))
+            if (
+                doc.RootElement.TryGetProperty("choices", out var choices)
+                && choices.GetArrayLength() > 0
+                && choices[0].TryGetProperty("message", out var msg)
+                && msg.TryGetProperty("content", out var contentEl)
+            )
             {
                 return contentEl.GetString() ?? string.Empty;
             }
@@ -102,8 +106,10 @@ public sealed partial class QuizLlmService
         if (u.EndsWith("/chat/completions", StringComparison.OrdinalIgnoreCase))
             return u;
 
-        if (u.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ||
-            u.EndsWith("/openai", StringComparison.OrdinalIgnoreCase))
+        if (
+            u.EndsWith("/v1", StringComparison.OrdinalIgnoreCase)
+            || u.EndsWith("/openai", StringComparison.OrdinalIgnoreCase)
+        )
         {
             return $"{u}/chat/completions";
         }
@@ -116,7 +122,9 @@ public sealed partial class QuizLlmService
         var cleaned = ExtractJsonObjectSubstring(rawText);
         var dto = JsonSerializer.Deserialize<QuizGenerationResponseDto>(cleaned, JsonOpts);
         if (dto is null || dto.Questions.Count == 0)
-            throw new InvalidOperationException("Could not parse any questions from the JSON payload.");
+            throw new InvalidOperationException(
+                "Could not parse any questions from the JSON payload."
+            );
         return dto;
     }
 
@@ -143,5 +151,4 @@ public sealed partial class QuizLlmService
 
         return text;
     }
-
 }

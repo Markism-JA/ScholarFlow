@@ -93,10 +93,16 @@ public static class StudySourceClassifier
         if (ext.Equals(".pdf", StringComparison.OrdinalIgnoreCase))
             return (StudySourceKind.Pdf, "pdf");
 
-        if (ext.Equals(".md", StringComparison.OrdinalIgnoreCase) || ext.Equals(".markdown", StringComparison.OrdinalIgnoreCase))
+        if (
+            ext.Equals(".md", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".markdown", StringComparison.OrdinalIgnoreCase)
+        )
             return (StudySourceKind.Markdown, "markdown");
 
-        if (ext.Equals(".txt", StringComparison.OrdinalIgnoreCase) || ext.Equals(".log", StringComparison.OrdinalIgnoreCase))
+        if (
+            ext.Equals(".txt", StringComparison.OrdinalIgnoreCase)
+            || ext.Equals(".log", StringComparison.OrdinalIgnoreCase)
+        )
             return (StudySourceKind.PlainText, "text");
 
         if (ImageExtensions.Contains(ext))
@@ -111,10 +117,11 @@ public static class StudySourceClassifier
     public static bool IsViewableInSourceViewer(string? filePath)
     {
         var (kind, _) = Classify(filePath);
-        return kind is StudySourceKind.Code
-            or StudySourceKind.Markdown
-            or StudySourceKind.PlainText
-            or StudySourceKind.Image;
+        return kind
+            is StudySourceKind.Code
+                or StudySourceKind.Markdown
+                or StudySourceKind.PlainText
+                or StudySourceKind.Image;
     }
 
     public static StudySourceDescriptor Describe(string filePath, string courseFolder = "")

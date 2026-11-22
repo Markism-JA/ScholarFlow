@@ -35,11 +35,7 @@ public sealed record ParsedDiagramGraph(
     bool PreferTopDown = false
 );
 
-public sealed record SequenceParticipant(
-    string Id,
-    string Label,
-    bool IsActor = false
-);
+public sealed record SequenceParticipant(string Id, string Label, bool IsActor = false);
 
 public enum SequenceStepKind
 {
@@ -92,7 +88,9 @@ public static partial class PdfDiagramGraphRenderer
     private static readonly XBrush PillNodeFill = new XSolidBrush(XColor.FromArgb(236, 253, 245));
     private static readonly XPen PillNodePen = new(XColor.FromArgb(22, 101, 52), 1.0);
 
-    private static readonly XBrush DiamondNodeFill = new XSolidBrush(XColor.FromArgb(254, 243, 199));
+    private static readonly XBrush DiamondNodeFill = new XSolidBrush(
+        XColor.FromArgb(254, 243, 199)
+    );
     private static readonly XPen DiamondNodePen = new(XColor.FromArgb(180, 83, 9), 1.0);
 
     private static readonly XBrush DbNodeFill = new XSolidBrush(XColor.FromArgb(239, 246, 255));
@@ -107,7 +105,9 @@ public static partial class PdfDiagramGraphRenderer
     private static readonly XBrush NoteFill = new XSolidBrush(XColor.FromArgb(254, 249, 195));
     private static readonly XPen NotePen = new(XColor.FromArgb(217, 119, 6), 0.85);
 
-    private static readonly XBrush FragmentHeaderFill = new XSolidBrush(XColor.FromArgb(226, 232, 240));
+    private static readonly XBrush FragmentHeaderFill = new XSolidBrush(
+        XColor.FromArgb(226, 232, 240)
+    );
     private static readonly XPen FragmentPen = new(XColor.FromArgb(100, 116, 139), 0.85);
     private static readonly XPen FragmentDividerPen = new(XColor.FromArgb(148, 163, 184), 0.75)
     {
@@ -165,8 +165,7 @@ public static partial class PdfDiagramGraphRenderer
             .Trim()
             .StartsWith("sequenceDiagram", StringComparison.OrdinalIgnoreCase);
         bool hasSequenceArrowsOrParticipants = lines.Any(l =>
-            SequenceMessageRegex().IsMatch(l.Trim())
-            || ParticipantDeclRegex().IsMatch(l.Trim())
+            SequenceMessageRegex().IsMatch(l.Trim()) || ParticipantDeclRegex().IsMatch(l.Trim())
         );
 
         if (!hasSequenceHeader && !hasSequenceArrowsOrParticipants)
@@ -175,7 +174,11 @@ public static partial class PdfDiagramGraphRenderer
         // If it starts with flowchart/graph, it's not a sequence diagram
         if (
             !hasSequenceHeader
-            && Regex.IsMatch(lines[0].Trim(), @"^(?:flowchart|graph|stateDiagram)\b", RegexOptions.IgnoreCase)
+            && Regex.IsMatch(
+                lines[0].Trim(),
+                @"^(?:flowchart|graph|stateDiagram)\b",
+                RegexOptions.IgnoreCase
+            )
         )
         {
             return false;
@@ -188,7 +191,11 @@ public static partial class PdfDiagramGraphRenderer
         var steps = new List<SequenceStep>();
         bool autoNumber = false;
 
-        SequenceParticipant EnsureParticipant(string rawId, string? explicitLabel = null, bool isActor = false)
+        SequenceParticipant EnsureParticipant(
+            string rawId,
+            string? explicitLabel = null,
+            bool isActor = false
+        )
         {
             var cleanId = rawId.Trim().Trim('"', '\'');
             if (string.IsNullOrEmpty(cleanId))
@@ -211,7 +218,11 @@ public static partial class PdfDiagramGraphRenderer
                 && !label.Equals(cleanId, StringComparison.OrdinalIgnoreCase)
             )
             {
-                var updated = existing with { Label = label, IsActor = existing.IsActor || isActor };
+                var updated = existing with
+                {
+                    Label = label,
+                    IsActor = existing.IsActor || isActor,
+                };
                 participantsById[cleanId] = updated;
                 return updated;
             }
@@ -243,9 +254,13 @@ public static partial class PdfDiagramGraphRenderer
             var pMatch = ParticipantDeclRegex().Match(line);
             if (pMatch.Success)
             {
-                bool isActor = pMatch.Groups["kw"].Value.Equals("actor", StringComparison.OrdinalIgnoreCase);
+                bool isActor = pMatch
+                    .Groups["kw"]
+                    .Value.Equals("actor", StringComparison.OrdinalIgnoreCase);
                 var id = pMatch.Groups["id"].Value.Trim();
-                var alias = pMatch.Groups["alias"].Success ? pMatch.Groups["alias"].Value.Trim() : null;
+                var alias = pMatch.Groups["alias"].Success
+                    ? pMatch.Groups["alias"].Value.Trim()
+                    : null;
                 EnsureParticipant(id, alias, isActor);
                 continue;
             }
@@ -258,8 +273,10 @@ public static partial class PdfDiagramGraphRenderer
                 var actorsRaw = noteMatch.Groups["actors"].Value.Trim();
                 var text = noteMatch.Groups["text"].Value.Trim();
 
-                var actorParts = actorsRaw
-                    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var actorParts = actorsRaw.Split(
+                    ',',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+                );
                 var fromActor = EnsureParticipant(actorParts[0]);
                 var toActor = actorParts.Length > 1 ? EnsureParticipant(actorParts[1]) : fromActor;
 
@@ -293,7 +310,10 @@ public static partial class PdfDiagramGraphRenderer
                 continue;
             }
 
-            if (line.StartsWith("else", StringComparison.OrdinalIgnoreCase) && (line.Length == 4 || char.IsWhiteSpace(line[4])))
+            if (
+                line.StartsWith("else", StringComparison.OrdinalIgnoreCase)
+                && (line.Length == 4 || char.IsWhiteSpace(line[4]))
+            )
             {
                 var cond = line.Length > 4 ? line[4..].Trim() : string.Empty;
                 steps.Add(
@@ -357,14 +377,21 @@ public static partial class PdfDiagramGraphRenderer
         return true;
     }
 
-    public static double EstimateSequenceDiagramHeight(ParsedSequenceDiagram seq, bool hasCaption = true)
+    public static double EstimateSequenceDiagramHeight(
+        ParsedSequenceDiagram seq,
+        bool hasCaption = true
+    )
     {
         double h = 38; // Top participant boxes
         foreach (var step in seq.Steps)
         {
             h += step.Kind switch
             {
-                SequenceStepKind.Message => string.Equals(step.FromId, step.ToId, StringComparison.OrdinalIgnoreCase)
+                SequenceStepKind.Message => string.Equals(
+                    step.FromId,
+                    step.ToId,
+                    StringComparison.OrdinalIgnoreCase
+                )
                     ? 34
                     : 26,
                 SequenceStepKind.Note => 26,
@@ -405,9 +432,7 @@ public static partial class PdfDiagramGraphRenderer
         double bottomActorY = startY + totalInnerH - actorBoxH - 10;
 
         double GetLifelineX(int idx) =>
-            n == 1
-                ? leftOrigin + (innerW / 2.0)
-                : leftOrigin + (colSpan * idx) + (colSpan / 2.0);
+            n == 1 ? leftOrigin + (innerW / 2.0) : leftOrigin + (colSpan * idx) + (colSpan / 2.0);
 
         var indexById = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < seq.Participants.Count; i++)
@@ -417,13 +442,7 @@ public static partial class PdfDiagramGraphRenderer
         for (int i = 0; i < seq.Participants.Count; i++)
         {
             double cx = GetLifelineX(i);
-            gfx.DrawLine(
-                LifelinePen,
-                cx,
-                topActorY + actorBoxH,
-                cx,
-                bottomActorY
-            );
+            gfx.DrawLine(LifelinePen, cx, topActorY + actorBoxH, cx, bottomActorY);
         }
 
         // 2. Draw Top and Bottom Participant Header Boxes
@@ -473,7 +492,10 @@ public static partial class PdfDiagramGraphRenderer
                 {
                     openFragments.Push((curY - 4, step.FragmentTag ?? "ALT", step.Text));
                     double fragLeft = leftOrigin + 6;
-                    double tagW = Math.Max(34, gfx.MeasureString(step.FragmentTag ?? "ALT", msgFont).Width + 10);
+                    double tagW = Math.Max(
+                        34,
+                        gfx.MeasureString(step.FragmentTag ?? "ALT", msgFont).Width + 10
+                    );
                     gfx.DrawRectangle(FragmentHeaderFill, fragLeft, curY - 4, tagW, 13);
                     gfx.DrawRectangle(FragmentPen, fragLeft, curY - 4, tagW, 13);
                     gfx.DrawString(
@@ -501,8 +523,15 @@ public static partial class PdfDiagramGraphRenderer
                     double fragLeft = leftOrigin + 6;
                     double fragRight = leftOrigin + innerW - 6;
                     gfx.DrawLine(FragmentDividerPen, fragLeft, curY - 2, fragRight, curY - 2);
-                    var elseText = string.IsNullOrWhiteSpace(step.Text) ? "[else]" : $"[else {step.Text}]";
-                    gfx.DrawString(elseText, msgFont, EdgeTextBrush, new XPoint(fragLeft + 8, curY + 9));
+                    var elseText = string.IsNullOrWhiteSpace(step.Text)
+                        ? "[else]"
+                        : $"[else {step.Text}]";
+                    gfx.DrawString(
+                        elseText,
+                        msgFont,
+                        EdgeTextBrush,
+                        new XPoint(fragLeft + 8, curY + 9)
+                    );
                     curY += 15;
                     break;
                 }
@@ -527,9 +556,10 @@ public static partial class PdfDiagramGraphRenderer
                     int i2 = indexById.GetValueOrDefault(step.ToId, i1);
                     double x1 = GetLifelineX(Math.Min(i1, i2));
                     double x2 = GetLifelineX(Math.Max(i1, i2));
-                    double noteW = i1 == i2
-                        ? Math.Clamp(colSpan * 0.85, 76, 136)
-                        : Math.Max(100, (x2 - x1) + 56);
+                    double noteW =
+                        i1 == i2
+                            ? Math.Clamp(colSpan * 0.85, 76, 136)
+                            : Math.Max(100, (x2 - x1) + 56);
                     double noteX = (x1 + x2) / 2.0 - (noteW / 2.0);
                     if (step.FragmentTag?.Contains("left") == true)
                         noteX = Math.Max(leftOrigin + 4, x1 - noteW - 6);
@@ -538,7 +568,8 @@ public static partial class PdfDiagramGraphRenderer
 
                     var noteRect = new XRect(noteX, curY - 2, noteW, 18);
                     gfx.DrawRoundedRectangle(NotePen, NoteFill, noteRect, new XSize(3, 3));
-                    var displayNote = step.Text.Length > 42 ? step.Text[..42].Trim() + "…" : step.Text;
+                    var displayNote =
+                        step.Text.Length > 42 ? step.Text[..42].Trim() + "…" : step.Text;
                     gfx.DrawString(
                         displayNote,
                         msgFont,
@@ -601,8 +632,20 @@ public static partial class PdfDiagramGraphRenderer
                         {
                             double dir = x2 >= x1 ? 1 : -1;
                             double cx = x2 - (dir * 4);
-                            gfx.DrawLine(EdgeLinePen, cx - 3.5, arrowY - 3.5, cx + 3.5, arrowY + 3.5);
-                            gfx.DrawLine(EdgeLinePen, cx - 3.5, arrowY + 3.5, cx + 3.5, arrowY - 3.5);
+                            gfx.DrawLine(
+                                EdgeLinePen,
+                                cx - 3.5,
+                                arrowY - 3.5,
+                                cx + 3.5,
+                                arrowY + 3.5
+                            );
+                            gfx.DrawLine(
+                                EdgeLinePen,
+                                cx - 3.5,
+                                arrowY + 3.5,
+                                cx + 3.5,
+                                arrowY - 3.5
+                            );
                         }
                         else
                         {
@@ -629,7 +672,13 @@ public static partial class PdfDiagramGraphRenderer
         while (openFragments.Count > 0)
         {
             var (fragStartY, _, _) = openFragments.Pop();
-            gfx.DrawRectangle(FragmentPen, leftOrigin + 6, fragStartY, innerW - 12, Math.Max(18, curY - fragStartY));
+            gfx.DrawRectangle(
+                FragmentPen,
+                leftOrigin + 6,
+                fragStartY,
+                innerW - 12,
+                Math.Max(18, curY - fragStartY)
+            );
         }
 
         double endY = startY + totalInnerH;
@@ -802,7 +851,9 @@ public static partial class PdfDiagramGraphRenderer
                             }
 
                             bool isDashed = m.Value.Contains('.');
-                            edges.Add(new DiagramGraphEdge(prevNode.Id, nextNode.Id, edgeLabel, isDashed));
+                            edges.Add(
+                                new DiagramGraphEdge(prevNode.Id, nextNode.Id, edgeLabel, isDashed)
+                            );
                             prevNode = nextNode;
                         }
                     }
@@ -867,7 +918,9 @@ public static partial class PdfDiagramGraphRenderer
         // 0. Draw Subgraph Containers
         foreach (
             var sg in graph
-                .Nodes.Where(n => !string.IsNullOrWhiteSpace(n.Subgraph) && layout.NodeRects.ContainsKey(n.Id))
+                .Nodes.Where(n =>
+                    !string.IsNullOrWhiteSpace(n.Subgraph) && layout.NodeRects.ContainsKey(n.Id)
+                )
                 .GroupBy(n => n.Subgraph!)
         )
         {
@@ -902,14 +955,18 @@ public static partial class PdfDiagramGraphRenderer
                 fromRect.Width,
                 fromRect.Height
             );
-            var r2 = new XRect(
-                originX + toRect.X,
-                originY + toRect.Y,
-                toRect.Width,
-                toRect.Height
-            );
+            var r2 = new XRect(originX + toRect.X, originY + toRect.Y, toRect.Width, toRect.Height);
 
-            DrawRoutedEdge(gfx, r1, r2, edge.Label, edge.IsDashed, edgeFont, originY, layout.TotalHeight);
+            DrawRoutedEdge(
+                gfx,
+                r1,
+                r2,
+                edge.Label,
+                edge.IsDashed,
+                edgeFont,
+                originY,
+                layout.TotalHeight
+            );
         }
 
         // 2. Draw Nodes
@@ -986,9 +1043,12 @@ public static partial class PdfDiagramGraphRenderer
             var lines = WrapNodeText(gfx, n.Label, nodeFont, maxNodeW - 16);
             wrappedLabels[n.Id] = lines;
 
-            double textW = lines.Count > 0 ? lines.Max(l => gfx.MeasureString(l, nodeFont).Width) : 36;
+            double textW =
+                lines.Count > 0 ? lines.Max(l => gfx.MeasureString(l, nodeFont).Width) : 36;
             double padW = n.Shape == DiagramNodeShape.Diamond ? 28 : 18;
-            double padH = n.Shape is DiagramNodeShape.Diamond or DiagramNodeShape.CylinderDatabase ? 17 : 12;
+            double padH = n.Shape is DiagramNodeShape.Diamond or DiagramNodeShape.CylinderDatabase
+                ? 17
+                : 12;
             double w = Math.Clamp(textW + padW, 56, maxNodeW + 14);
             double h = Math.Max(25, (lines.Count * 11.2) + padH);
             if (n.Shape == DiagramNodeShape.CircleState)
@@ -1009,7 +1069,10 @@ public static partial class PdfDiagramGraphRenderer
         }
         foreach (var e in graph.Edges)
         {
-            if (outMap.TryGetValue(e.FromId, out var list) && !list.Contains(e.ToId, StringComparer.OrdinalIgnoreCase))
+            if (
+                outMap.TryGetValue(e.FromId, out var list)
+                && !list.Contains(e.ToId, StringComparer.OrdinalIgnoreCase)
+            )
             {
                 list.Add(e.ToId);
                 if (inDegree.ContainsKey(e.ToId))
@@ -1091,14 +1154,24 @@ public static partial class PdfDiagramGraphRenderer
                 foreach (var n in displayOrder)
                 {
                     var sz = nodeSizes[n.Id];
-                    rects[n.Id] = new XRect(curX, curY + (rowH - sz.Height) / 2.0, sz.Width, sz.Height);
+                    rects[n.Id] = new XRect(
+                        curX,
+                        curY + (rowH - sz.Height) / 2.0,
+                        sz.Width,
+                        sz.Height
+                    );
                     curX += sz.Width + hGap;
                 }
 
                 curY += rowH + vGap;
             }
 
-            return new GraphLayoutResult(rects, wrappedLabels, maxUsedW, Math.Max(36, curY - vGap + 12));
+            return new GraphLayoutResult(
+                rects,
+                wrappedLabels,
+                maxUsedW,
+                Math.Max(36, curY - vGap + 12)
+            );
         }
 
         bool horizontalFlow = !graph.PreferTopDown && layers.Count <= 4;
@@ -1124,7 +1197,12 @@ public static partial class PdfDiagramGraphRenderer
                 foreach (var n in layer)
                 {
                     var sz = nodeSizes[n.Id];
-                    rects[n.Id] = new XRect(curX + (lw - sz.Width) / 2.0, curY, sz.Width, sz.Height);
+                    rects[n.Id] = new XRect(
+                        curX + (lw - sz.Width) / 2.0,
+                        curY,
+                        sz.Width,
+                        sz.Height
+                    );
                     curY += sz.Height + vGap;
                 }
 
@@ -1156,7 +1234,12 @@ public static partial class PdfDiagramGraphRenderer
                 foreach (var n in layer)
                 {
                     var sz = nodeSizes[n.Id];
-                    rects[n.Id] = new XRect(curX, curY + (lh - sz.Height) / 2.0, sz.Width, sz.Height);
+                    rects[n.Id] = new XRect(
+                        curX,
+                        curY + (lh - sz.Height) / 2.0,
+                        sz.Width,
+                        sz.Height
+                    );
                     curX += sz.Width + hGap;
                 }
 
@@ -1209,14 +1292,25 @@ public static partial class PdfDiagramGraphRenderer
             var dbFill = node.IsCloze ? ClozeNodeFill : DbNodeFill;
             var dbPen = node.IsCloze ? ClozeNodePen : DbNodePen;
             double capH = 7.0;
-            var bodyRect = new XRect(rect.X, rect.Y + capH / 2.0, rect.Width, Math.Max(10, rect.Height - capH));
+            var bodyRect = new XRect(
+                rect.X,
+                rect.Y + capH / 2.0,
+                rect.Width,
+                Math.Max(10, rect.Height - capH)
+            );
             var topCap = new XRect(rect.X, rect.Y, rect.Width, capH);
             var botCap = new XRect(rect.X, rect.Bottom - capH, rect.Width, capH);
 
             gfx.DrawEllipse(dbPen, dbFill, botCap);
             gfx.DrawRectangle(dbFill, bodyRect);
             gfx.DrawLine(dbPen, rect.X, topCap.Y + capH / 2.0, rect.X, botCap.Y + capH / 2.0);
-            gfx.DrawLine(dbPen, rect.Right, topCap.Y + capH / 2.0, rect.Right, botCap.Y + capH / 2.0);
+            gfx.DrawLine(
+                dbPen,
+                rect.Right,
+                topCap.Y + capH / 2.0,
+                rect.Right,
+                botCap.Y + capH / 2.0
+            );
             gfx.DrawEllipse(dbPen, dbFill, topCap);
         }
         else if (node.Shape == DiagramNodeShape.CircleState)
@@ -1414,11 +1508,7 @@ public static partial class PdfDiagramGraphRenderer
         return result.Count > 0 ? result : [text];
     }
 
-    private static bool CanReach(
-        Dictionary<string, List<string>> adj,
-        string start,
-        string target
-    )
+    private static bool CanReach(Dictionary<string, List<string>> adj, string start, string target)
     {
         var visited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var q = new Queue<string>();
@@ -1454,7 +1544,9 @@ public static partial class PdfDiagramGraphRenderer
         if (mDb.Success)
         {
             var lbl = mDb.Groups["label"].Value.Trim().Trim('"', '\'');
-            var id = string.IsNullOrEmpty(mDb.Groups["id"].Value) ? lbl : mDb.Groups["id"].Value.Trim();
+            var id = string.IsNullOrEmpty(mDb.Groups["id"].Value)
+                ? lbl
+                : mDb.Groups["id"].Value.Trim();
             return (id, lbl, DiagramNodeShape.CylinderDatabase, isCloze);
         }
 
@@ -1463,7 +1555,9 @@ public static partial class PdfDiagramGraphRenderer
         if (mCircle.Success)
         {
             var lbl = mCircle.Groups["label"].Value.Trim().Trim('"', '\'');
-            var id = string.IsNullOrEmpty(mCircle.Groups["id"].Value) ? lbl : mCircle.Groups["id"].Value.Trim();
+            var id = string.IsNullOrEmpty(mCircle.Groups["id"].Value)
+                ? lbl
+                : mCircle.Groups["id"].Value.Trim();
             return (id, lbl, DiagramNodeShape.CircleState, isCloze);
         }
 
@@ -1500,9 +1594,7 @@ public static partial class PdfDiagramGraphRenderer
         }
 
         var clean = t.Trim('"', '\'');
-        var autoShape = clean.EndsWith('?')
-            ? DiagramNodeShape.Diamond
-            : DiagramNodeShape.Rectangle;
+        var autoShape = clean.EndsWith('?') ? DiagramNodeShape.Diamond : DiagramNodeShape.Rectangle;
         return (clean, clean, autoShape, isCloze);
     }
 
@@ -1535,16 +1627,27 @@ public static partial class PdfDiagramGraphRenderer
         return colon > afterArrow ? colon : -1;
     }
 
-    [GeneratedRegex(@"^(?<kw>participant|actor)\s+(?<id>""[^""]+""|[A-Za-z0-9_\-]+)(?:\s+as\s+(?<alias>.+))?$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(
+        @"^(?<kw>participant|actor)\s+(?<id>""[^""]+""|[A-Za-z0-9_\-]+)(?:\s+as\s+(?<alias>.+))?$",
+        RegexOptions.IgnoreCase
+    )]
     private static partial Regex ParticipantDeclRegex();
 
-    [GeneratedRegex(@"^Note\s+(?<pos>left\s+of|right\s+of|over)\s+(?<actors>[^:]+)\s*:\s*(?<text>.+)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(
+        @"^Note\s+(?<pos>left\s+of|right\s+of|over)\s+(?<actors>[^:]+)\s*:\s*(?<text>.+)$",
+        RegexOptions.IgnoreCase
+    )]
     private static partial Regex SequenceNoteRegex();
 
-    [GeneratedRegex(@"^(?<kw>loop|alt|opt|par|critical|break)\b\s*(?<label>.*)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(
+        @"^(?<kw>loop|alt|opt|par|critical|break)\b\s*(?<label>.*)$",
+        RegexOptions.IgnoreCase
+    )]
     private static partial Regex SequenceFragmentStartRegex();
 
-    [GeneratedRegex(@"^(?<from>[A-Za-z0-9_\-""\s]+?)\s*(?<arrow>-->>>|-->>|->>>|->>|--x|-x|--\)|-\)|-->|->)\s*(?<to>[\+\-]?[A-Za-z0-9_\-""\s]+?)\s*:\s*(?<msg>.+)$")]
+    [GeneratedRegex(
+        @"^(?<from>[A-Za-z0-9_\-""\s]+?)\s*(?<arrow>-->>>|-->>|->>>|->>|--x|-x|--\)|-\)|-->|->)\s*(?<to>[\+\-]?[A-Za-z0-9_\-""\s]+?)\s*:\s*(?<msg>.+)$"
+    )]
     private static partial Regex SequenceMessageRegex();
 
     [GeneratedRegex(@"^(?:graph|flowchart|stateDiagram(?:-v2)?)\b", RegexOptions.IgnoreCase)]
@@ -1564,7 +1667,9 @@ public static partial class PdfDiagramGraphRenderer
     [GeneratedRegex(@"^-\.\s*(?<lbl>[^.>]+?)\s*\.->$")]
     private static partial Regex DottedMidArrowLabelRegex();
 
-    [GeneratedRegex(@"^(?<id>[A-Za-z0-9_]+)\s*(?<open>\(\[|\[\[|\[|\(\(|\(|\{)(?<label>.+?)(?:\]\)|\]\]|\]|\)\)|\)|\})$")]
+    [GeneratedRegex(
+        @"^(?<id>[A-Za-z0-9_]+)\s*(?<open>\(\[|\[\[|\[|\(\(|\(|\{)(?<label>.+?)(?:\]\)|\]\]|\]|\)\)|\)|\})$"
+    )]
     private static partial Regex MermaidNodeRegex();
 
     [GeneratedRegex(@"^(?<prefix>[\s│\|]*[├└\+\|][─\-]+)\s*(?<label>.+)$")]

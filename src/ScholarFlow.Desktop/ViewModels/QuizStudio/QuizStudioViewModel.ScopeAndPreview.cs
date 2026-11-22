@@ -126,7 +126,9 @@ public sealed partial class QuizStudioViewModel
         }
 
         var leaves = GetLeafDescendants(node);
-        int selectedCount = leaves.Count(n => SelectedSectionKeys.Contains(GetSectionKey(n.Section)));
+        int selectedCount = leaves.Count(n =>
+            SelectedSectionKeys.Contains(GetSectionKey(n.Section))
+        );
         if (selectedCount == 0)
             return OutlineSelectionState.Unchecked;
         if (selectedCount == leaves.Count)
@@ -136,7 +138,8 @@ public sealed partial class QuizStudioViewModel
 
     public void ToggleOutlineNodeSelection(PdfOutlineTreeNode node)
     {
-        bool currentlyAllSelected = GetOutlineNodeSelectionState(node) == OutlineSelectionState.Checked;
+        bool currentlyAllSelected =
+            GetOutlineNodeSelectionState(node) == OutlineSelectionState.Checked;
         var subtree = FlattenSubtree(node)
             .Where(n =>
                 string.IsNullOrWhiteSpace(SelectedTerm)
@@ -229,7 +232,8 @@ public sealed partial class QuizStudioViewModel
     }
 
     private static IReadOnlyList<PdfOutlineTreeNode> BuildOutlineTree(
-        IReadOnlyList<PdfOutlineSectionInfo> sections)
+        IReadOnlyList<PdfOutlineSectionInfo> sections
+    )
     {
         if (sections.Count == 0)
             return [];
@@ -538,7 +542,9 @@ public sealed partial class QuizStudioViewModel
                 );
                 if (masterPdf is not null && File.Exists(masterPdf))
                 {
-                    list.Add(($"Master Study Packet ({Path.GetFileName(masterPdf)})", masterPdf, true));
+                    list.Add(
+                        ($"Master Study Packet ({Path.GetFileName(masterPdf)})", masterPdf, true)
+                    );
                 }
 
                 if (Directory.Exists(courseDir))
@@ -553,7 +559,9 @@ public sealed partial class QuizStudioViewModel
                         var rootName = Path.GetFileName(rootPdf);
                         if (
                             rootName.EndsWith("_.pdf", StringComparison.OrdinalIgnoreCase)
-                            || list.Any(x => x.FullPath.Equals(rootPdf, StringComparison.OrdinalIgnoreCase))
+                            || list.Any(x =>
+                                x.FullPath.Equals(rootPdf, StringComparison.OrdinalIgnoreCase)
+                            )
                             || !File.Exists(rootPdf)
                         )
                             continue;
@@ -615,8 +623,7 @@ public sealed partial class QuizStudioViewModel
             )
         )
         {
-            SelectedPdfPath =
-                AvailablePdfs.FirstOrDefault(p => p.IsMaster).FullPath
+            SelectedPdfPath = AvailablePdfs.FirstOrDefault(p => p.IsMaster).FullPath
                 ?? (AvailablePdfs.Count > 0 ? AvailablePdfs[0].FullPath : null);
         }
 

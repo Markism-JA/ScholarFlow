@@ -130,7 +130,10 @@ public sealed partial class QuizStudioViewModel
             return;
 
         var req = BuildCurrentRequest();
-        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
+        if (
+            !req.HasFileSources
+            && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        )
         {
             GeneratedPromptPreview = string.Empty;
             return;
@@ -166,7 +169,8 @@ public sealed partial class QuizStudioViewModel
                             out int totalPdf,
                             out int incPdf
                         );
-                        int included = bundle.IncludedTextFiles.Count + bundle.ImageFiles.Count + incPdf;
+                        int included =
+                            bundle.IncludedTextFiles.Count + bundle.ImageFiles.Count + incPdf;
                         int total =
                             bundle.IncludedTextFiles.Count
                             + bundle.ImageFiles.Count
@@ -194,9 +198,10 @@ public sealed partial class QuizStudioViewModel
             ManualPromptIncludedPages = includedCount;
             if (updateStatus)
             {
-                StatusMessage = includedCount < totalCount
-                    ? $"Prompt built for {includedCount}/{totalCount} pages (budget reached — raise budget or Export Scoped PDF)."
-                    : $"Live grounded prompt ready across {includedCount}/{totalCount} PDF page(s) ({req.QuestionCount} items).";
+                StatusMessage =
+                    includedCount < totalCount
+                        ? $"Prompt built for {includedCount}/{totalCount} pages (budget reached — raise budget or Export Scoped PDF)."
+                        : $"Live grounded prompt ready across {includedCount}/{totalCount} PDF page(s) ({req.QuestionCount} items).";
                 IsStatusError = false;
             }
         }
@@ -263,8 +268,9 @@ public sealed partial class QuizStudioViewModel
             if (AllocationMode == QuestionAllocationMode.ExactCounts)
                 QuestionCount = Math.Clamp(KindAllocations.Values.Sum(), 1, 150);
 
-            CognitiveAllocations =
-                QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(preset);
+            CognitiveAllocations = QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(
+                preset
+            );
             CognitiveMix = preset switch
             {
                 QuizPresetMode.QuickReview => CognitiveMixPreset.Foundations,
@@ -462,7 +468,8 @@ public sealed partial class QuizStudioViewModel
 
     public async Task ExportScopedPdfForUploadAsync(
         Avalonia.Input.Platform.IClipboard? clipboard = null,
-        string? outputPdfPath = null)
+        string? outputPdfPath = null
+    )
     {
         var req = BuildCurrentRequest();
         if (req.HasFileSources)
@@ -471,7 +478,10 @@ public sealed partial class QuizStudioViewModel
             return;
         }
 
-        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
+        if (
+            !req.HasFileSources
+            && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        )
         {
             StatusMessage = "Select a valid PDF file first.";
             IsStatusError = true;
@@ -523,7 +533,10 @@ public sealed partial class QuizStudioViewModel
     public void OpenManualJsonBridge()
     {
         var req = BuildCurrentRequest();
-        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
+        if (
+            !req.HasFileSources
+            && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        )
         {
             StatusMessage = "Please select a valid PDF file first.";
             IsStatusError = true;
@@ -551,7 +564,11 @@ public sealed partial class QuizStudioViewModel
             : null;
 
         string presetName = activeProfile?.Name
-            ?? (string.IsNullOrWhiteSpace(settings.AiProviderPreset) ? "Custom" : settings.AiProviderPreset);
+            ?? (
+                string.IsNullOrWhiteSpace(settings.AiProviderPreset)
+                    ? "Custom"
+                    : settings.AiProviderPreset
+            );
         string modelName = activeProfile?.ModelName ?? settings.AiModelName;
         string displayLabel = string.IsNullOrWhiteSpace(modelName)
             ? presetName
@@ -559,7 +576,11 @@ public sealed partial class QuizStudioViewModel
 
         if (
             activeProfile?.IsOffline == true
-            || string.Equals(settings.AiProviderPreset, "OfflineSmart", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(
+                settings.AiProviderPreset,
+                "OfflineSmart",
+                StringComparison.OrdinalIgnoreCase
+            )
         )
         {
             return ("Offline Smart PDF Analyzer", true, null);
@@ -611,7 +632,8 @@ public sealed partial class QuizStudioViewModel
             var aiStatus = GetActiveAiEngineStatus();
             if (!aiStatus.IsConfigured)
             {
-                StatusMessage = $"AI Engine not configured: {aiStatus.MissingReason}. Set it up below or use Offline / Web AI JSON.";
+                StatusMessage =
+                    $"AI Engine not configured: {aiStatus.MissingReason}. Set it up below or use Offline / Web AI JSON.";
                 IsStatusError = true;
                 IsAiSettingsOpen = true;
                 _mainVm.RequestUiRefresh();
@@ -619,7 +641,10 @@ public sealed partial class QuizStudioViewModel
             }
         }
 
-        if (!req.HasFileSources && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath)))
+        if (
+            !req.HasFileSources
+            && (string.IsNullOrWhiteSpace(req.SourcePdfPath) || !File.Exists(req.SourcePdfPath))
+        )
         {
             StatusMessage = "No valid PDF selected for quiz generation.";
             IsStatusError = true;

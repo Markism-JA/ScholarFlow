@@ -26,11 +26,11 @@ public static partial class QuizStudioViewBuilder
         // 1. Unified Study Sources & Scope (PDFs + Course Files + Page/Section Scope Picker)
         var sourceAndScopeCard = new StackPanel { Spacing = 9 };
         var sourceHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
-        var scopeBadgeText = studio.IsMixedSourceMode
-            ? $"{studio.ScopePreviewPageCount} PDF pages + {studio.SelectedFileSourcePaths.Count} file(s)"
-            : studio.IsFileSourceMode
-                ? $"{studio.SelectedFileSourcePaths.Count} file(s) selected"
-                : $"{studio.ScopePreviewPageCount} pages in scope";
+        var scopeBadgeText =
+            studio.IsMixedSourceMode
+                ? $"{studio.ScopePreviewPageCount} PDF pages + {studio.SelectedFileSourcePaths.Count} file(s)"
+            : studio.IsFileSourceMode ? $"{studio.SelectedFileSourcePaths.Count} file(s) selected"
+            : $"{studio.ScopePreviewPageCount} pages in scope";
 
         sourceHeader.Children.Add(
             UiBuilder.SectionHeader($"1. Study Sources & Scope ({scopeBadgeText})")
@@ -39,7 +39,11 @@ public static partial class QuizStudioViewBuilder
         var masterPdfs = studio.AvailablePdfs.Where(p => p.IsMaster).ToList();
         var handoutPdfs = studio.AvailablePdfs.Where(p => !p.IsMaster).ToList();
 
-        var sourceRightActions = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
+        var sourceRightActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 5,
+        };
         if (
             studio.StartPage.HasValue
             || studio.EndPage.HasValue
@@ -229,7 +233,11 @@ public static partial class QuizStudioViewBuilder
                 return true;
             if (
                 string.IsNullOrWhiteSpace(node.Section.Term)
-                || string.Equals(node.Section.Term, selectedTerm, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(
+                    node.Section.Term,
+                    selectedTerm,
+                    StringComparison.OrdinalIgnoreCase
+                )
             )
                 return true;
             return node.Children.Any(c => NodeMatchesTermFilter(c, selectedTerm));
@@ -395,15 +403,11 @@ public static partial class QuizStudioViewBuilder
         {
             sourceAndScopeCard.Children.Add(scopeCard);
         }
-        leftStack.Children.Add(
-            UiBuilder.Card(sourceAndScopeCard, padding: new Thickness(12, 10))
-        );
+        leftStack.Children.Add(UiBuilder.Card(sourceAndScopeCard, padding: new Thickness(12, 10)));
 
         // 2. Unified Assessment Blueprint & Generator Engine
         var configCard = new StackPanel { Spacing = 10 };
-        configCard.Children.Add(
-            UiBuilder.SectionHeader("2. Assessment Blueprint & Generator")
-        );
+        configCard.Children.Add(UiBuilder.SectionHeader("2. Assessment Blueprint & Generator"));
 
         if (!string.IsNullOrWhiteSpace(studio.AppendTargetQuizId))
         {
@@ -760,10 +764,8 @@ public static partial class QuizStudioViewBuilder
         );
         if (!string.IsNullOrWhiteSpace(studio.CustomPromptInstructions))
         {
-            var clearDirBtn = UiBuilder.GhostButton(
-                "Clear",
-                MaterialIconKind.Close,
-                () => studio.SetCustomPromptInstructions(string.Empty, notify: true)
+            var clearDirBtn = UiBuilder.GhostButton("Clear", MaterialIconKind.Close, () =>
+                studio.SetCustomPromptInstructions(string.Empty, notify: true)
             );
             Grid.SetColumn(clearDirBtn, 1);
             customPromptHeader.Children.Add(clearDirBtn);
@@ -833,7 +835,9 @@ public static partial class QuizStudioViewBuilder
 
         if (studio.BuilderOutputMode == QuizBuilderOutputMode.WebJson)
         {
-            if (string.IsNullOrWhiteSpace(studio.GeneratedPromptPreview) && !studio.IsBuildingPrompt)
+            if (
+                string.IsNullOrWhiteSpace(studio.GeneratedPromptPreview) && !studio.IsBuildingPrompt
+            )
                 studio.RefreshLivePromptPreviewIfActive(force: true);
             configCard.Children.Add(BuildManualJsonBridgeCard(studio));
         }
@@ -987,11 +991,10 @@ public static partial class QuizStudioViewBuilder
         splitGrid.Children.Add(UiBuilder.PersistentScrollViewer("quiz-builder-left", leftStack));
 
         // RIGHT COLUMN: LIVE VISUAL PDF SCOPE PREVIEWER / FILE SOURCES PREVIEWER
-        var previewPane = studio.IsMixedSourceMode
-            ? BuildMixedPreviewPane(vm, studio)
-            : studio.IsFileSourceMode
-                ? BuildFileSourcesPreviewPane(vm, studio)
-                : BuildLivePdfPreviewPane(vm, studio);
+        var previewPane =
+            studio.IsMixedSourceMode ? BuildMixedPreviewPane(vm, studio)
+            : studio.IsFileSourceMode ? BuildFileSourcesPreviewPane(vm, studio)
+            : BuildLivePdfPreviewPane(vm, studio);
         Grid.SetColumn(previewPane, 2);
         splitGrid.Children.Add(previewPane);
 

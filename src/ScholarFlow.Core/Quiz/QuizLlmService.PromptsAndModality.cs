@@ -7,13 +7,13 @@ using ScholarFlow.Core.Models;
 
 namespace ScholarFlow.Core.Quiz;
 
-
 public sealed partial class QuizLlmService
 {
     public static ContentModalityProfile DetectContentModalities(
         IReadOnlyList<GroundedPdfPage> pages,
         string? courseTitle = null,
-        QuizContentModalityMode mode = QuizContentModalityMode.AutoDetect)
+        QuizContentModalityMode mode = QuizContentModalityMode.AutoDetect
+    )
     {
         if (mode == QuizContentModalityMode.StandardProseOnly)
             return new ContentModalityProfile(HasCode: false, HasMath: false, HasDiagrams: false);
@@ -25,42 +25,83 @@ public sealed partial class QuizLlmService
         int codeSignals = 0;
         string? detectedLang = null;
 
-        if (Regex.IsMatch(combinedText, @"\b(public\s+class|private\s+void|namespace\s+[A-Z]|Console\.Write|using\s+System)\b"))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"\b(public\s+class|private\s+void|namespace\s+[A-Z]|Console\.Write|using\s+System)\b"
+            )
+        )
         {
             codeSignals += 3;
             detectedLang ??= "csharp";
         }
-        if (Regex.IsMatch(combinedText, @"\b(def\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(|import\s+numpy|print\s*\(|elif\s+)\b"))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"\b(def\s+[a-zA-Z_][a-zA-Z0-9_]*\s*\(|import\s+numpy|print\s*\(|elif\s+)\b"
+            )
+        )
         {
             codeSignals += 3;
             detectedLang ??= "python";
         }
-        if (Regex.IsMatch(combinedText, @"\b(SELECT\s+.+\s+FROM\s+|CREATE\s+TABLE|INSERT\s+INTO|INNER\s+JOIN)\b", RegexOptions.IgnoreCase))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"\b(SELECT\s+.+\s+FROM\s+|CREATE\s+TABLE|INSERT\s+INTO|INNER\s+JOIN)\b",
+                RegexOptions.IgnoreCase
+            )
+        )
         {
             codeSignals += 3;
             detectedLang ??= "sql";
         }
-        if (Regex.IsMatch(combinedText, @"\b(function\s+[a-zA-Z_]|const\s+[a-zA-Z_]+\s*=|console\.log\(|=>)\b"))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"\b(function\s+[a-zA-Z_]|const\s+[a-zA-Z_]+\s*=|console\.log\(|=>)\b"
+            )
+        )
         {
             codeSignals += 2;
             detectedLang ??= "javascript";
         }
-        if (Regex.IsMatch(combinedText, @"(#include\s*<|#\s*i\s*n\s*c\s*l\s*u\s*d\s*e|\bint\s+main\s*\(|\bprintf\s*\(|\bmalloc\s*\(|\bsizeof\s*\()"))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"(#include\s*<|#\s*i\s*n\s*c\s*l\s*u\s*d\s*e|\bint\s+main\s*\(|\bprintf\s*\(|\bmalloc\s*\(|\bsizeof\s*\()"
+            )
+        )
         {
             codeSignals += 3;
             detectedLang ??= "c";
         }
-        if (Regex.IsMatch(combinedText, @"(%(rax|eax|rbx|ebx|rcx|ecx|rdx|edx|rsp|esp|rbp|ebp|rdi|rsi)\b|\b(mov[lqwb]?|push[lq]?|pop[lq]?|retq?)\s+)"))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"(%(rax|eax|rbx|ebx|rcx|ecx|rdx|edx|rsp|esp|rbp|ebp|rdi|rsi)\b|\b(mov[lqwb]?|push[lq]?|pop[lq]?|retq?)\s+)"
+            )
+        )
         {
             codeSignals += 3;
             detectedLang ??= "asm";
         }
-        if (Regex.IsMatch(combinedText, @"(\b(gcc|g\+\+|clang|make|sudo|chmod|grep|awk|curl|dotnet|python3?)\b|linux>\s+)"))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"(\b(gcc|g\+\+|clang|make|sudo|chmod|grep|awk|curl|dotnet|python3?)\b|linux>\s+)"
+            )
+        )
         {
             codeSignals += 2;
             detectedLang ??= "bash";
         }
-        if (Regex.IsMatch(combinedText, @"(\b(procedure|algorithm)\s+[A-Za-z_]|for\s+each\s+.+\s+do\b|while\s+.+\s+do\b|if\s+.+\s+then\b|:=)"))
+        if (
+            Regex.IsMatch(
+                combinedText,
+                @"(\b(procedure|algorithm)\s+[A-Za-z_]|for\s+each\s+.+\s+do\b|while\s+.+\s+do\b|if\s+.+\s+then\b|:=)"
+            )
+        )
         {
             codeSignals += 2;
             detectedLang ??= "pseudocode";
@@ -72,18 +113,42 @@ public sealed partial class QuizLlmService
 
         // 2. Math / Symbolic Formula Detection
         int mathSignals = 0;
-        if (Regex.IsMatch(title, @"\b(Math|Calculus|Algebra|Statistics|Probability|Discrete|Physics|Numerical|Algorithm)\b", RegexOptions.IgnoreCase))
+        if (
+            Regex.IsMatch(
+                title,
+                @"\b(Math|Calculus|Algebra|Statistics|Probability|Discrete|Physics|Numerical|Algorithm)\b",
+                RegexOptions.IgnoreCase
+            )
+        )
             mathSignals += 2;
-        if (Regex.Matches(combinedText, @"[∑∫√≤≥≠±∞∂∆λμσπθ]|\\frac|\\sum|\\sqrt|\bO\(n\s*log\s*n\)|\bf\(x\)\s*=").Count >= 3)
+        if (
+            Regex
+                .Matches(
+                    combinedText,
+                    @"[∑∫√≤≥≠±∞∂∆λμσπθ]|\\frac|\\sum|\\sqrt|\bO\(n\s*log\s*n\)|\bf\(x\)\s*="
+                )
+                .Count >= 3
+        )
             mathSignals += 3;
-        if (Regex.Matches(combinedText, @"\b[a-zA-Z]\^[0-9]|\b\d+\s*[+\-*/=]\s*[a-zA-Z]\b").Count >= 6)
+        if (
+            Regex.Matches(combinedText, @"\b[a-zA-Z]\^[0-9]|\b\d+\s*[+\-*/=]\s*[a-zA-Z]\b").Count
+            >= 6
+        )
             mathSignals += 2;
 
         bool hasMath = mode == QuizContentModalityMode.IncludeMathLatex || mathSignals >= 3;
 
         // 3. Diagram / Architecture / Process Flow Detection
         int diagramSignals = 0;
-        if (Regex.Matches(combinedText, @"\b(Figure\s+\d+|Diagram|Flowchart|Architecture|Topology|Lifecycle|Pipeline|OSI\s+Model|State\s+Transition|Layer\s+\d+|UML|Entity\s+Relationship)\b", RegexOptions.IgnoreCase).Count >= 2)
+        if (
+            Regex
+                .Matches(
+                    combinedText,
+                    @"\b(Figure\s+\d+|Diagram|Flowchart|Architecture|Topology|Lifecycle|Pipeline|OSI\s+Model|State\s+Transition|Layer\s+\d+|UML|Entity\s+Relationship)\b",
+                    RegexOptions.IgnoreCase
+                )
+                .Count >= 2
+        )
             diagramSignals += 3;
         if (combinedText.Contains("->") || combinedText.Contains("-->"))
             diagramSignals += 2;
@@ -96,7 +161,8 @@ public sealed partial class QuizLlmService
     private static string BuildSystemInstructions(
         QuizGenerationRequest req,
         IReadOnlyList<string> weakTopics,
-        ContentModalityProfile modality)
+        ContentModalityProfile modality
+    )
     {
         var exactCounts = req.ResolveExactKindCounts();
         var activeKindSpecs = exactCounts
@@ -108,26 +174,38 @@ public sealed partial class QuizLlmService
             .Select(kv => kv.Key.ToString())
             .ToList();
 
-        var distributionSpec = activeKindSpecs.Count > 0
-            ? $"Exact Question-Type Breakdown Required: {string.Join(", ", activeKindSpecs)}."
-              + (disabledKinds.Count > 0 ? $" Do NOT generate any of: {string.Join(", ", disabledKinds)}." : "")
-            : "Generate a balanced academic assessment across requested question types.";
+        var distributionSpec =
+            activeKindSpecs.Count > 0
+                ? $"Exact Question-Type Breakdown Required: {string.Join(", ", activeKindSpecs)}."
+                    + (
+                        disabledKinds.Count > 0
+                            ? $" Do NOT generate any of: {string.Join(", ", disabledKinds)}."
+                            : ""
+                    )
+                : "Generate a balanced academic assessment across requested question types.";
 
-        var pedagogicalBlueprint = QuizBlueprintBuilder.BuildPedagogicalBlueprintBlock(req, weakTopics, modality);
+        var pedagogicalBlueprint = QuizBlueprintBuilder.BuildPedagogicalBlueprintBlock(
+            req,
+            weakTopics,
+            modality
+        );
         var modalityRules = BuildModalitySystemRules(modality, req.ModalityMode);
         bool fileMode = req.HasFileSources;
         bool mixedMode = req.IsMixedSources;
-        var intro = mixedMode
-            ? "You are an expert academic examiner creating an evidence-grounded assessment combining a course study PDF and course source files (code, notes, and/or images)."
+        var intro =
+            mixedMode
+                ? "You are an expert academic examiner creating an evidence-grounded assessment combining a course study PDF and course source files (code, notes, and/or images)."
             : fileMode
                 ? "You are an expert academic examiner creating an evidence-grounded assessment from course source files (code, notes, and/or images)."
-                : "You are an expert academic examiner creating an evidence-grounded assessment from a course study PDF.";
-        var evidenceRule = mixedMode
-            ? MixedEvidenceRule
-            : fileMode ? FileEvidenceRule : PdfEvidenceRule;
-        var evidenceSchema = mixedMode
-            ? MixedEvidenceSchema
-            : fileMode ? FileEvidenceSchema : PdfEvidenceSchema;
+            : "You are an expert academic examiner creating an evidence-grounded assessment from a course study PDF.";
+        var evidenceRule =
+            mixedMode ? MixedEvidenceRule
+            : fileMode ? FileEvidenceRule
+            : PdfEvidenceRule;
+        var evidenceSchema =
+            mixedMode ? MixedEvidenceSchema
+            : fileMode ? FileEvidenceSchema
+            : PdfEvidenceSchema;
         var codeFormatRules = modality.HasCode ? CodeQuestionFormatRules : string.Empty;
 
         return $$"""
@@ -258,40 +336,55 @@ public sealed partial class QuizLlmService
 
     private static string BuildModalitySystemRules(
         ContentModalityProfile modality,
-        QuizContentModalityMode mode = QuizContentModalityMode.AutoDetect)
+        QuizContentModalityMode mode = QuizContentModalityMode.AutoDetect
+    )
     {
         var sb = new StringBuilder();
         sb.AppendLine("CONTENT MODALITY & SPECIALIZED FORMAT RULES:");
 
         if (modality.HasCode)
         {
-            sb.AppendLine($"- CODE SNIPPETS DETECTED ({modality.DetectedLanguage ?? "code"}): When testing programming syntax, CLI commands, queries, or code tracing, populate \"codeSnippet\" with a clean 2-12 line code block and \"codeLanguage\" (e.g. \"{modality.DetectedLanguage ?? "csharp"}\"). Leave \"codeSnippet\": null for non-code conceptual questions.");
+            sb.AppendLine(
+                $"- CODE SNIPPETS DETECTED ({modality.DetectedLanguage ?? "code"}): When testing programming syntax, CLI commands, queries, or code tracing, populate \"codeSnippet\" with a clean 2-12 line code block and \"codeLanguage\" (e.g. \"{modality.DetectedLanguage ?? "csharp"}\"). Leave \"codeSnippet\": null for non-code conceptual questions."
+            );
         }
         else if (mode == QuizContentModalityMode.StandardProseOnly)
         {
-            sb.AppendLine("- NO CODE DETECTED: This study material does not require programming code. Set \"codeSnippet\": null and \"codeLanguage\": null on all questions.");
+            sb.AppendLine(
+                "- NO CODE DETECTED: This study material does not require programming code. Set \"codeSnippet\": null and \"codeLanguage\": null on all questions."
+            );
         }
         else
         {
-            sb.AppendLine("- CODE SNIPPETS: Populate \"codeSnippet\" and \"codeLanguage\" ONLY if a question directly tests programming code, pseudocode, assembly, or CLI commands present in the source; otherwise set both to null.");
+            sb.AppendLine(
+                "- CODE SNIPPETS: Populate \"codeSnippet\" and \"codeLanguage\" ONLY if a question directly tests programming code, pseudocode, assembly, or CLI commands present in the source; otherwise set both to null."
+            );
         }
 
         if (modality.HasMath)
         {
-            sb.AppendLine("- MATH / FORMULAS DETECTED: When testing equations, formulas, derivations, or asymptotic notation, populate \"mathLatex\" with the LaTeX expression (e.g. \"\\\\frac{a + b}{n}\", \"O(n \\\\log n)\") and STRICTLY use \"MultipleChoice\" or \"Situational\" (with 4 options) so the student never has to type raw LaTeX in a free-text box. Leave \"mathLatex\": null for non-math questions.");
+            sb.AppendLine(
+                "- MATH / FORMULAS DETECTED: When testing equations, formulas, derivations, or asymptotic notation, populate \"mathLatex\" with the LaTeX expression (e.g. \"\\\\frac{a + b}{n}\", \"O(n \\\\log n)\") and STRICTLY use \"MultipleChoice\" or \"Situational\" (with 4 options) so the student never has to type raw LaTeX in a free-text box. Leave \"mathLatex\": null for non-math questions."
+            );
         }
         else
         {
-            sb.AppendLine("- NOSYMBOLIC MATH DETECTED: Do not invent LaTeX formulas for conceptual prose. Set \"mathLatex\": null on all questions.");
+            sb.AppendLine(
+                "- NOSYMBOLIC MATH DETECTED: Do not invent LaTeX formulas for conceptual prose. Set \"mathLatex\": null on all questions."
+            );
         }
 
         if (modality.HasDiagrams)
         {
-            sb.AppendLine("- ARCHITECTURE / PROCESS DIAGRAMS DETECTED: When testing multi-stage pipelines, branching logic, network protocols, or state flows, populate \"diagram\" using EITHER a concise 1-line chain (\"[Client] -> [API Gateway] -> [DB]\"), a Mermaid-subset branching flowchart (\"flowchart LR\\nA[CPU] --> B{L1 Hit?}\\nB -->|Yes| C[Fast]\\nB -->|No| D[(RAM)]\"), or a sequenceDiagram (\"sequenceDiagram\\nClient ->> Server: SYN\\nServer -->> Client: SYN-ACK\"). Use \"[???]\" for cloze-style missing nodes. Leave \"diagram\": null for standard questions.");
+            sb.AppendLine(
+                "- ARCHITECTURE / PROCESS DIAGRAMS DETECTED: When testing multi-stage pipelines, branching logic, network protocols, or state flows, populate \"diagram\" using EITHER a concise 1-line chain (\"[Client] -> [API Gateway] -> [DB]\"), a Mermaid-subset branching flowchart (\"flowchart LR\\nA[CPU] --> B{L1 Hit?}\\nB -->|Yes| C[Fast]\\nB -->|No| D[(RAM)]\"), or a sequenceDiagram (\"sequenceDiagram\\nClient ->> Server: SYN\\nServer -->> Client: SYN-ACK\"). Use \"[???]\" for cloze-style missing nodes. Leave \"diagram\": null for standard questions."
+            );
         }
         else
         {
-            sb.AppendLine("- Set \"diagram\": null unless a question directly illustrates a multi-step architecture or process flow.");
+            sb.AppendLine(
+                "- Set \"diagram\": null unless a question directly illustrates a multi-step architecture or process flow."
+            );
         }
 
         return sb.ToString().TrimEnd();
@@ -303,23 +396,35 @@ public sealed partial class QuizLlmService
         int count,
         int batchNumber = 1,
         int totalBatches = 1,
-        ContentModalityProfile? modality = null)
+        ContentModalityProfile? modality = null
+    )
     {
-        var batchNote = totalBatches > 1 ? $" (Batch {batchNumber} of {totalBatches} — ensure unique questions covering these pages)" : string.Empty;
+        var batchNote =
+            totalBatches > 1
+                ? $" (Batch {batchNumber} of {totalBatches} — ensure unique questions covering these pages)"
+                : string.Empty;
         var exactCounts = req.ResolveExactKindCounts(count);
-        var breakdown = string.Join(", ", exactCounts.Where(kv => kv.Value > 0).Select(kv => $"{kv.Value} {kv.Key}"));
+        var breakdown = string.Join(
+            ", ",
+            exactCounts.Where(kv => kv.Value > 0).Select(kv => $"{kv.Value} {kv.Key}")
+        );
 
         var activeModalities = new List<string>();
-        if (modality?.HasCode == true) activeModalities.Add($"Code Snippets ({modality.DetectedLanguage ?? "code"})");
-        if (modality?.HasMath == true) activeModalities.Add("Math LaTeX (MultipleChoice strictly)");
-        if (modality?.HasDiagrams == true) activeModalities.Add("Node-Flow Diagrams");
-        var modalitySummary = activeModalities.Count > 0
-            ? $"\nDetected Specialized Modalities: {string.Join(", ", activeModalities)} (include where relevant; omit on plain conceptual items)"
-            : "\nDetected Specialized Modalities: Standard Conceptual Prose (keep codeSnippet, mathLatex, and diagram null)";
+        if (modality?.HasCode == true)
+            activeModalities.Add($"Code Snippets ({modality.DetectedLanguage ?? "code"})");
+        if (modality?.HasMath == true)
+            activeModalities.Add("Math LaTeX (MultipleChoice strictly)");
+        if (modality?.HasDiagrams == true)
+            activeModalities.Add("Node-Flow Diagrams");
+        var modalitySummary =
+            activeModalities.Count > 0
+                ? $"\nDetected Specialized Modalities: {string.Join(", ", activeModalities)} (include where relevant; omit on plain conceptual items)"
+                : "\nDetected Specialized Modalities: Standard Conceptual Prose (keep codeSnippet, mathLatex, and diagram null)";
 
-        var excludeBlock = req.ExcludePromptsOrTopics.Count > 0
-            ? $"\nDo NOT repeat or duplicate any of these existing questions/topics:\n- {string.Join("\n- ", req.ExcludePromptsOrTopics.Take(25))}\n"
-            : string.Empty;
+        var excludeBlock =
+            req.ExcludePromptsOrTopics.Count > 0
+                ? $"\nDo NOT repeat or duplicate any of these existing questions/topics:\n- {string.Join("\n- ", req.ExcludePromptsOrTopics.Take(25))}\n"
+                : string.Empty;
 
         var customBlock = BuildGuardedCustomInstructionsBlock(req.CustomInstructions);
 
@@ -327,7 +432,11 @@ public sealed partial class QuizLlmService
             Course: {req.CourseTitle}
             Target Term: {req.Term ?? "All Covered Terms"}
             Section Scope: {req.SectionFilter ?? "All Sections in Scope"}
-            Required Question Breakdown ({Math.Clamp(count, 1, 150)} total): {breakdown}{modalitySummary}{excludeBlock}{customBlock}
+            Required Question Breakdown ({Math.Clamp(
+                count,
+                1,
+                150
+            )} total): {breakdown}{modalitySummary}{excludeBlock}{customBlock}
             Generate high-quality, evidence-grounded questions{batchNote} strictly matching the required question breakdown from the following grounded PDF pages:
 
             {groundedContent}
@@ -357,5 +466,4 @@ public sealed partial class QuizLlmService
             </user_directives>
             """;
     }
-
 }

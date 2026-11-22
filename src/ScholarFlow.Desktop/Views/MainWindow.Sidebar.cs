@@ -441,17 +441,13 @@ public sealed partial class MainWindow
                     () => { }
                 );
                 syncCompact.Flyout = BuildElmsSyncFlyout();
-                ToolTip.SetTip(
-                    syncCompact,
-                    $"{_vm.ActiveProviderName} Sync options"
-                );
+                ToolTip.SetTip(syncCompact, $"{_vm.ActiveProviderName} Sync options");
                 footer.Children.Add(CenterCompact(syncCompact));
 
                 if (_vm.SupportsActiveFastPoll)
                 {
-                    var pollCompact = UiBuilder.IconButton(
-                        MaterialIconKind.Refresh,
-                        async () => await _vm.RunFastPollAsync()
+                    var pollCompact = UiBuilder.IconButton(MaterialIconKind.Refresh, async () =>
+                        await _vm.RunFastPollAsync()
                     );
                     ToolTip.SetTip(pollCompact, $"Fast poll {_vm.ActiveProviderName} assignments");
                     footer.Children.Add(CenterCompact(pollCompact));
@@ -691,8 +687,8 @@ public sealed partial class MainWindow
         var activeRoot = string.IsNullOrWhiteSpace(_vm.BasinRoot)
             ? string.Empty
             : Path.GetFullPath(_vm.BasinRoot);
-        var stateByPath = _vm.SyncCoordinator
-            .GetRegisteredBasins()
+        var stateByPath = _vm
+            .SyncCoordinator.GetRegisteredBasins()
             .ToDictionary(b => b.BasinRoot, b => b, StringComparer.OrdinalIgnoreCase);
 
         foreach (var entry in _vm.Settings.KnownBasins)
@@ -703,17 +699,15 @@ public sealed partial class MainWindow
             var full = Path.GetFullPath(entry.FilePath);
             bool isActive = string.Equals(full, activeRoot, StringComparison.OrdinalIgnoreCase);
             string kindTag =
-                stateByPath.TryGetValue(full, out var state) && state.Provider.Capabilities.SupportsSync
+                stateByPath.TryGetValue(full, out var state)
+                && state.Provider.Capabilities.SupportsSync
                     ? state.Provider.DisplayName
                     : "Local";
             string syncSuffix =
                 stateByPath.TryGetValue(full, out var st) && st.IsSyncing ? " · Syncing..." : "";
             string prefix = isActive ? "✓ " : "";
 
-            var item = new MenuItem
-            {
-                Header = $"{prefix}{entry.Name} [{kindTag}]{syncSuffix}",
-            };
+            var item = new MenuItem { Header = $"{prefix}{entry.Name} [{kindTag}]{syncSuffix}" };
             item.Click += async (_, _) => await _vm.OpenBasinAsync(full);
             flyout.Items.Add(item);
         }
@@ -807,15 +801,13 @@ public sealed partial class MainWindow
         IBrush? customAccentFg = null
     )
     {
-        var fg =
-            customAccentFg
+        var fg = customAccentFg
             ?? (
                 isActive
                     ? ThemeService.Brush(ThemeService.AccentPrimary)
                     : ThemeService.Brush(ThemeService.TextPrimary)
             );
-        var iconFg =
-            customAccentFg
+        var iconFg = customAccentFg
             ?? (
                 isActive
                     ? ThemeService.Brush(ThemeService.AccentPrimary)

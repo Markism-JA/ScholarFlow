@@ -96,8 +96,12 @@ public sealed class PlaywrightAuthProvider(ILogger<PlaywrightAuthProvider>? logg
             );
         }
 
-        var interactiveSession =
-            await TryCaptureSessionAsync(options, headless: false, ResolveCredentials(options), ct)
+        var interactiveSession = await TryCaptureSessionAsync(
+            options,
+            headless: false,
+            ResolveCredentials(options),
+            ct
+        )
             ?? throw new InvalidOperationException(
                 "Failed to establish an authenticated eLMS session."
             );

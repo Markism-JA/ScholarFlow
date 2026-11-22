@@ -94,10 +94,7 @@ public sealed partial class MainWindowViewModel
         BasinConfig.SchemaVersion = Math.Max(BasinConfig.SchemaVersion, 2);
         BasinConfig.ProviderId = nextProvider.ProviderId;
         BasinConfig.BackgroundSyncEnabled = nextProvider.Capabilities.SupportsSync;
-        if (
-            !nextProvider.Capabilities.SupportsSync
-            || BasinConfig.Terms.Count == 0
-        )
+        if (!nextProvider.Capabilities.SupportsSync || BasinConfig.Terms.Count == 0)
         {
             BasinConfig.Terms = [.. nextProvider.Capabilities.DefaultTerms];
         }
@@ -185,7 +182,10 @@ public sealed partial class MainWindowViewModel
         NotifyStateChanged(UiChangeKind.StatusOnly);
         try
         {
-            var res = await SyncCoordinator.AuthenticateBasinAsync(BasinRoot, allowInteractive: true);
+            var res = await SyncCoordinator.AuthenticateBasinAsync(
+                BasinRoot,
+                allowInteractive: true
+            );
             StatusText = res.Message;
         }
         catch (Exception ex)
@@ -374,10 +374,10 @@ public sealed partial class MainWindowViewModel
             includeNonPdfByDefault: includeNonPdfByDefault
         );
 
-        bool hasIncludedNonPdf = ActivePacketPlan.Sections.SelectMany(s => s.Items)
+        bool hasIncludedNonPdf = ActivePacketPlan
+            .Sections.SelectMany(s => s.Items)
             .Any(i => !i.IsPdf && !i.IsExcluded);
-        PacketOrganizerFilter =
-            course.IsSyncableCourse && !hasIncludedNonPdf ? "PDFs" : "All";
+        PacketOrganizerFilter = course.IsSyncableCourse && !hasIncludedNonPdf ? "PDFs" : "All";
 
         IsPacketOrganizerModalOpen = true;
         IsSettingsModalOpen = false;
@@ -713,9 +713,7 @@ public sealed partial class MainWindowViewModel
 
     public async Task ToggleElmsIntegrationAsync()
     {
-        var nextProvider = SupportsActiveBasinSync
-            ? SyncProviderIds.None
-            : SyncProviderIds.StiElms;
+        var nextProvider = SupportsActiveBasinSync ? SyncProviderIds.None : SyncProviderIds.StiElms;
         await SetBasinProviderAsync(nextProvider);
     }
 

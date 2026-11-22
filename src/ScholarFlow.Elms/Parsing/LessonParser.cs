@@ -41,9 +41,9 @@ public static class LessonParser
             lessonUrl.Contains("scorm_player.html", StringComparison.OrdinalIgnoreCase)
             || centre?.QuerySelector("iframe[src*=\"scorm\"], iframe[src*=\"player\"]") is not null;
 
-        var contentScope =
-            centre?.QuerySelector(".lesson-content, .content-body, .materialStyle, main, article")
-            ?? centre;
+        var contentScope = centre?.QuerySelector(
+            ".lesson-content, .content-body, .materialStyle, main, article"
+        ) ?? centre;
         var resources = HtmlParsingHelpers.ExtractFileResources(
             contentScope,
             baseUrl,

@@ -27,23 +27,25 @@ public sealed record QuizPdfExportOptions(
 {
     public static QuizPdfExportOptions ExamDefault { get; } = new();
 
-    public static QuizPdfExportOptions StudyGuide { get; } = new(
-        Mode: QuizPdfExportMode.StudyGuideInline,
-        IncludeAnswerKey: false,
-        IncludeHintsSection: false,
-        IncludeConfidenceBoxes: false,
-        IncludeEvidenceCitations: true,
-        IncludeBlueprintSummary: true
-    );
+    public static QuizPdfExportOptions StudyGuide { get; } =
+        new(
+            Mode: QuizPdfExportMode.StudyGuideInline,
+            IncludeAnswerKey: false,
+            IncludeHintsSection: false,
+            IncludeConfidenceBoxes: false,
+            IncludeEvidenceCitations: true,
+            IncludeBlueprintSummary: true
+        );
 
-    public static QuizPdfExportOptions QuestionsOnly { get; } = new(
-        Mode: QuizPdfExportMode.ExamWorksheet,
-        IncludeAnswerKey: false,
-        IncludeHintsSection: false,
-        IncludeConfidenceBoxes: false,
-        IncludeEvidenceCitations: false,
-        IncludeBlueprintSummary: false
-    );
+    public static QuizPdfExportOptions QuestionsOnly { get; } =
+        new(
+            Mode: QuizPdfExportMode.ExamWorksheet,
+            IncludeAnswerKey: false,
+            IncludeHintsSection: false,
+            IncludeConfidenceBoxes: false,
+            IncludeEvidenceCitations: false,
+            IncludeBlueprintSummary: false
+        );
 }
 
 /// <summary>
@@ -110,7 +112,9 @@ public static partial class QuizPdfPrintRenderer
         XGraphics gfx = XGraphics.FromPdfPage(page);
         double y = MarginTop;
         string currentSectionName =
-            opt.Mode == QuizPdfExportMode.StudyGuideInline ? "Annotated Study Guide" : "Examination Paper";
+            opt.Mode == QuizPdfExportMode.StudyGuideInline
+                ? "Annotated Study Guide"
+                : "Examination Paper";
         pageSectionNames.Add(currentSectionName);
 
         double ContentWidth() => page.Width.Point - (MarginX * 2);
@@ -188,7 +192,12 @@ public static partial class QuizPdfPrintRenderer
                     continue;
                 }
                 EnsureSpace(lineHeight);
-                gfx.DrawString(line, font, brush, new XPoint(MarginX + indent, y + lineHeight * 0.76));
+                gfx.DrawString(
+                    line,
+                    font,
+                    brush,
+                    new XPoint(MarginX + indent, y + lineHeight * 0.76)
+                );
                 y += lineHeight;
             }
         }
@@ -326,7 +335,8 @@ public static partial class QuizPdfPrintRenderer
                     int take = expanded.Length - pos;
                     while (
                         take > 10
-                        && gfx.MeasureString(expanded.Substring(pos, take), textFont).Width > maxTextW
+                        && gfx.MeasureString(expanded.Substring(pos, take), textFont).Width
+                            > maxTextW
                     )
                     {
                         take = Math.Max(10, (int)(take * 0.84));
@@ -411,7 +421,9 @@ public static partial class QuizPdfPrintRenderer
                     parsedSeq,
                     hasCaption: true
                 );
-                EnsureSpace(Math.Min(neededH + 6, page.Height.Point - MarginTop - MarginBottom - 16));
+                EnsureSpace(
+                    Math.Min(neededH + 6, page.Height.Point - MarginTop - MarginBottom - 16)
+                );
                 y = PdfDiagramGraphRenderer.DrawSequenceDiagram(
                     gfx,
                     parsedSeq,
@@ -433,7 +445,9 @@ public static partial class QuizPdfPrintRenderer
                     smallFont,
                     hasCaption: true
                 );
-                EnsureSpace(Math.Min(neededH + 6, page.Height.Point - MarginTop - MarginBottom - 16));
+                EnsureSpace(
+                    Math.Min(neededH + 6, page.Height.Point - MarginTop - MarginBottom - 16)
+                );
                 y = PdfDiagramGraphRenderer.DrawGraph(
                     gfx,
                     parsedGraph,
@@ -461,14 +475,16 @@ public static partial class QuizPdfPrintRenderer
 
         void DrawImageFigure(QuizQuestionRecord q, int questionNumber)
         {
-            var imgPath = !string.IsNullOrWhiteSpace(q.ImagePath) && File.Exists(q.ImagePath)
-                ? q.ImagePath
-                : (
-                    StudySourceClassifier.Classify(q.SourcePdfPath).Kind == StudySourceKind.Image
-                    && File.Exists(q.SourcePdfPath)
-                        ? q.SourcePdfPath
-                        : null
-                );
+            var imgPath =
+                !string.IsNullOrWhiteSpace(q.ImagePath) && File.Exists(q.ImagePath)
+                    ? q.ImagePath
+                    : (
+                        StudySourceClassifier.Classify(q.SourcePdfPath).Kind
+                            == StudySourceKind.Image
+                        && File.Exists(q.SourcePdfPath)
+                            ? q.SourcePdfPath
+                            : null
+                    );
 
             if (string.IsNullOrWhiteSpace(imgPath))
                 return;
@@ -480,7 +496,10 @@ public static partial class QuizPdfPrintRenderer
                 double maxW = ContentWidth() - 24;
                 double scale = Math.Min(
                     1.0,
-                    Math.Min(maxW / Math.Max(1, xImg.PixelWidth), 195.0 / Math.Max(1, xImg.PixelHeight))
+                    Math.Min(
+                        maxW / Math.Max(1, xImg.PixelWidth),
+                        195.0 / Math.Max(1, xImg.PixelHeight)
+                    )
                 );
                 double drawW = xImg.PixelWidth * scale;
                 double drawH = xImg.PixelHeight * scale;
@@ -609,7 +628,11 @@ public static partial class QuizPdfPrintRenderer
                 var (whyCorrect, whyDistractors, corePrinciple) = ParseContrastiveExplanation(
                     q.Explanation
                 );
-                if (whyCorrect is not null || whyDistractors is not null || corePrinciple is not null)
+                if (
+                    whyCorrect is not null
+                    || whyDistractors is not null
+                    || corePrinciple is not null
+                )
                 {
                     if (!string.IsNullOrWhiteSpace(whyCorrect))
                     {
@@ -735,7 +758,12 @@ public static partial class QuizPdfPrintRenderer
         DrawWrapped(quiz.Title, titleFont, InkPrimary, lineHeight: 19);
         if (opt.Mode == QuizPdfExportMode.StudyGuideInline)
         {
-            DrawWrapped("Annotated Study Guide & Reference Key", subFont, InkSecondary, lineHeight: 13);
+            DrawWrapped(
+                "Annotated Study Guide & Reference Key",
+                subFont,
+                InkSecondary,
+                lineHeight: 13
+            );
         }
         y += 4;
         gfx.DrawLine(StrongRulePen, MarginX, y, page.Width.Point - MarginX, y);
@@ -748,7 +776,12 @@ public static partial class QuizPdfPrintRenderer
             gfx.DrawString("Name:", smallFont, InkPrimary, new XPoint(MarginX, lineY));
             gfx.DrawLine(WriteLinePen, MarginX + 32, lineY + 1.5, MarginX + 225, lineY + 1.5);
 
-            gfx.DrawString("Section / ID:", smallFont, InkPrimary, new XPoint(MarginX + 240, lineY));
+            gfx.DrawString(
+                "Section / ID:",
+                smallFont,
+                InkPrimary,
+                new XPoint(MarginX + 240, lineY)
+            );
             gfx.DrawLine(WriteLinePen, MarginX + 298, lineY + 1.5, MarginX + 395, lineY + 1.5);
 
             gfx.DrawString(
@@ -864,14 +897,14 @@ public static partial class QuizPdfPrintRenderer
                 gfx.DrawString("B.  False", bodyFont, InkPrimary, new XPoint(MarginX + 140, tfY));
                 y += 16;
             }
-            else if (
-                q.Kind is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational
-            )
+            else if (q.Kind is QuizQuestionKind.MultipleChoice or QuizQuestionKind.Situational)
             {
                 double colW = (ContentWidth() - 36) / 2.0;
                 bool canUseTwoColumnGrid =
                     q.Options.Count == 4
-                    && q.Options.All(o => gfx.MeasureString($"A.  {o}", bodyFont).Width <= colW - 22);
+                    && q.Options.All(o =>
+                        gfx.MeasureString($"A.  {o}", bodyFont).Width <= colW - 22
+                    );
 
                 if (canUseTwoColumnGrid)
                 {
@@ -1003,7 +1036,12 @@ public static partial class QuizPdfPrintRenderer
             NewPage("Progressive Hints");
             outlines.Add(("Progressive Hints", doc.PageCount - 1));
 
-            DrawWrapped($"Progressive Hints — {quiz.Title}", sectionFont, InkPrimary, lineHeight: 17);
+            DrawWrapped(
+                $"Progressive Hints — {quiz.Title}",
+                sectionFont,
+                InkPrimary,
+                lineHeight: 17
+            );
             DrawWrapped(
                 "Conceptual nudges to consult before checking the Answer Key.",
                 subFont,
@@ -1039,7 +1077,12 @@ public static partial class QuizPdfPrintRenderer
             NewPage("Answer Key & Explanations");
             outlines.Add(("Answer Key & Explanations", doc.PageCount - 1));
 
-            DrawWrapped($"Answer Key & Examiner Reference — {quiz.Title}", sectionFont, InkPrimary, lineHeight: 17);
+            DrawWrapped(
+                $"Answer Key & Examiner Reference — {quiz.Title}",
+                sectionFont,
+                InkPrimary,
+                lineHeight: 17
+            );
             DrawWrapped(
                 "Quick-grading key, assessment blueprint, contrastive explanations, and grounded source citations.",
                 subFont,

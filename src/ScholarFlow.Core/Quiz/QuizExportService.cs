@@ -18,7 +18,7 @@ public static class QuizExportService
         WriteIndented = true,
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
+        AllowTrailingCommas = true,
     };
 
     public static string ExportDeckToJson(QuizSessionRecord quiz) =>
@@ -28,7 +28,8 @@ public static class QuizExportService
         string rawJson,
         string targetCourseFolder,
         string targetCourseTitle,
-        string? sourcePdfPathOverride = null)
+        string? sourcePdfPathOverride = null
+    )
     {
         if (string.IsNullOrWhiteSpace(rawJson))
             throw new ArgumentException("JSON content is empty.", nameof(rawJson));
@@ -60,7 +61,10 @@ public static class QuizExportService
                         q.SourcePdfPath = sourcePdfPathOverride;
                 }
 
-                if (!string.IsNullOrWhiteSpace(imported.SourcePdfPath) && File.Exists(imported.SourcePdfPath))
+                if (
+                    !string.IsNullOrWhiteSpace(imported.SourcePdfPath)
+                    && File.Exists(imported.SourcePdfPath)
+                )
                 {
                     var ungrounded = imported
                         .Questions.Where(q => q.HighlightRects.Count == 0)
@@ -79,7 +83,9 @@ public static class QuizExportService
 
         // 2. Fallback to AI QuizGenerationResponseDto format
         var dto = JsonSerializer.Deserialize<QuizGenerationResponseDto>(cleaned, PrettyJsonOpts)
-                  ?? throw new InvalidOperationException("Could not parse quiz JSON as a QuizSessionRecord or QuizGenerationResponseDto.");
+            ?? throw new InvalidOperationException(
+                "Could not parse quiz JSON as a QuizSessionRecord or QuizGenerationResponseDto."
+            );
 
         if (dto.Questions.Count == 0)
             throw new InvalidOperationException("Imported JSON contains 0 questions.");
@@ -91,7 +97,9 @@ public static class QuizExportService
             CourseFolder = targetCourseFolder,
             CourseTitle = targetCourseTitle,
             Term = string.IsNullOrWhiteSpace(dto.CourseTerm) ? null : dto.CourseTerm.Trim(),
-            Title = string.IsNullOrWhiteSpace(dto.QuizTitle) ? $"{targetCourseTitle} — Imported Deck" : dto.QuizTitle.Trim(),
+            Title = string.IsNullOrWhiteSpace(dto.QuizTitle)
+                ? $"{targetCourseTitle} — Imported Deck"
+                : dto.QuizTitle.Trim(),
             SourcePdfPath = sourcePdfPathOverride ?? string.Empty,
             CreatedAtUtc = DateTimeOffset.UtcNow,
         };
@@ -104,30 +112,46 @@ public static class QuizExportService
             if (!Enum.TryParse<CognitiveLevel>(qDto.CognitiveLevel, ignoreCase: true, out var cog))
                 cog = CognitiveLevel.Comprehension;
 
-            session.Questions.Add(new QuizQuestionRecord
-            {
-                Id = Guid.NewGuid().ToString("N")[..10],
-                QuizId = quizId,
-                OrderIndex = i,
-                Kind = kind,
-                CognitiveLevel = cog,
-                Difficulty = Math.Clamp(qDto.Difficulty, 1, 5),
-                TopicTag = string.IsNullOrWhiteSpace(qDto.TopicTag) ? "general" : qDto.TopicTag.Trim(),
-                Prompt = qDto.Prompt.Trim(),
-                Options = qDto.Options?.Where(o => !string.IsNullOrWhiteSpace(o)).Select(o => o.Trim()).ToList() ?? [],
-                CorrectAnswer = qDto.CorrectAnswer.Trim(),
-                AcceptedAliases = qDto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a)).Select(a => a.Trim()).ToList() ?? [],
-                Explanation = (qDto.Explanation ?? string.Empty).Trim(),
-                CodeSnippet = string.IsNullOrWhiteSpace(qDto.CodeSnippet) ? null : qDto.CodeSnippet,
-                CodeLanguage = string.IsNullOrWhiteSpace(qDto.CodeLanguage) ? null : qDto.CodeLanguage,
-                MathLatex = string.IsNullOrWhiteSpace(qDto.MathLatex) ? null : qDto.MathLatex,
-                Diagram = string.IsNullOrWhiteSpace(qDto.Diagram) ? null : qDto.Diagram,
-                SourcePdfPath = sourcePdfPathOverride ?? string.Empty,
-                SourcePage = qDto.Evidence?.PageNumber > 0 ? qDto.Evidence.PageNumber : 1,
-                SectionTitle = qDto.Evidence?.SectionTitle ?? string.Empty,
-                VerbatimQuote = qDto.Evidence?.VerbatimQuote ?? string.Empty,
-                SrsDueDate = DateOnly.FromDateTime(DateTime.Today),
-            });
+            session.Questions.Add(
+                new QuizQuestionRecord
+                {
+                    Id = Guid.NewGuid().ToString("N")[..10],
+                    QuizId = quizId,
+                    OrderIndex = i,
+                    Kind = kind,
+                    CognitiveLevel = cog,
+                    Difficulty = Math.Clamp(qDto.Difficulty, 1, 5),
+                    TopicTag = string.IsNullOrWhiteSpace(qDto.TopicTag)
+                        ? "general"
+                        : qDto.TopicTag.Trim(),
+                    Prompt = qDto.Prompt.Trim(),
+                    Options = qDto.Options?.Where(o => !string.IsNullOrWhiteSpace(o))
+                        .Select(o => o.Trim())
+                        .ToList()
+                        ?? [],
+                    CorrectAnswer = qDto.CorrectAnswer.Trim(),
+                    AcceptedAliases = qDto.AcceptedAliases?.Where(a =>
+                            !string.IsNullOrWhiteSpace(a)
+                        )
+                        .Select(a => a.Trim())
+                        .ToList()
+                        ?? [],
+                    Explanation = (qDto.Explanation ?? string.Empty).Trim(),
+                    CodeSnippet = string.IsNullOrWhiteSpace(qDto.CodeSnippet)
+                        ? null
+                        : qDto.CodeSnippet,
+                    CodeLanguage = string.IsNullOrWhiteSpace(qDto.CodeLanguage)
+                        ? null
+                        : qDto.CodeLanguage,
+                    MathLatex = string.IsNullOrWhiteSpace(qDto.MathLatex) ? null : qDto.MathLatex,
+                    Diagram = string.IsNullOrWhiteSpace(qDto.Diagram) ? null : qDto.Diagram,
+                    SourcePdfPath = sourcePdfPathOverride ?? string.Empty,
+                    SourcePage = qDto.Evidence?.PageNumber > 0 ? qDto.Evidence.PageNumber : 1,
+                    SectionTitle = qDto.Evidence?.SectionTitle ?? string.Empty,
+                    VerbatimQuote = qDto.Evidence?.VerbatimQuote ?? string.Empty,
+                    SrsDueDate = DateOnly.FromDateTime(DateTime.Today),
+                }
+            );
         }
 
         if (!string.IsNullOrWhiteSpace(session.SourcePdfPath) && File.Exists(session.SourcePdfPath))
@@ -145,7 +169,8 @@ public static class QuizExportService
     public static string BuildSingleQuestionFixPrompt(
         QuizSessionRecord quiz,
         QuizQuestionRecord question,
-        string problemDescription)
+        string problemDescription
+    )
     {
         var dto = new GeneratedQuestionDto
         {
@@ -166,8 +191,8 @@ public static class QuizExportService
             {
                 PageNumber = question.SourcePage,
                 SectionTitle = question.SectionTitle,
-                VerbatimQuote = question.VerbatimQuote
-            }
+                VerbatimQuote = question.VerbatimQuote,
+            },
         };
 
         IReadOnlyList<GroundedPdfPage> contextPages = [];
@@ -192,11 +217,19 @@ public static class QuizExportService
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"You are repairing ONE question from the quiz \"{quiz.Title}\" ({quiz.CourseTitle}).");
-        sb.AppendLine("Return ONLY a single valid JSON object matching the exact question schema below (no markdown fences or commentary).");
+        sb.AppendLine(
+            $"You are repairing ONE question from the quiz \"{quiz.Title}\" ({quiz.CourseTitle})."
+        );
+        sb.AppendLine(
+            "Return ONLY a single valid JSON object matching the exact question schema below (no markdown fences or commentary)."
+        );
         sb.AppendLine();
         sb.AppendLine("REPORTED ISSUE WITH THIS QUESTION:");
-        sb.AppendLine(string.IsNullOrWhiteSpace(problemDescription) ? "Fix clarity, answer accuracy, and PDF evidence grounding." : problemDescription.Trim());
+        sb.AppendLine(
+            string.IsNullOrWhiteSpace(problemDescription)
+                ? "Fix clarity, answer accuracy, and PDF evidence grounding."
+                : problemDescription.Trim()
+        );
         sb.AppendLine();
         sb.AppendLine("CURRENT QUESTION JSON:");
         sb.AppendLine(JsonSerializer.Serialize(dto, PrettyJsonOpts));
@@ -205,7 +238,9 @@ public static class QuizExportService
         {
             sb.AppendLine();
             sb.AppendLine("GROUNDED SOURCE PDF CONTEXT:");
-            sb.AppendLine(PdfQuizGrounder.FormatPagesForPrompt(contextPages, maxChars: 14_000, out _));
+            sb.AppendLine(
+                PdfQuizGrounder.FormatPagesForPrompt(contextPages, maxChars: 14_000, out _)
+            );
         }
 
         return sb.ToString();
@@ -214,33 +249,36 @@ public static class QuizExportService
     public static string BuildDeckComprehensiveFixPrompt(
         QuizSessionRecord deck,
         IReadOnlyList<QuizQuestionRecord> targetQuestions,
-        string instructions)
+        string instructions
+    )
     {
-        var dtoList = targetQuestions.Select(q => new
-        {
-            targetId = q.Id,
-            kind = q.Kind.ToString(),
-            cognitiveLevel = q.CognitiveLevel.ToString(),
-            archetype = q.Archetype,
-            difficulty = q.Difficulty,
-            topicTag = q.TopicTag,
-            prompt = q.Prompt,
-            options = q.Options,
-            correctAnswer = q.CorrectAnswer,
-            acceptedAliases = q.AcceptedAliases,
-            hint = q.Hint,
-            explanation = q.Explanation,
-            codeSnippet = q.CodeSnippet,
-            codeLanguage = q.CodeLanguage,
-            mathLatex = q.MathLatex,
-            diagram = q.Diagram,
-            evidence = new
+        var dtoList = targetQuestions
+            .Select(q => new
             {
-                pageNumber = q.SourcePage,
-                sectionTitle = q.SectionTitle,
-                verbatimQuote = q.VerbatimQuote
-            }
-        }).ToList();
+                targetId = q.Id,
+                kind = q.Kind.ToString(),
+                cognitiveLevel = q.CognitiveLevel.ToString(),
+                archetype = q.Archetype,
+                difficulty = q.Difficulty,
+                topicTag = q.TopicTag,
+                prompt = q.Prompt,
+                options = q.Options,
+                correctAnswer = q.CorrectAnswer,
+                acceptedAliases = q.AcceptedAliases,
+                hint = q.Hint,
+                explanation = q.Explanation,
+                codeSnippet = q.CodeSnippet,
+                codeLanguage = q.CodeLanguage,
+                mathLatex = q.MathLatex,
+                diagram = q.Diagram,
+                evidence = new
+                {
+                    pageNumber = q.SourcePage,
+                    sectionTitle = q.SectionTitle,
+                    verbatimQuote = q.VerbatimQuote,
+                },
+            })
+            .ToList();
 
         var ranges = targetQuestions
             .Where(q => q.SourcePage > 0)
@@ -253,9 +291,14 @@ public static class QuizExportService
         {
             try
             {
-                contextPages = ranges.Count > 0
-                    ? PdfQuizGrounder.ExtractGroundedPages(deck.SourcePdfPath, explicitRanges: ranges, maxPages: 30)
-                    : PdfQuizGrounder.ExtractGroundedPages(deck.SourcePdfPath, maxPages: 20);
+                contextPages =
+                    ranges.Count > 0
+                        ? PdfQuizGrounder.ExtractGroundedPages(
+                            deck.SourcePdfPath,
+                            explicitRanges: ranges,
+                            maxPages: 30
+                        )
+                        : PdfQuizGrounder.ExtractGroundedPages(deck.SourcePdfPath, maxPages: 20);
             }
             catch
             {
@@ -264,15 +307,27 @@ public static class QuizExportService
         }
 
         var sb = new StringBuilder();
-        sb.AppendLine($"You are performing a comprehensive AI repair & enhancement on the quiz deck \"{deck.Title}\" ({deck.CourseTitle}).");
-        sb.AppendLine("Return ONLY a valid JSON object matching this exact schema (no markdown fences, preserve each item's exact \"targetId\"):");
+        sb.AppendLine(
+            $"You are performing a comprehensive AI repair & enhancement on the quiz deck \"{deck.Title}\" ({deck.CourseTitle})."
+        );
+        sb.AppendLine(
+            "Return ONLY a valid JSON object matching this exact schema (no markdown fences, preserve each item's exact \"targetId\"):"
+        );
         sb.AppendLine("{");
-        sb.AppendLine("  \"updatedQuestions\": [ { \"targetId\": \"existing-id\", \"kind\": \"...\", \"cognitiveLevel\": \"Recall | Comprehension | Application | Analysis\", \"archetype\": \"FarTransfer | DiscriminativeContrast | CausalPerturbation | SpotTheFlaw | DualCoding | null\", \"difficulty\": 3, \"topicTag\": \"...\", \"prompt\": \"...\", \"options\": [...], \"correctAnswer\": \"...\", \"acceptedAliases\": [], \"hint\": \"1-sentence clue without revealing the answer (or null)\", \"explanation\": \"Why correct: ... Why distractors fail: ... Core principle: ...\", \"codeSnippet\": null, \"codeLanguage\": null, \"mathLatex\": null, \"diagram\": null, \"evidence\": { \"pageNumber\": 1, \"sectionTitle\": \"...\", \"verbatimQuote\": \"...\" } } ],");
-        sb.AppendLine("  \"newQuestions\": [ { \"kind\": \"...\", ...same fields without targetId... } ]");
+        sb.AppendLine(
+            "  \"updatedQuestions\": [ { \"targetId\": \"existing-id\", \"kind\": \"...\", \"cognitiveLevel\": \"Recall | Comprehension | Application | Analysis\", \"archetype\": \"FarTransfer | DiscriminativeContrast | CausalPerturbation | SpotTheFlaw | DualCoding | null\", \"difficulty\": 3, \"topicTag\": \"...\", \"prompt\": \"...\", \"options\": [...], \"correctAnswer\": \"...\", \"acceptedAliases\": [], \"hint\": \"1-sentence clue without revealing the answer (or null)\", \"explanation\": \"Why correct: ... Why distractors fail: ... Core principle: ...\", \"codeSnippet\": null, \"codeLanguage\": null, \"mathLatex\": null, \"diagram\": null, \"evidence\": { \"pageNumber\": 1, \"sectionTitle\": \"...\", \"verbatimQuote\": \"...\" } } ],"
+        );
+        sb.AppendLine(
+            "  \"newQuestions\": [ { \"kind\": \"...\", ...same fields without targetId... } ]"
+        );
         sb.AppendLine("}");
         sb.AppendLine();
         sb.AppendLine("USER INSTRUCTIONS / ISSUES TO FIX:");
-        sb.AppendLine(string.IsNullOrWhiteSpace(instructions) ? "Fix inaccuracies, improve distractors, and ensure every question has accurate PDF evidence." : instructions.Trim());
+        sb.AppendLine(
+            string.IsNullOrWhiteSpace(instructions)
+                ? "Fix inaccuracies, improve distractors, and ensure every question has accurate PDF evidence."
+                : instructions.Trim()
+        );
         sb.AppendLine();
         sb.AppendLine($"TARGETED QUESTIONS ({dtoList.Count}):");
         sb.AppendLine(JsonSerializer.Serialize(dtoList, PrettyJsonOpts));
@@ -281,7 +336,9 @@ public static class QuizExportService
         {
             sb.AppendLine();
             sb.AppendLine("GROUNDED SOURCE PDF CONTEXT:");
-            sb.AppendLine(PdfQuizGrounder.FormatPagesForPrompt(contextPages, maxChars: 60_000, out _));
+            sb.AppendLine(
+                PdfQuizGrounder.FormatPagesForPrompt(contextPages, maxChars: 60_000, out _)
+            );
         }
 
         return sb.ToString();
@@ -291,6 +348,7 @@ public static class QuizExportService
     {
         public List<ComprehensiveUpdatedQuestionDto> UpdatedQuestions { get; set; } = [];
         public List<GeneratedQuestionDto> NewQuestions { get; set; } = [];
+
         /// <summary>Fallback when an LLM returns standard { "questions": [...] } instead of updatedQuestions.</summary>
         public List<ComprehensiveUpdatedQuestionDto> Questions { get; set; } = [];
     }
@@ -344,7 +402,8 @@ public static class QuizExportService
     public static (int UpdatedCount, int AddedCount) ApplyDeckComprehensiveFixJson(
         QuizSessionRecord deck,
         string rawJson,
-        IReadOnlyList<string>? fallbackTargetIds = null)
+        IReadOnlyList<string>? fallbackTargetIds = null
+    )
     {
         if (string.IsNullOrWhiteSpace(rawJson))
             throw new InvalidOperationException("Paste a valid JSON response before applying.");
@@ -355,24 +414,32 @@ public static class QuizExportService
 
         if (cleaned.StartsWith('['))
         {
-            updateCandidates =
-                JsonSerializer.Deserialize<List<ComprehensiveUpdatedQuestionDto>>(cleaned, PrettyJsonOpts)
-                ?? [];
+            updateCandidates = JsonSerializer.Deserialize<List<ComprehensiveUpdatedQuestionDto>>(
+                cleaned,
+                PrettyJsonOpts
+            ) ?? [];
         }
         else
         {
-            var payload = JsonSerializer.Deserialize<ComprehensiveFixResponseDto>(cleaned, PrettyJsonOpts)
-                ?? throw new InvalidOperationException("Could not parse comprehensive deck fix JSON.");
+            var payload = JsonSerializer.Deserialize<ComprehensiveFixResponseDto>(
+                cleaned,
+                PrettyJsonOpts
+            )
+                ?? throw new InvalidOperationException(
+                    "Could not parse comprehensive deck fix JSON."
+                );
 
-            updateCandidates = payload.UpdatedQuestions.Count > 0
-                ? payload.UpdatedQuestions
-                : payload.Questions;
+            updateCandidates =
+                payload.UpdatedQuestions.Count > 0 ? payload.UpdatedQuestions : payload.Questions;
             newCandidates = payload.NewQuestions;
 
             // Single-object fallback: { "targetId": "...", "prompt": "..." }
             if (updateCandidates.Count == 0 && newCandidates.Count == 0)
             {
-                var single = JsonSerializer.Deserialize<ComprehensiveUpdatedQuestionDto>(cleaned, PrettyJsonOpts);
+                var single = JsonSerializer.Deserialize<ComprehensiveUpdatedQuestionDto>(
+                    cleaned,
+                    PrettyJsonOpts
+                );
                 if (single is not null && !string.IsNullOrWhiteSpace(single.Prompt))
                     updateCandidates.Add(single);
             }
@@ -385,7 +452,14 @@ public static class QuizExportService
         for (int idx = 0; idx < updateCandidates.Count; idx++)
         {
             var upd = updateCandidates[idx];
-            var target = ResolveTargetQuestion(deck, upd, idx, updateCandidates.Count, fallbackTargetIds, alreadyUpdated);
+            var target = ResolveTargetQuestion(
+                deck,
+                upd,
+                idx,
+                updateCandidates.Count,
+                fallbackTargetIds,
+                alreadyUpdated
+            );
             if (target is null)
                 continue;
 
@@ -422,14 +496,22 @@ public static class QuizExportService
         }
 
         var pdfTouched = touched
-            .Where(t => t.Question.IsPdfSource && !string.IsNullOrWhiteSpace(deck.SourcePdfPath) && File.Exists(deck.SourcePdfPath))
+            .Where(t =>
+                t.Question.IsPdfSource
+                && !string.IsNullOrWhiteSpace(deck.SourcePdfPath)
+                && File.Exists(deck.SourcePdfPath)
+            )
             .Select(t => t.Question)
             .ToList();
         if (pdfTouched.Count > 0)
             PdfQuizGrounder.GroundQuestionsToPdf(deck.SourcePdfPath, pdfTouched);
 
         var fileTouched = touched
-            .Where(t => !t.Question.IsPdfSource && !string.IsNullOrWhiteSpace(t.Question.SourcePdfPath) && File.Exists(t.Question.SourcePdfPath))
+            .Where(t =>
+                !t.Question.IsPdfSource
+                && !string.IsNullOrWhiteSpace(t.Question.SourcePdfPath)
+                && File.Exists(t.Question.SourcePdfPath)
+            )
             .ToList();
         if (fileTouched.Count > 0)
         {
@@ -437,7 +519,10 @@ public static class QuizExportService
                 .Select(t => t.Question.SourcePdfPath)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(distinctPaths, fileTouched);
+            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(
+                distinctPaths,
+                fileTouched
+            );
         }
 
         return (updated, added);
@@ -449,7 +534,8 @@ public static class QuizExportService
         int candidateIndex,
         int candidateCount,
         IReadOnlyList<string>? fallbackTargetIds,
-        HashSet<string> alreadyUpdated)
+        HashSet<string> alreadyUpdated
+    )
     {
         var rawId = upd.EffectiveId?.Trim();
 
@@ -464,7 +550,11 @@ public static class QuizExportService
 
             // 2. 1-based label match ("1", "#1", "Q1")
             var digits = rawId.TrimStart('#', 'Q', 'q', ' ');
-            if (int.TryParse(digits, out int oneBased) && oneBased >= 1 && oneBased <= deck.Questions.Count)
+            if (
+                int.TryParse(digits, out int oneBased)
+                && oneBased >= 1
+                && oneBased <= deck.Questions.Count
+            )
                 return deck.Questions[oneBased - 1];
         }
 
@@ -510,7 +600,10 @@ public static class QuizExportService
 
         try
         {
-            var wrapper = JsonSerializer.Deserialize<QuizGenerationResponseDto>(cleaned, PrettyJsonOpts);
+            var wrapper = JsonSerializer.Deserialize<QuizGenerationResponseDto>(
+                cleaned,
+                PrettyJsonOpts
+            );
             if (wrapper?.Questions is { Count: > 0 })
                 dto = wrapper.Questions[0];
         }
@@ -524,10 +617,21 @@ public static class QuizExportService
 
         ApplyDtoToQuestion(target, dto);
 
-        if (target.IsPdfSource && !string.IsNullOrWhiteSpace(target.SourcePdfPath) && File.Exists(target.SourcePdfPath))
+        if (
+            target.IsPdfSource
+            && !string.IsNullOrWhiteSpace(target.SourcePdfPath)
+            && File.Exists(target.SourcePdfPath)
+        )
             PdfQuizGrounder.GroundQuestionsToPdf(target.SourcePdfPath, [target]);
-        else if (!target.IsPdfSource && !string.IsNullOrWhiteSpace(target.SourcePdfPath) && File.Exists(target.SourcePdfPath))
-            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles([target.SourcePdfPath], [(target, dto.Evidence)]);
+        else if (
+            !target.IsPdfSource
+            && !string.IsNullOrWhiteSpace(target.SourcePdfPath)
+            && File.Exists(target.SourcePdfPath)
+        )
+            ScholarFlow.Core.Knowledge.FileSourceQuizSupport.GroundQuestionsToFiles(
+                [target.SourcePdfPath],
+                [(target, dto.Evidence)]
+            );
     }
 
     private static void ApplyDtoToQuestion(QuizQuestionRecord target, GeneratedQuestionDto dto)
@@ -550,16 +654,18 @@ public static class QuizExportService
         );
         target.Options = options;
         target.CorrectAnswer = correctAnswer;
-        target.AcceptedAliases = dto.AcceptedAliases?
-            .Where(a => !string.IsNullOrWhiteSpace(a))
+        target.AcceptedAliases = dto.AcceptedAliases?.Where(a => !string.IsNullOrWhiteSpace(a))
             .Select(a => a.Trim())
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList() ?? [];
+            .ToList()
+            ?? [];
         target.Explanation = (dto.Explanation ?? string.Empty).Trim();
         if (dto.Hint is not null)
             target.Hint = string.IsNullOrWhiteSpace(dto.Hint) ? null : dto.Hint.Trim();
         if (dto.Archetype is not null)
-            target.Archetype = string.IsNullOrWhiteSpace(dto.Archetype) ? null : dto.Archetype.Trim();
+            target.Archetype = string.IsNullOrWhiteSpace(dto.Archetype)
+                ? null
+                : dto.Archetype.Trim();
         target.CodeSnippet = string.IsNullOrWhiteSpace(dto.CodeSnippet) ? null : dto.CodeSnippet;
         target.CodeLanguage = string.IsNullOrWhiteSpace(dto.CodeLanguage) ? null : dto.CodeLanguage;
         target.MathLatex = string.IsNullOrWhiteSpace(dto.MathLatex) ? null : dto.MathLatex;

@@ -19,14 +19,18 @@ public static class ImagePacketPacker
     private const long MaxDataUriBytes = 8L * 1024 * 1024;
 
     // PdfSharpCore (ImageSharp backend) reliably embeds these; webp/gif/bmp are skipped for the PDF packet.
-    private static readonly HashSet<string> PdfPackableExtensions = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly HashSet<string> PdfPackableExtensions = new(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         ".png",
         ".jpg",
         ".jpeg",
     };
 
-    private static readonly Dictionary<string, string> MimeByExtension = new(StringComparer.OrdinalIgnoreCase)
+    private static readonly Dictionary<string, string> MimeByExtension = new(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
         [".png"] = "image/png",
         [".jpg"] = "image/jpeg",
@@ -39,7 +43,10 @@ public static class ImagePacketPacker
     public static bool IsImage(string path) =>
         StudySourceClassifier.Classify(path).Kind == StudySourceKind.Image;
 
-    public static ImagePackResult PackImagesToPdf(IEnumerable<string> imagePaths, string outputPdfPath)
+    public static ImagePackResult PackImagesToPdf(
+        IEnumerable<string> imagePaths,
+        string outputPdfPath
+    )
     {
         var pages = new List<PackedImagePage>();
         var skipped = new List<string>();
@@ -101,7 +108,11 @@ public static class ImagePacketPacker
         var skipped = new List<string>();
 
         using var doc = new PdfDocument();
-        if (!string.IsNullOrWhiteSpace(sourcePdfPath) && File.Exists(sourcePdfPath) && oneBasedPdfPages.Count > 0)
+        if (
+            !string.IsNullOrWhiteSpace(sourcePdfPath)
+            && File.Exists(sourcePdfPath)
+            && oneBasedPdfPages.Count > 0
+        )
         {
             using var input = PdfSharpCore.Pdf.IO.PdfReader.Open(
                 sourcePdfPath,
@@ -158,7 +169,10 @@ public static class ImagePacketPacker
     {
         try
         {
-            if (!File.Exists(imagePath) || !MimeByExtension.TryGetValue(Path.GetExtension(imagePath), out var mime))
+            if (
+                !File.Exists(imagePath)
+                || !MimeByExtension.TryGetValue(Path.GetExtension(imagePath), out var mime)
+            )
                 return null;
             if (new FileInfo(imagePath).Length > MaxDataUriBytes)
                 return null;

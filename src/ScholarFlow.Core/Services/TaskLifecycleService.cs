@@ -123,9 +123,9 @@ public sealed class TaskLifecycleService
         }
 
         return tasks.FirstOrDefault(t =>
-                t.LineNumber == target.LineNumber
-                && t.Title.Equals(target.Title, StringComparison.OrdinalIgnoreCase)
-            )
+            t.LineNumber == target.LineNumber
+            && t.Title.Equals(target.Title, StringComparison.OrdinalIgnoreCase)
+        )
             ?? tasks.FirstOrDefault(t =>
                 t.Title.Equals(target.Title, StringComparison.OrdinalIgnoreCase)
             );

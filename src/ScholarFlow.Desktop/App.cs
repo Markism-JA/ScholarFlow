@@ -79,8 +79,14 @@ public sealed class App : Application
         {
             Setters =
             {
-                new Setter(TemplatedControl.BackgroundProperty, ThemeService.Brush(ThemeService.BgSurface)),
-                new Setter(TemplatedControl.BorderBrushProperty, ThemeService.Brush(ThemeService.BorderSubtle)),
+                new Setter(
+                    TemplatedControl.BackgroundProperty,
+                    ThemeService.Brush(ThemeService.BgSurface)
+                ),
+                new Setter(
+                    TemplatedControl.BorderBrushProperty,
+                    ThemeService.Brush(ThemeService.BorderSubtle)
+                ),
                 new Setter(TemplatedControl.BorderThicknessProperty, new Thickness(1)),
                 new Setter(TemplatedControl.CornerRadiusProperty, new CornerRadius(8)),
                 new Setter(TemplatedControl.PaddingProperty, new Thickness(4)),
@@ -92,7 +98,10 @@ public sealed class App : Application
         {
             Setters =
             {
-                new Setter(TemplatedControl.ForegroundProperty, ThemeService.Brush(ThemeService.TextPrimary)),
+                new Setter(
+                    TemplatedControl.ForegroundProperty,
+                    ThemeService.Brush(ThemeService.TextPrimary)
+                ),
                 new Setter(TemplatedControl.FontSizeProperty, 12.5),
                 new Setter(TemplatedControl.CornerRadiusProperty, new CornerRadius(5)),
                 new Setter(TemplatedControl.PaddingProperty, new Thickness(10, 6)),
@@ -104,7 +113,10 @@ public sealed class App : Application
         {
             Setters =
             {
-                new Setter(TemplatedControl.BackgroundProperty, ThemeService.Brush(ThemeService.BgHover)),
+                new Setter(
+                    TemplatedControl.BackgroundProperty,
+                    ThemeService.Brush(ThemeService.BgHover)
+                ),
             },
         };
         Styles.Add(menuItemHoverStyle);
@@ -113,8 +125,14 @@ public sealed class App : Application
         {
             Setters =
             {
-                new Setter(TemplatedControl.BackgroundProperty, ThemeService.Brush(ThemeService.AccentSoftBg)),
-                new Setter(TemplatedControl.ForegroundProperty, ThemeService.Brush(ThemeService.AccentPrimary)),
+                new Setter(
+                    TemplatedControl.BackgroundProperty,
+                    ThemeService.Brush(ThemeService.AccentSoftBg)
+                ),
+                new Setter(
+                    TemplatedControl.ForegroundProperty,
+                    ThemeService.Brush(ThemeService.AccentPrimary)
+                ),
             },
         };
         Styles.Add(menuItemSelectedStyle);
@@ -223,8 +241,7 @@ public sealed class App : Application
             b.Provider.Capabilities.EnforcesSingleConcurrentSession
         );
         bool isSingleSessionPaused =
-            hasSingleSessionProvider
-            && _mainVm.SyncCoordinator.IsAnySingleSessionProviderPaused();
+            hasSingleSessionProvider && _mainVm.SyncCoordinator.IsAnySingleSessionProviderPaused();
 
         var syncingBasins = registeredBasins.Where(b => b.IsSyncing).ToList();
         var knownSignature = string.Join(
@@ -235,9 +252,12 @@ public sealed class App : Application
             "|",
             registeredBasins.Select(b =>
             {
-                var excluded = new HashSet<string>(b.Config.ExcludedCourseIds, StringComparer.OrdinalIgnoreCase);
-                var courses = b.Courses
-                    .Where(c => c.IsSyncableCourse && !excluded.Contains(c.CourseId!))
+                var excluded = new HashSet<string>(
+                    b.Config.ExcludedCourseIds,
+                    StringComparer.OrdinalIgnoreCase
+                );
+                var courses = b
+                    .Courses.Where(c => c.IsSyncableCourse && !excluded.Contains(c.CourseId!))
                     .OrderBy(c => c.Title, StringComparer.OrdinalIgnoreCase)
                     .Select(c => $"{c.FolderName}:{c.Title}");
                 return $"{b.BasinRoot}:{b.Config.Name}:{b.Config.ProviderId}:{b.Config.BackgroundSyncEnabled}:{b.IsSyncing}:{b.LastStatus}:{string.Join(",", courses)}";
@@ -323,7 +343,8 @@ public sealed class App : Application
             var full = Path.GetFullPath(entry.FilePath);
             bool isActive = string.Equals(full, activeRoot, StringComparison.OrdinalIgnoreCase);
             string kindTag =
-                stateByPath.TryGetValue(full, out var state) && state.Provider.Capabilities.SupportsSync
+                stateByPath.TryGetValue(full, out var state)
+                && state.Provider.Capabilities.SupportsSync
                     ? state.Provider.DisplayName
                     : "Local";
             string prefix = isActive ? "✓ " : "";
@@ -350,7 +371,11 @@ public sealed class App : Application
         string activeRoot
     )
     {
-        bool isActive = string.Equals(basin.BasinRoot, activeRoot, StringComparison.OrdinalIgnoreCase);
+        bool isActive = string.Equals(
+            basin.BasinRoot,
+            activeRoot,
+            StringComparison.OrdinalIgnoreCase
+        );
         string activePrefix = isActive ? "● " : "";
         string syncSuffix = basin.IsSyncing ? " — Syncing..." : "";
 
@@ -362,7 +387,10 @@ public sealed class App : Application
 
         if (basin.Provider.Capabilities.SupportsFastPoll)
         {
-            var pollItem = new NativeMenuItem("Fast Poll Assignments") { IsEnabled = !basin.IsSyncing };
+            var pollItem = new NativeMenuItem("Fast Poll Assignments")
+            {
+                IsEnabled = !basin.IsSyncing,
+            };
             pollItem.Click += async (_, _) => await TriggerTrayFastPollAsync(basin, isActive);
             subMenu.Items.Add(pollItem);
         }
@@ -391,7 +419,11 @@ public sealed class App : Application
                 courseMenu.Items.Add(courseItem);
             }
             subMenu.Items.Add(
-                new NativeMenuItem("Sync Course") { IsEnabled = !basin.IsSyncing, Menu = courseMenu }
+                new NativeMenuItem("Sync Course")
+                {
+                    IsEnabled = !basin.IsSyncing,
+                    Menu = courseMenu,
+                }
             );
         }
 
@@ -445,7 +477,10 @@ public sealed class App : Application
         if (isActive)
             await Dispatcher.UIThread.InvokeAsync(() => _mainVm.RunCourseSyncAsync(course));
         else
-            await _mainVm.SyncCoordinator.TriggerCourseSyncAsync(basin.BasinRoot, course.FolderName);
+            await _mainVm.SyncCoordinator.TriggerCourseSyncAsync(
+                basin.BasinRoot,
+                course.FolderName
+            );
     }
 
     private async Task TriggerTrayFullSyncAsync(RegisteredBasinSyncState basin, bool isActive)

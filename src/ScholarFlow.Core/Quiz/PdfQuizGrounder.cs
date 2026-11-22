@@ -151,8 +151,7 @@ public static class PdfQuizGrounder
         if (totalPages <= 0)
             return [];
 
-        var normalizedTerm =
-            TaskItem.NormalizeTerm(termFilter)
+        var normalizedTerm = TaskItem.NormalizeTerm(termFilter)
             ?? (string.IsNullOrWhiteSpace(termFilter) ? null : termFilter.Trim());
         bool hasExplicitRanges = explicitRanges is { Count: > 0 };
         var leafSections = outlineSections.Where(s => s.Level >= 2).ToList();
@@ -349,8 +348,7 @@ public static class PdfQuizGrounder
             return [];
 
         var pageSections = cached.PageSections;
-        var normalizedTerm =
-            TaskItem.NormalizeTerm(termFilter)
+        var normalizedTerm = TaskItem.NormalizeTerm(termFilter)
             ?? (string.IsNullOrWhiteSpace(termFilter) ? null : termFilter.Trim());
         bool hasAnyTermBookmarks = pageSections.Any(ps => !string.IsNullOrWhiteSpace(ps.Term));
         bool hasNonSyllabusPages = pageSections.Any(ps =>
@@ -449,7 +447,10 @@ public static class PdfQuizGrounder
             )
         )
         {
-            var fallbackRange = Enumerable.Range(minP, maxP - minP + 1).Take(maxPages + 25).ToList();
+            var fallbackRange = Enumerable
+                .Range(minP, maxP - minP + 1)
+                .Take(maxPages + 25)
+                .ToList();
             EnsurePagesExtracted(pdfPath, cached, fallbackRange, maxPages + 25);
 
             for (int p = minP; p <= maxP && results.Count < maxPages; p++)
@@ -493,7 +494,11 @@ public static class PdfQuizGrounder
         foreach (var p in cleaned)
         {
             var header = $"=== [PAGE {p.PageNumber}] | Section: {p.SectionBreadcrumb} ===";
-            if (maxChars < int.MaxValue && sb.Length + header.Length + p.Text.Length + 8 > maxChars && sb.Length > 0)
+            if (
+                maxChars < int.MaxValue
+                && sb.Length + header.Length + p.Text.Length + 8 > maxChars
+                && sb.Length > 0
+            )
                 break;
 
             sb.AppendLine(header);
@@ -827,7 +832,11 @@ public static class PdfQuizGrounder
     /// Extracts words inside a normalized [0..1] top-left bounding box on the given 1-based PDF page
     /// and resolves the page's section breadcrumb for visual drag-to-highlight grounding.
     /// </summary>
-    public static (string Quote, string SectionTitle, int TotalPages) ExtractQuoteFromNormalizedRegion(
+    public static (
+        string Quote,
+        string SectionTitle,
+        int TotalPages
+    ) ExtractQuoteFromNormalizedRegion(
         string pdfPath,
         int oneBasedPage,
         NormalizedHighlightRect region
@@ -863,7 +872,10 @@ public static class PdfQuizGrounder
             })
             .ToList();
 
-        var quote = string.Join(" ", matchingWords.Select(w => w.Text.Trim()).Where(t => t.Length > 0));
+        var quote = string.Join(
+            " ",
+            matchingWords.Select(w => w.Text.Trim()).Where(t => t.Length > 0)
+        );
         return (quote, sectionTitle, totalPages);
     }
 
@@ -1250,7 +1262,12 @@ public static class PdfQuizGrounder
 
         var anchors = new List<(int Page, string? Term, string Breadcrumb)>();
 
-        void Walk(IEnumerable<BookmarkNode> nodes, string? inheritedTerm, string parentPath, int level)
+        void Walk(
+            IEnumerable<BookmarkNode> nodes,
+            string? inheritedTerm,
+            string parentPath,
+            int level
+        )
         {
             foreach (var node in nodes)
             {
@@ -1342,7 +1359,8 @@ public static class PdfQuizGrounder
             if (string.IsNullOrEmpty(token))
                 continue;
 
-            bool isNewLine = !lastBottom.HasValue || Math.Abs(w.BoundingBox.Bottom - lastBottom.Value) > 5.0;
+            bool isNewLine =
+                !lastBottom.HasValue || Math.Abs(w.BoundingBox.Bottom - lastBottom.Value) > 5.0;
             if (isNewLine)
             {
                 if (lastBottom.HasValue)

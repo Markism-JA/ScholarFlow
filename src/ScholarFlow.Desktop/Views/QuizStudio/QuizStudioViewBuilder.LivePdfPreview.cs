@@ -89,9 +89,10 @@ public static partial class QuizStudioViewBuilder
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(4),
                 Margin = new Thickness(6),
-                HorizontalAlignment = studio.PreviewZoomPercent == 100
-                    ? HorizontalAlignment.Stretch
-                    : HorizontalAlignment.Center,
+                HorizontalAlignment =
+                    studio.PreviewZoomPercent == 100
+                        ? HorizontalAlignment.Stretch
+                        : HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Top,
                 Child = previewImg,
             };

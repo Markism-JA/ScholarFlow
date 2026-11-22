@@ -44,10 +44,8 @@ public static partial class QuizStudioViewBuilder
             )
         );
         topLeftActions.Children.Add(
-            UiBuilder.GhostButton(
-                "Restart",
-                MaterialIconKind.Restart,
-                () => studio.StartQuizSession(session, resumeSavedProgress: false)
+            UiBuilder.GhostButton("Restart", MaterialIconKind.Restart, () =>
+                studio.StartQuizSession(session, resumeSavedProgress: false)
             )
         );
         topBar.Children.Add(topLeftActions);
@@ -152,7 +150,8 @@ public static partial class QuizStudioViewBuilder
             qCardStack.Children.Add(
                 new TextBlock
                 {
-                    Text = $"Source Section: {q.SectionTitle} ({(q.IsPdfSource ? $"Page {q.SourcePage}" : q.EvidenceChipLabel)})",
+                    Text =
+                        $"Source Section: {q.SectionTitle} ({(q.IsPdfSource ? $"Page {q.SourcePage}" : q.EvidenceChipLabel)})",
                     FontSize = 11.5,
                     FontWeight = FontWeight.Medium,
                     Foreground = ThemeService.Brush(ThemeService.TextMuted),
@@ -186,9 +185,8 @@ public static partial class QuizStudioViewBuilder
         var resolvedImg = studio.ResolveQuestionImageFullPath(q.ImagePath);
         if (!string.IsNullOrWhiteSpace(resolvedImg))
             qCardStack.Children.Add(
-                QuizRichContentRenderer.BuildQuestionImageCard(
-                    resolvedImg,
-                    () => studio.OpenImageZoom(q.ImagePath)
+                QuizRichContentRenderer.BuildQuestionImageCard(resolvedImg, () =>
+                    studio.OpenImageZoom(q.ImagePath)
                 )
             );
 
@@ -410,18 +408,11 @@ public static partial class QuizStudioViewBuilder
             if (!studio.IsAnswerRevealed)
             {
                 orderStack.Children.Add(
-                    UiBuilder.PrimaryButton(
-                        "Check Sequence",
-                        MaterialIconKind.Check,
-                        async () =>
-                        {
-                            var currSeq = string.Join(
-                                " -> ",
-                                studio.GetOrderingItemsForQuestion(q)
-                            );
-                            await studio.SubmitAnswerAsync(currSeq);
-                        }
-                    )
+                    UiBuilder.PrimaryButton("Check Sequence", MaterialIconKind.Check, async () =>
+                    {
+                        var currSeq = string.Join(" -> ", studio.GetOrderingItemsForQuestion(q));
+                        await studio.SubmitAnswerAsync(currSeq);
+                    })
                 );
             }
 
@@ -654,7 +645,8 @@ public static partial class QuizStudioViewBuilder
                 {
                     new TextBlock
                     {
-                        Text = $"{(q.IsPdfSource ? "Master PDF Evidence" : "Source Evidence")}  ·  {q.SectionTitle}  ·  {(q.IsPdfSource ? $"Page {q.SourcePage}" : q.EvidenceChipLabel)}",
+                        Text =
+                            $"{(q.IsPdfSource ? "Master PDF Evidence" : "Source Evidence")}  ·  {q.SectionTitle}  ·  {(q.IsPdfSource ? $"Page {q.SourcePage}" : q.EvidenceChipLabel)}",
                         FontSize = 11.5,
                         FontWeight = FontWeight.SemiBold,
                         Foreground = ThemeService.Brush(ThemeService.PriorityP2Fg),
@@ -693,7 +685,9 @@ public static partial class QuizStudioViewBuilder
             {
                 evidenceStack.Children.Add(
                     UiBuilder.GhostButton(
-                        q.IsPdfSource ? $"Jump to Highlighted Statement on Page {q.SourcePage} in PDF Reader" : $"Open {q.EvidenceChipLabel} in Source Viewer",
+                        q.IsPdfSource
+                            ? $"Jump to Highlighted Statement on Page {q.SourcePage} in PDF Reader"
+                            : $"Open {q.EvidenceChipLabel} in Source Viewer",
                         MaterialIconKind.Marker,
                         () => studio.OpenQuestionEvidenceInPdfReader(q),
                         isActive: true
@@ -726,10 +720,8 @@ public static partial class QuizStudioViewBuilder
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             rateGroup.Children.Add(
-                UiBuilder.GhostButton(
-                    "Again (1d)",
-                    MaterialIconKind.Refresh,
-                    async () => await studio.RateAndAdvanceAsync(1)
+                UiBuilder.GhostButton("Again (1d)", MaterialIconKind.Refresh, async () =>
+                    await studio.RateAndAdvanceAsync(1)
                 )
             );
             rateGroup.Children.Add(
@@ -762,11 +754,16 @@ public static partial class QuizStudioViewBuilder
             stack
         );
 
-        if (!string.IsNullOrWhiteSpace(studio.ZoomedImagePath) && File.Exists(studio.ZoomedImagePath))
+        if (
+            !string.IsNullOrWhiteSpace(studio.ZoomedImagePath)
+            && File.Exists(studio.ZoomedImagePath)
+        )
         {
             var host = new Grid();
             host.Children.Add(scroll);
-            host.Children.Add(BuildImageZoomLightbox(studio.ZoomedImagePath, studio.CloseImageZoom));
+            host.Children.Add(
+                BuildImageZoomLightbox(studio.ZoomedImagePath, studio.CloseImageZoom)
+            );
             return host;
         }
 
@@ -850,10 +847,8 @@ public static partial class QuizStudioViewBuilder
             }
         );
 
-        var retryBtn = UiBuilder.GhostButton(
-            "Retake Assessment",
-            MaterialIconKind.Restart,
-            () => studio.StartQuizSession(session)
+        var retryBtn = UiBuilder.GhostButton("Retake Assessment", MaterialIconKind.Restart, () =>
+            studio.StartQuizSession(session)
         );
         Grid.SetColumn(retryBtn, 1);
         headerRow.Children.Add(retryBtn);

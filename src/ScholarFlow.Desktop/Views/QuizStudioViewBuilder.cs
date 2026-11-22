@@ -92,18 +92,20 @@ public static partial class QuizStudioViewBuilder
                     StringComparison.OrdinalIgnoreCase
                 )
             );
-        var builderScopeSubtitle = studio.IsMixedSourceMode
-            ? $"Sources: {studio.SelectedFileSourcePaths.Count} file(s) + {pdfFileName} ({studio.ScopePreviewPageCount} PDF page(s) in scope)"
+        var builderScopeSubtitle =
+            studio.IsMixedSourceMode
+                ? $"Sources: {studio.SelectedFileSourcePaths.Count} file(s) + {pdfFileName} ({studio.ScopePreviewPageCount} PDF page(s) in scope)"
             : studio.IsFileSourceMode
                 ? $"Sources: {studio.SelectedFileSourcePaths.Count} study file(s) selected"
-                : $"Source: {pdfFileName} ({studio.ScopePreviewPageCount}/{studio.PdfTotalPages} page(s) in scope)";
+            : $"Source: {pdfFileName} ({studio.ScopePreviewPageCount}/{studio.PdfTotalPages} page(s) in scope)";
 
         titleLeft.Children.Add(
             new TextBlock
             {
-                Text = studio.ActiveSubTab == QuizStudioSubTab.Builder
-                    ? builderScopeSubtitle
-                    : $"{courseQuizCount} saved quiz(zes) in subject  ·  {studio.AllDueReviewQuestions.Count} due card(s) across basin",
+                Text =
+                    studio.ActiveSubTab == QuizStudioSubTab.Builder
+                        ? builderScopeSubtitle
+                        : $"{courseQuizCount} saved quiz(zes) in subject  ·  {studio.AllDueReviewQuestions.Count} due card(s) across basin",
                 FontSize = 11.5,
                 Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -385,7 +387,9 @@ public static partial class QuizStudioViewBuilder
         {
             var host = new Grid();
             host.Children.Add(root);
-            host.Children.Add(BuildImageZoomLightbox(studio.ZoomedImagePath, studio.CloseImageZoom));
+            host.Children.Add(
+                BuildImageZoomLightbox(studio.ZoomedImagePath, studio.CloseImageZoom)
+            );
             return host;
         }
 

@@ -29,11 +29,16 @@ public sealed class ElmsBasinSyncService(
         MasterPdfService? pdfService = null,
         ILogger<ElmsBasinSyncService>? logger = null
     )
-        : this(_ => elmsClient ?? throw new ArgumentNullException(nameof(elmsClient)), basinService, syncResolver, pdfService, logger)
-    { }
+        : this(
+            _ => elmsClient ?? throw new ArgumentNullException(nameof(elmsClient)),
+            basinService,
+            syncResolver,
+            pdfService,
+            logger
+        ) { }
 
-    private readonly Func<BasinConfig, IElmsClient> _clientResolver =
-        clientResolver ?? throw new ArgumentNullException(nameof(clientResolver));
+    private readonly Func<BasinConfig, IElmsClient> _clientResolver = clientResolver
+        ?? throw new ArgumentNullException(nameof(clientResolver));
     private readonly BasinService _basinService = basinService ?? new BasinService();
     private readonly ISyncResolver _syncResolver = syncResolver ?? new SyncResolver();
     private readonly MasterPdfService _pdfService = pdfService ?? new MasterPdfService();
@@ -64,7 +69,9 @@ public sealed class ElmsBasinSyncService(
             ct
         );
         var discoveredCourses = (await client.GetEnrolledCoursesAsync(ignoreFilter, ct: ct))
-            .Where(c => !config.ExcludedCourseIds.Contains(c.CourseId, StringComparer.OrdinalIgnoreCase))
+            .Where(c =>
+                !config.ExcludedCourseIds.Contains(c.CourseId, StringComparer.OrdinalIgnoreCase)
+            )
             .ToList();
 
         var basinCourses = await _basinService.UpsertCoursesAsync(
@@ -95,18 +102,14 @@ public sealed class ElmsBasinSyncService(
         foreach (var rawElmsCourse in discoveredCourses)
         {
             ct.ThrowIfCancellationRequested();
-            var courseEntry =
-                basinCourses.FirstOrDefault(c =>
-                    (!string.IsNullOrWhiteSpace(c.CourseId) && c.CourseId == rawElmsCourse.CourseId)
-                    || c.FolderName.Equals(
-                        rawElmsCourse.SanitizedFolderName,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                    || BasinService.IsSameCourseFuzzy(
-                        c.FolderName,
-                        rawElmsCourse.SanitizedFolderName
-                    )
+            var courseEntry = basinCourses.FirstOrDefault(c =>
+                (!string.IsNullOrWhiteSpace(c.CourseId) && c.CourseId == rawElmsCourse.CourseId)
+                || c.FolderName.Equals(
+                    rawElmsCourse.SanitizedFolderName,
+                    StringComparison.OrdinalIgnoreCase
                 )
+                || BasinService.IsSameCourseFuzzy(c.FolderName, rawElmsCourse.SanitizedFolderName)
+            )
                 ?? basinCourses.First(c =>
                     c.Title.Equals(rawElmsCourse.Title, StringComparison.OrdinalIgnoreCase)
                 );
@@ -178,7 +181,11 @@ public sealed class ElmsBasinSyncService(
         var client = _clientResolver(config);
         var baseUrl = config.GetProviderSetting("baseUrl", "https://elms.sti.edu");
         await client.EnsureConnectedAsync(
-            ElmsSessionStore.BuildAuthOptions(config.AccountKey, baseUrl, allowInteractiveBrowser: true),
+            ElmsSessionStore.BuildAuthOptions(
+                config.AccountKey,
+                baseUrl,
+                allowInteractiveBrowser: true
+            ),
             ct
         );
 
@@ -237,7 +244,11 @@ public sealed class ElmsBasinSyncService(
         var client = _clientResolver(config);
         var baseUrl = config.GetProviderSetting("baseUrl", "https://elms.sti.edu");
         await client.EnsureConnectedAsync(
-            ElmsSessionStore.BuildAuthOptions(config.AccountKey, baseUrl, allowInteractiveBrowser: true),
+            ElmsSessionStore.BuildAuthOptions(
+                config.AccountKey,
+                baseUrl,
+                allowInteractiveBrowser: true
+            ),
             ct
         );
 
@@ -472,12 +483,12 @@ public sealed class ElmsBasinSyncService(
                 ParentModuleTitle: a.ParentModuleTitle,
                 Kind: a.Kind != ElmsAssignmentKind.Unknown ? a.Kind.ToString() : null,
                 WeightPercent: a.WeightPercent,
-                InstructionFiles: a
-                    .Attachments.Where(r => r.Kind == ElmsResourceKind.AssignmentAttachment)
+                InstructionFiles: a.Attachments.Where(r =>
+                        r.Kind == ElmsResourceKind.AssignmentAttachment
+                    )
                     .Select(r => r.RelativeTargetPath)
                     .ToList(),
-                SubmissionFiles: a
-                    .SubmissionInfo.SubmittedFiles.Where(r =>
+                SubmissionFiles: a.SubmissionInfo.SubmittedFiles.Where(r =>
                         r.Kind == ElmsResourceKind.SubmittedArtifact
                     )
                     .Select(r => r.RelativeTargetPath)

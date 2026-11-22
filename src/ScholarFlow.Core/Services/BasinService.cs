@@ -110,8 +110,8 @@ public sealed partial class BasinService
         CancellationToken ct = default
     )
     {
-        var courses =
-            await LoadJsonAsync<List<BasinCourseEntry>>(GetCoursesPath(basinRoot), ct) ?? [];
+        var courses = await LoadJsonAsync<List<BasinCourseEntry>>(GetCoursesPath(basinRoot), ct)
+            ?? [];
         foreach (var c in courses)
         {
             if (
@@ -446,8 +446,7 @@ public sealed partial class BasinService
             .Where(a => !string.IsNullOrWhiteSpace(a))
             .ToList();
 
-        var sanitizedFolder = FilenameSanitizer.SanitizeFileName(title.Trim(), "")
-            .TrimEnd('.');
+        var sanitizedFolder = FilenameSanitizer.SanitizeFileName(title.Trim(), "").TrimEnd('.');
         if (string.IsNullOrWhiteSpace(sanitizedFolder))
             sanitizedFolder = $"Course_{Guid.NewGuid().ToString("N")[..6]}";
 
@@ -513,10 +512,12 @@ public sealed partial class BasinService
             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
 
         if (string.Equals(fullBasin, fullSource, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Cannot import the Basin root folder itself as a course.");
+            throw new InvalidOperationException(
+                "Cannot import the Basin root folder itself as a course."
+            );
 
-        var sourceParent = Path.GetDirectoryName(fullSource)?
-            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var sourceParent = Path.GetDirectoryName(fullSource)
+            ?.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
         bool isDirectChildOfBasin =
             sourceParent is not null
             && string.Equals(sourceParent, fullBasin, StringComparison.OrdinalIgnoreCase);
@@ -642,19 +643,16 @@ public sealed partial class BasinService
             c.FolderName.Equals(course.FolderName, StringComparison.OrdinalIgnoreCase)
             || (
                 !string.IsNullOrWhiteSpace(course.CourseId)
-                && string.Equals(
-                    c.CourseId,
-                    course.CourseId,
-                    StringComparison.OrdinalIgnoreCase
-                )
+                && string.Equals(c.CourseId, course.CourseId, StringComparison.OrdinalIgnoreCase)
             )
         );
         await SaveCoursesAsync(basinRoot, existing, ct);
 
         if (deleteFolderFromDisk && !string.IsNullOrWhiteSpace(course.FolderName))
         {
-            var fullBasin = Path.GetFullPath(basinRoot)
-                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+            var fullBasin =
+                Path.GetFullPath(basinRoot)
+                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
                 + Path.DirectorySeparatorChar;
             var targetDir = Path.GetFullPath(Path.Combine(basinRoot, course.FolderName));
 
@@ -816,16 +814,14 @@ public sealed partial class BasinService
         if (configuredTerms is { Count: 0 })
             return null;
 
-        var norm =
-            MatchConfiguredOrStandardTerm(explicitTerm, configuredTerms)
+        var norm = MatchConfiguredOrStandardTerm(explicitTerm, configuredTerms)
             ?? MatchConfiguredOrStandardTerm(title, configuredTerms)
             ?? MatchConfiguredOrStandardTerm(parentModuleOrSection, configuredTerms);
         if (norm is not null)
             return norm;
 
         // Extract leading 2-digit module prefix (e.g. "04 Quiz 1" -> "04", "05 Task Performance 1" -> "05")
-        var prefix =
-            ExtractTwoDigitModulePrefix(title)
+        var prefix = ExtractTwoDigitModulePrefix(title)
             ?? ExtractTwoDigitModulePrefix(parentModuleOrSection);
         if (prefix is null)
             return null;
@@ -948,8 +944,7 @@ public sealed partial class BasinService
         termMap ??= LoadCourseTermMap(basinRoot, course.FolderName);
         var courseDir = Path.Combine(basinRoot, course.FolderName);
 
-        var resolvedTerm =
-            ResolveAcademicTerm(termMap, null, task.Title, task.Section)
+        var resolvedTerm = ResolveAcademicTerm(termMap, null, task.Title, task.Section)
             ?? TaskItem.NormalizeTerm(task.Term);
         if (resolvedTerm is null)
         {

@@ -10,7 +10,9 @@ namespace ScholarFlow.Desktop.ViewModels;
 /// </summary>
 public sealed partial class QuizStudioViewModel
 {
-    private readonly HashSet<string> _selectedFileSourcePaths = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _selectedFileSourcePaths = new(
+        StringComparer.OrdinalIgnoreCase
+    );
 
     public IReadOnlyList<StudySourceDescriptor> StudyFiles { get; private set; } = [];
     public bool ShowStudyFiles { get; private set; }
@@ -24,7 +26,9 @@ public sealed partial class QuizStudioViewModel
         && File.Exists(SelectedPdfPath);
 
     public bool HasCodeFileSelected =>
-        _selectedFileSourcePaths.Any(p => StudySourceClassifier.Classify(p).Kind == StudySourceKind.Code);
+        _selectedFileSourcePaths.Any(p =>
+            StudySourceClassifier.Classify(p).Kind == StudySourceKind.Code
+        );
 
     public bool IsCodeAwareMixActive { get; private set; }
 
@@ -82,7 +86,8 @@ public sealed partial class QuizStudioViewModel
 
         RebuildStudyFilesForCourse(force: true);
         GeneratedPromptPreview = string.Empty;
-        StatusMessage = $"Scoped Build to '{Path.GetFileName(filePath)}'. Configure options and generate.";
+        StatusMessage =
+            $"Scoped Build to '{Path.GetFileName(filePath)}'. Configure options and generate.";
         IsStatusError = false;
         RefreshLivePromptPreviewIfActive();
         _mainVm.RequestUiRefresh();
@@ -110,7 +115,10 @@ public sealed partial class QuizStudioViewModel
         if (!hadCodeBefore && hasCodeNow && SelectedPreset != QuizPresetMode.Custom)
         {
             SelectedPreset = QuizPresetMode.CodeLab;
-            KindAllocations = QuizGenerationRequest.GetCodeAwareAllocations(AllocationMode, QuestionCount);
+            KindAllocations = QuizGenerationRequest.GetCodeAwareAllocations(
+                AllocationMode,
+                QuestionCount
+            );
             CognitiveAllocations = QuizGenerationRequest.GetDefaultCognitiveAllocationsForPreset(
                 QuizPresetMode.CodeLab
             );
@@ -146,7 +154,11 @@ public sealed partial class QuizStudioViewModel
     private void RebuildStudyFilesForCourse(bool force = false)
     {
         var folder = SelectedCourse?.FolderName;
-        bool courseChanged = !string.Equals(folder, _studyFilesCourseFolder, StringComparison.OrdinalIgnoreCase);
+        bool courseChanged = !string.Equals(
+            folder,
+            _studyFilesCourseFolder,
+            StringComparison.OrdinalIgnoreCase
+        );
         if (!courseChanged && !force)
             return;
 
@@ -179,7 +191,9 @@ public sealed partial class QuizStudioViewModel
     {
         try
         {
-            var discovered = await Task.Run(() => FileSourceQuizSupport.DiscoverCourseStudyFiles(courseDir));
+            var discovered = await Task.Run(() =>
+                FileSourceQuizSupport.DiscoverCourseStudyFiles(courseDir)
+            );
             _studyFilesCache[folder] = discovered;
 
             if (string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase))
@@ -206,7 +220,10 @@ public sealed partial class QuizStudioViewModel
     }
 
     private IReadOnlyList<string> GetSelectedFileSourcesInOrder() =>
-        StudyFiles.Where(f => _selectedFileSourcePaths.Contains(f.FilePath)).Select(f => f.FilePath).ToList();
+        StudyFiles
+            .Where(f => _selectedFileSourcePaths.Contains(f.FilePath))
+            .Select(f => f.FilePath)
+            .ToList();
 
     /// <summary>Manual Web UI: pack selected images (and scoped PDF pages if combined) into an uploadable PDF + copy prompt.</summary>
     private async Task ExportPackedImagesForUploadAsync(
@@ -218,7 +235,8 @@ public sealed partial class QuizStudioViewModel
         var images = req.SourceFilePaths.Where(ImagePacketPacker.IsImage).ToList();
         if (images.Count == 0 && !req.IsMixedSources)
         {
-            StatusMessage = "Select at least one image (png / jpg) to pack, or use Copy Grounded Prompt for text/code.";
+            StatusMessage =
+                "Select at least one image (png / jpg) to pack, or use Copy Grounded Prompt for text/code.";
             IsStatusError = true;
             _mainVm.RequestUiRefresh();
             return;
@@ -251,24 +269,37 @@ public sealed partial class QuizStudioViewModel
                         maxPages: 250
                     );
                     pdfPageNumbers = pdfPages.Select(p => p.PageNumber).ToList();
-                    pdfManifest = pdfPages.Select(p => (p.PageNumber, p.SectionBreadcrumb)).ToList();
+                    pdfManifest = pdfPages
+                        .Select(p => (p.PageNumber, p.SectionBreadcrumb))
+                        .ToList();
                 }
 
                 var result = req.IsMixedSources
-                    ? ImagePacketPacker.PackScopedPdfAndImages(req.SourcePdfPath, pdfPageNumbers, images, outPath)
+                    ? ImagePacketPacker.PackScopedPdfAndImages(
+                        req.SourcePdfPath,
+                        pdfPageNumbers,
+                        images,
+                        outPath
+                    )
                     : ImagePacketPacker.PackImagesToPdf(images, outPath);
 
                 var textBundle = FileSourceQuizSupport.BuildPromptBundle(
                     req.SourceFilePaths.Where(p => !ImagePacketPacker.IsImage(p)),
                     ManualPromptBudgetChars
                 );
-                var text = _llmService.BuildInstructionPromptForPackedImages(req, result.Pages, textBundle, pdfManifest);
+                var text = _llmService.BuildInstructionPromptForPackedImages(
+                    req,
+                    result.Pages,
+                    textBundle,
+                    pdfManifest
+                );
                 return (text, result.Pages.Count, pdfPageNumbers.Count, result.Skipped);
             });
 
             if (packedImages == 0 && pdfCount == 0)
             {
-                StatusMessage = "No packable images or PDF pages (Web packet supports PDF + png/jpg; webp/gif need API mode).";
+                StatusMessage =
+                    "No packable images or PDF pages (Web packet supports PDF + png/jpg; webp/gif need API mode).";
                 IsStatusError = true;
                 _mainVm.RequestUiRefresh();
                 return;
@@ -280,9 +311,8 @@ public sealed partial class QuizStudioViewModel
             var summary = req.IsMixedSources
                 ? $"Saved {outPath} ({pdfCount} PDF page(s) + {packedImages} image(s)) & copied prompt."
                 : $"Saved {outPath} ({packedImages} image(s)) & copied prompt to clipboard.";
-            StatusMessage = skipped.Count > 0
-                ? $"{summary} Skipped: {string.Join(", ", skipped)}."
-                : summary;
+            StatusMessage =
+                skipped.Count > 0 ? $"{summary} Skipped: {string.Join(", ", skipped)}." : summary;
             IsStatusError = false;
         }
         catch (Exception ex)
@@ -311,16 +341,28 @@ public sealed partial class QuizStudioViewModel
         var (kind, _) = StudySourceClassifier.Classify(question.SourcePdfPath);
         int? startLine = question.SourceStartLine;
         int? endLine = question.SourceEndLine;
-        string? section = string.IsNullOrWhiteSpace(question.SectionTitle) ? null : question.SectionTitle;
+        string? section = string.IsNullOrWhiteSpace(question.SectionTitle)
+            ? null
+            : question.SectionTitle;
 
-        if (kind != StudySourceKind.Image && startLine is null && !string.IsNullOrWhiteSpace(question.VerbatimQuote))
+        if (
+            kind != StudySourceKind.Image
+            && startLine is null
+            && !string.IsNullOrWhiteSpace(question.VerbatimQuote)
+        )
         {
-            var resolved = SourceEvidenceGrounder.ResolveLineRange(question.SourcePdfPath, question.VerbatimQuote);
+            var resolved = SourceEvidenceGrounder.ResolveLineRange(
+                question.SourcePdfPath,
+                question.VerbatimQuote
+            );
             if (resolved is not null)
             {
                 startLine = question.SourceStartLine = resolved.StartLine;
                 endLine = question.SourceEndLine = resolved.EndLine;
-                if (string.IsNullOrWhiteSpace(section) && !string.IsNullOrWhiteSpace(resolved.SectionTitle))
+                if (
+                    string.IsNullOrWhiteSpace(section)
+                    && !string.IsNullOrWhiteSpace(resolved.SectionTitle)
+                )
                     section = question.SectionTitle = resolved.SectionTitle;
             }
         }

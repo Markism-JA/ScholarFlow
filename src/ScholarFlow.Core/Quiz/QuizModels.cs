@@ -9,7 +9,7 @@ public enum QuizQuestionKind
     Identification,
     Situational,
     FillInTheBlank,
-    Ordering
+    Ordering,
 }
 
 public enum CognitiveLevel
@@ -17,7 +17,7 @@ public enum CognitiveLevel
     Recall,
     Comprehension,
     Application,
-    Analysis
+    Analysis,
 }
 
 public enum CognitiveMixPreset
@@ -25,7 +25,7 @@ public enum CognitiveMixPreset
     Balanced,
     Foundations,
     ExamApplication,
-    DeepMastery
+    DeepMastery,
 }
 
 public enum QuestionArchetype
@@ -34,7 +34,7 @@ public enum QuestionArchetype
     DiscriminativeContrast,
     CausalPerturbation,
     SpotTheFlaw,
-    DualCoding
+    DualCoding,
 }
 
 public enum ConfidenceLevel
@@ -42,7 +42,7 @@ public enum ConfidenceLevel
     None = 0,
     Guess = 1,
     Unsure = 2,
-    Certain = 3
+    Certain = 3,
 }
 
 public enum QuizPresetMode
@@ -52,13 +52,13 @@ public enum QuizPresetMode
     WeakTopicDrill,
     DeepMastery,
     CodeLab,
-    Custom
+    Custom,
 }
 
 public enum QuestionAllocationMode
 {
     Percentages,
-    ExactCounts
+    ExactCounts,
 }
 
 public enum QuizContentModalityMode
@@ -67,29 +67,27 @@ public enum QuizContentModalityMode
     StandardProseOnly,
     IncludeCodeSnippets,
     IncludeMathLatex,
-    IncludeDiagrams
+    IncludeDiagrams,
 }
 
 public sealed record ContentModalityProfile(
     bool HasCode,
     bool HasMath,
     bool HasDiagrams,
-    string? DetectedLanguage = null);
+    string? DetectedLanguage = null
+);
 
 /// <summary>
 /// Normalized top-left [0..1] bounding box on a PDF page so highlights scale cleanly at any zoom level.
 /// </summary>
-public sealed record NormalizedHighlightRect(
-    double X,
-    double Y,
-    double Width,
-    double Height);
+public sealed record NormalizedHighlightRect(double X, double Y, double Width, double Height);
 
 public sealed record GroundedEvidenceAnchor(
     int PageNumber,
     string SectionTitle,
     string VerbatimQuote,
-    List<NormalizedHighlightRect> HighlightRects);
+    List<NormalizedHighlightRect> HighlightRects
+);
 
 /// <summary>
 /// JSON DTO representing the exact statement and page inside the Master/Handout PDF that grounds a question.
@@ -130,7 +128,10 @@ public sealed class EvidenceAnchorDto
         if (Region is not { } el)
             return null;
 
-        double x, y, w, h;
+        double x,
+            y,
+            w,
+            h;
         if (el.ValueKind == System.Text.Json.JsonValueKind.Array && el.GetArrayLength() >= 4)
         {
             if (
@@ -184,7 +185,10 @@ public sealed class EvidenceAnchorDto
         {
             foreach (var p in obj.EnumerateObject())
             {
-                if (p.Name.Equals(name, StringComparison.OrdinalIgnoreCase) && p.Value.TryGetDouble(out val))
+                if (
+                    p.Name.Equals(name, StringComparison.OrdinalIgnoreCase)
+                    && p.Value.TryGetDouble(out val)
+                )
                     return true;
             }
             val = 0;
@@ -293,6 +297,7 @@ public sealed class QuizQuestionRecord
     // Grounding to Master / Handout PDF
     public string SourcePdfPath { get; set; } = string.Empty;
     public int SourcePage { get; set; } = 1;
+
     /// <summary>1-based inclusive line range when the evidence lives in a code / markdown / text file.</summary>
     public int? SourceStartLine { get; set; }
     public int? SourceEndLine { get; set; }
@@ -314,7 +319,7 @@ public sealed class QuizQuestionRecord
         string.IsNullOrWhiteSpace(SourcePdfPath)
         || ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(SourcePdfPath).Kind
             is ScholarFlow.Core.Knowledge.StudySourceKind.Pdf
-            or ScholarFlow.Core.Knowledge.StudySourceKind.Unknown;
+                or ScholarFlow.Core.Knowledge.StudySourceKind.Unknown;
 
     /// <summary>Short evidence chip text: "p.12" for PDFs, "L10–24" for text/code, file name for images.</summary>
     public string EvidenceChipLabel
@@ -323,7 +328,9 @@ public sealed class QuizQuestionRecord
         {
             if (IsPdfSource)
                 return $"p.{SourcePage}";
-            var (kind, _) = ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(SourcePdfPath);
+            var (kind, _) = ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(
+                SourcePdfPath
+            );
             if (kind == ScholarFlow.Core.Knowledge.StudySourceKind.Image)
                 return System.IO.Path.GetFileName(SourcePdfPath);
             if (SourceStartLine is > 0)
@@ -347,18 +354,28 @@ public sealed class QuizQuestionRecord
 
         if (Kind == QuizQuestionKind.Ordering)
         {
-            var expectedOrder = Options.Count >= 2
-                ? string.Join(" -> ", Options.Select(NormalizeAnswerToken))
-                : cleanCorrect;
+            var expectedOrder =
+                Options.Count >= 2
+                    ? string.Join(" -> ", Options.Select(NormalizeAnswerToken))
+                    : cleanCorrect;
             var userParts = userAnswer
-                .Split(["->", "|", "\n", ";"], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Split(
+                    ["->", "|", "\n", ";"],
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+                )
                 .Select(NormalizeAnswerToken)
                 .Where(s => s.Length > 0)
                 .ToList();
             if (userParts.Count >= 2)
             {
                 var normalizedUserOrder = string.Join(" -> ", userParts);
-                if (string.Equals(normalizedUserOrder, expectedOrder, StringComparison.OrdinalIgnoreCase))
+                if (
+                    string.Equals(
+                        normalizedUserOrder,
+                        expectedOrder,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
                     return true;
             }
         }
@@ -368,11 +385,23 @@ public sealed class QuizQuestionRecord
         {
             foreach (var opt in Options)
             {
-                if (string.Equals(NormalizeAnswerToken(opt), cleanUser, StringComparison.OrdinalIgnoreCase))
+                if (
+                    string.Equals(
+                        NormalizeAnswerToken(opt),
+                        cleanUser,
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
                 {
                     var strippedOpt = StripOptionPrefix(opt);
                     var strippedCorrect = StripOptionPrefix(CorrectAnswer);
-                    if (string.Equals(NormalizeAnswerToken(strippedOpt), NormalizeAnswerToken(strippedCorrect), StringComparison.OrdinalIgnoreCase))
+                    if (
+                        string.Equals(
+                            NormalizeAnswerToken(strippedOpt),
+                            NormalizeAnswerToken(strippedCorrect),
+                            StringComparison.OrdinalIgnoreCase
+                        )
+                    )
                         return true;
                 }
             }
@@ -380,8 +409,14 @@ public sealed class QuizQuestionRecord
 
         foreach (var alias in AcceptedAliases)
         {
-            if (!string.IsNullOrWhiteSpace(alias) &&
-                string.Equals(cleanUser, NormalizeAnswerToken(alias), StringComparison.OrdinalIgnoreCase))
+            if (
+                !string.IsNullOrWhiteSpace(alias)
+                && string.Equals(
+                    cleanUser,
+                    NormalizeAnswerToken(alias),
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
             {
                 return true;
             }
@@ -404,7 +439,25 @@ public sealed class QuizQuestionRecord
 
     private static readonly HashSet<string> AnswerStopwords = new(StringComparer.OrdinalIgnoreCase)
     {
-        "a", "an", "the", "of", "in", "on", "at", "to", "for", "and", "or", "by", "with", "is", "are", "was", "were", "that", "which"
+        "a",
+        "an",
+        "the",
+        "of",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "and",
+        "or",
+        "by",
+        "with",
+        "is",
+        "are",
+        "was",
+        "were",
+        "that",
+        "which",
     };
 
     private static bool IsFuzzyTextMatch(string userRaw, string targetRaw)
@@ -421,7 +474,10 @@ public sealed class QuizQuestionRecord
             return true;
 
         // Avoid fuzzy matching short codes/acronyms or pure numbers (e.g. "TCP" vs "UDP", "1984" vs "1985")
-        if (targetStripped.All(c => char.IsDigit(c) || char.IsWhiteSpace(c)) || targetStripped.Length < 4)
+        if (
+            targetStripped.All(c => char.IsDigit(c) || char.IsWhiteSpace(c))
+            || targetStripped.Length < 4
+        )
             return false;
 
         // Single/phrase Levenshtein tolerance
@@ -430,7 +486,7 @@ public sealed class QuizQuestionRecord
             <= 4 => 0,
             <= 9 => 1,
             <= 18 => 2,
-            _ => 3
+            _ => 3,
         };
         if (maxDist > 0 && ComputeLevenshteinDistance(userStripped, targetStripped) <= maxDist)
             return true;
@@ -478,7 +534,11 @@ public sealed class QuizQuestionRecord
     {
         if (token.Length >= 5 && token.EndsWith("ies", StringComparison.Ordinal))
             return token[..^3] + "y";
-        if (token.Length >= 4 && token.EndsWith('s') && !token.EndsWith("ss", StringComparison.Ordinal))
+        if (
+            token.Length >= 4
+            && token.EndsWith('s')
+            && !token.EndsWith("ss", StringComparison.Ordinal)
+        )
             return token[..^1];
         return token;
     }
@@ -494,13 +554,15 @@ public sealed class QuizQuestionRecord
 
     private static int ComputeLevenshteinDistance(string s, string t)
     {
-        int n = s.Length, m = t.Length;
+        int n = s.Length,
+            m = t.Length;
         if (Math.Abs(n - m) > 4)
             return Math.Abs(n - m);
 
         var prev = new int[m + 1];
         var curr = new int[m + 1];
-        for (int j = 0; j <= m; j++) prev[j] = j;
+        for (int j = 0; j <= m; j++)
+            prev[j] = j;
 
         for (int i = 1; i <= n; i++)
         {
@@ -519,7 +581,12 @@ public sealed class QuizQuestionRecord
     private static string StripOptionPrefix(string text)
     {
         var t = text.Trim();
-        if (t.Length >= 3 && char.IsLetter(t[0]) && (t[1] is ')' or '.' or ':') && char.IsWhiteSpace(t[2]))
+        if (
+            t.Length >= 3
+            && char.IsLetter(t[0])
+            && (t[1] is ')' or '.' or ':')
+            && char.IsWhiteSpace(t[2])
+        )
             return t[3..].Trim();
         return t;
     }
@@ -529,7 +596,11 @@ public sealed class QuizQuestionRecord
         var chars = raw.Trim()
             .Where(c => char.IsLetterOrDigit(c) || char.IsWhiteSpace(c))
             .ToArray();
-        return string.Join(' ', new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+        return string.Join(
+                ' ',
+                new string(chars).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)
+            )
+            .ToLowerInvariant();
     }
 }
 
@@ -552,7 +623,8 @@ public sealed class QuizSessionRecord
     public int AttemptCount { get; set; }
     public double? LastScorePercent { get; set; }
     public int? InProgressQuestionIndex { get; set; }
-    public Dictionary<string, QuizInProgressAnswer> InProgressAnswers { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+    public Dictionary<string, QuizInProgressAnswer> InProgressAnswers { get; set; } =
+        new(StringComparer.OrdinalIgnoreCase);
     public List<QuizQuestionRecord> Questions { get; set; } = [];
 
     public bool HasInProgressAttempt =>
@@ -584,7 +656,8 @@ public sealed record PdfOutlineSectionInfo(
     string? Term,
     int Level,
     int StartPage,
-    int EndPage)
+    int EndPage
+)
 {
     public int PageCount => Math.Max(1, EndPage - StartPage + 1);
 }
@@ -596,8 +669,10 @@ public sealed class QuizGenerationRequest
     public string CourseTitle { get; set; } = string.Empty;
     public string? Term { get; set; }
     public string SourcePdfPath { get; set; } = string.Empty;
+
     /// <summary>Non-PDF study sources (code, markdown, text, images).</summary>
     public List<string> SourceFilePaths { get; set; } = [];
+
     /// <summary>When true and both SourcePdfPath and SourceFilePaths are set, combines PDF pages + files in one quiz.</summary>
     public bool IncludePdfWithFileSources { get; set; }
     public bool HasFileSources => SourceFilePaths.Count > 0;
@@ -613,9 +688,11 @@ public sealed class QuizGenerationRequest
     public int QuestionCount { get; set; } = 10;
     public QuizPresetMode Preset { get; set; } = QuizPresetMode.ExamSimulator;
     public QuestionAllocationMode AllocationMode { get; set; } = QuestionAllocationMode.Percentages;
-    public Dictionary<QuizQuestionKind, int> KindAllocations { get; set; } = GetDefaultAllocationsForPreset(QuizPresetMode.ExamSimulator);
+    public Dictionary<QuizQuestionKind, int> KindAllocations { get; set; } =
+        GetDefaultAllocationsForPreset(QuizPresetMode.ExamSimulator);
     public QuizContentModalityMode ModalityMode { get; set; } = QuizContentModalityMode.AutoDetect;
     public CognitiveMixPreset CognitiveMix { get; set; } = CognitiveMixPreset.Balanced;
+
     /// <summary>
     /// Customizable cognitive depth weights (Recall / Comprehension / Application / Analysis).
     /// When null or empty, falls back to <see cref="CognitiveMix"/> weights.
@@ -628,7 +705,8 @@ public sealed class QuizGenerationRequest
     public List<string> ExcludePromptsOrTopics { get; set; } = [];
     public string? CustomInstructions { get; set; }
     public string? AppendToQuizId { get; set; }
-    public string ProviderBaseUrl { get; set; } = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+    public string ProviderBaseUrl { get; set; } =
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
     public string? ApiKey { get; set; }
     public string ModelName { get; set; } = "gemini-2.5-flash";
     public bool UseOfflineHeuristicFallback { get; set; }
@@ -687,7 +765,10 @@ public sealed class QuizGenerationRequest
     public Dictionary<CognitiveLevel, int> ResolveCognitivePercentages()
     {
         var allLevels = Enum.GetValues<CognitiveLevel>();
-        if (CognitiveAllocations is null || CognitiveAllocations.Values.Sum(v => Math.Max(0, v)) <= 0)
+        if (
+            CognitiveAllocations is null
+            || CognitiveAllocations.Values.Sum(v => Math.Max(0, v)) <= 0
+        )
             return GetDefaultCognitiveAllocationsForMix(CognitiveMix);
 
         int sum = allLevels.Sum(l => Math.Max(0, CognitiveAllocations.GetValueOrDefault(l, 0)));
@@ -712,17 +793,21 @@ public sealed class QuizGenerationRequest
             allocated += fl;
             remainders.Add((l, exact - fl, w));
         }
-        foreach (var item in remainders
-                     .OrderByDescending(r => r.Rem)
-                     .ThenByDescending(r => r.Weight)
-                     .Take(Math.Max(0, 100 - allocated)))
+        foreach (
+            var item in remainders
+                .OrderByDescending(r => r.Rem)
+                .ThenByDescending(r => r.Weight)
+                .Take(Math.Max(0, 100 - allocated))
+        )
         {
             scaled[item.Level]++;
         }
         return scaled;
     }
 
-    public Dictionary<CognitiveLevel, int> ResolveExactCognitiveCounts(int? targetTotalOverride = null)
+    public Dictionary<CognitiveLevel, int> ResolveExactCognitiveCounts(
+        int? targetTotalOverride = null
+    )
     {
         int total = Math.Clamp(targetTotalOverride ?? QuestionCount, 1, 150);
         var pcts = ResolveCognitivePercentages();
@@ -735,17 +820,20 @@ public sealed class QuizGenerationRequest
         foreach (var l in allLevels)
         {
             int w = Math.Max(0, pcts.GetValueOrDefault(l, 0));
-            if (w == 0) continue;
+            if (w == 0)
+                continue;
             double exact = (double)w * total / sum;
             int fl = (int)Math.Floor(exact);
             result[l] = fl;
             allocated += fl;
             remainders.Add((l, exact - fl, w));
         }
-        foreach (var item in remainders
-                     .OrderByDescending(r => r.Rem)
-                     .ThenByDescending(r => r.Weight)
-                     .Take(Math.Max(0, total - allocated)))
+        foreach (
+            var item in remainders
+                .OrderByDescending(r => r.Rem)
+                .ThenByDescending(r => r.Weight)
+                .Take(Math.Max(0, total - allocated))
+        )
         {
             result[item.Level]++;
         }
@@ -754,7 +842,8 @@ public sealed class QuizGenerationRequest
 
     public static Dictionary<QuizQuestionKind, int> GetDefaultAllocationsForPreset(
         QuizPresetMode preset,
-        QuestionAllocationMode mode = QuestionAllocationMode.Percentages)
+        QuestionAllocationMode mode = QuestionAllocationMode.Percentages
+    )
     {
         if (preset == QuizPresetMode.CodeLab)
             return GetCodeAwareAllocations(mode, 10);
@@ -770,7 +859,7 @@ public sealed class QuizGenerationRequest
                     [QuizQuestionKind.Identification] = 3,
                     [QuizQuestionKind.TrueFalse] = 2,
                     [QuizQuestionKind.FillInTheBlank] = 0,
-                    [QuizQuestionKind.Ordering] = 0
+                    [QuizQuestionKind.Ordering] = 0,
                 },
                 QuizPresetMode.WeakTopicDrill => new()
                 {
@@ -779,7 +868,7 @@ public sealed class QuizGenerationRequest
                     [QuizQuestionKind.Identification] = 3,
                     [QuizQuestionKind.TrueFalse] = 0,
                     [QuizQuestionKind.FillInTheBlank] = 2,
-                    [QuizQuestionKind.Ordering] = 0
+                    [QuizQuestionKind.Ordering] = 0,
                 },
                 QuizPresetMode.DeepMastery => new()
                 {
@@ -788,7 +877,7 @@ public sealed class QuizGenerationRequest
                     [QuizQuestionKind.Identification] = 2,
                     [QuizQuestionKind.TrueFalse] = 0,
                     [QuizQuestionKind.FillInTheBlank] = 1,
-                    [QuizQuestionKind.Ordering] = 2
+                    [QuizQuestionKind.Ordering] = 2,
                 },
                 _ => new()
                 {
@@ -797,8 +886,8 @@ public sealed class QuizGenerationRequest
                     [QuizQuestionKind.Identification] = 2,
                     [QuizQuestionKind.TrueFalse] = 1,
                     [QuizQuestionKind.FillInTheBlank] = 1,
-                    [QuizQuestionKind.Ordering] = 1
-                }
+                    [QuizQuestionKind.Ordering] = 1,
+                },
             };
         }
 
@@ -811,7 +900,7 @@ public sealed class QuizGenerationRequest
                 [QuizQuestionKind.Identification] = 30,
                 [QuizQuestionKind.TrueFalse] = 20,
                 [QuizQuestionKind.FillInTheBlank] = 0,
-                [QuizQuestionKind.Ordering] = 0
+                [QuizQuestionKind.Ordering] = 0,
             },
             QuizPresetMode.WeakTopicDrill => new()
             {
@@ -820,7 +909,7 @@ public sealed class QuizGenerationRequest
                 [QuizQuestionKind.Identification] = 30,
                 [QuizQuestionKind.TrueFalse] = 0,
                 [QuizQuestionKind.FillInTheBlank] = 20,
-                [QuizQuestionKind.Ordering] = 0
+                [QuizQuestionKind.Ordering] = 0,
             },
             QuizPresetMode.DeepMastery => new()
             {
@@ -829,7 +918,7 @@ public sealed class QuizGenerationRequest
                 [QuizQuestionKind.Identification] = 20,
                 [QuizQuestionKind.TrueFalse] = 0,
                 [QuizQuestionKind.FillInTheBlank] = 10,
-                [QuizQuestionKind.Ordering] = 20
+                [QuizQuestionKind.Ordering] = 20,
             },
             _ => new()
             {
@@ -838,8 +927,8 @@ public sealed class QuizGenerationRequest
                 [QuizQuestionKind.Identification] = 20,
                 [QuizQuestionKind.TrueFalse] = 10,
                 [QuizQuestionKind.FillInTheBlank] = 10,
-                [QuizQuestionKind.Ordering] = 10
-            }
+                [QuizQuestionKind.Ordering] = 10,
+            },
         };
     }
 
@@ -849,7 +938,8 @@ public sealed class QuizGenerationRequest
     /// </summary>
     public static Dictionary<QuizQuestionKind, int> GetCodeAwareAllocations(
         QuestionAllocationMode mode = QuestionAllocationMode.Percentages,
-        int targetCount = 10)
+        int targetCount = 10
+    )
     {
         var weights = new Dictionary<QuizQuestionKind, int>
         {
@@ -858,7 +948,7 @@ public sealed class QuizGenerationRequest
             [QuizQuestionKind.Identification] = 25,
             [QuizQuestionKind.TrueFalse] = 10,
             [QuizQuestionKind.FillInTheBlank] = 20,
-            [QuizQuestionKind.Ordering] = 10
+            [QuizQuestionKind.Ordering] = 10,
         };
 
         return mode == QuestionAllocationMode.ExactCounts
@@ -891,7 +981,11 @@ public sealed class QuizGenerationRequest
                 return result;
             }
 
-            if (targetTotalOverride.HasValue && targetTotalOverride.Value > 0 && targetTotalOverride.Value != explicitSum)
+            if (
+                targetTotalOverride.HasValue
+                && targetTotalOverride.Value > 0
+                && targetTotalOverride.Value != explicitSum
+            )
             {
                 return ScaleAllocationsToTarget(result, targetTotalOverride.Value);
             }
@@ -905,7 +999,8 @@ public sealed class QuizGenerationRequest
 
     private static Dictionary<QuizQuestionKind, int> ScaleAllocationsToTarget(
         IReadOnlyDictionary<QuizQuestionKind, int> weights,
-        int targetTotal)
+        int targetTotal
+    )
     {
         var allKinds = Enum.GetValues<QuizQuestionKind>();
         var result = allKinds.ToDictionary(k => k, _ => 0);
@@ -923,7 +1018,8 @@ public sealed class QuizGenerationRequest
         foreach (var k in allKinds)
         {
             int w = Math.Max(0, weights.GetValueOrDefault(k, 0));
-            if (w == 0) continue;
+            if (w == 0)
+                continue;
 
             double exact = (double)w * targetTotal / weightSum;
             int floor = (int)Math.Floor(exact);
@@ -933,11 +1029,13 @@ public sealed class QuizGenerationRequest
         }
 
         int leftover = targetTotal - allocated;
-        foreach (var item in remainders
-                     .OrderByDescending(r => r.Remainder)
-                     .ThenByDescending(r => r.Weight)
-                     .ThenBy(r => (int)r.Kind)
-                     .Take(Math.Max(0, leftover)))
+        foreach (
+            var item in remainders
+                .OrderByDescending(r => r.Remainder)
+                .ThenByDescending(r => r.Weight)
+                .ThenBy(r => (int)r.Kind)
+                .Take(Math.Max(0, leftover))
+        )
         {
             result[item.Kind]++;
         }

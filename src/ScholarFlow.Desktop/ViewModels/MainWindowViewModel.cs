@@ -145,8 +145,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
     public bool IsSyncing
     {
         get =>
-            _isLocalSyncOperation
-            || (SyncCoordinator.GetBasinState(BasinRoot)?.IsSyncing ?? false);
+            _isLocalSyncOperation || (SyncCoordinator.GetBasinState(BasinRoot)?.IsSyncing ?? false);
         private set => _isLocalSyncOperation = value;
     }
     public string StatusText { get; private set; } = "Ready";
@@ -164,7 +163,8 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
     public event EventHandler<UiChangeKind>? UiChanged;
 
     public MainWindowViewModel(
-        Func<BasinService, MasterPdfService, IEnumerable<IBasinSyncProvider>>? providerFactory = null
+        Func<BasinService, MasterPdfService, IEnumerable<IBasinSyncProvider>>? providerFactory =
+            null
     )
     {
         _legacyImporter = new LegacyImporter(_basinService);

@@ -113,10 +113,11 @@ public sealed class KnowledgeWeakSpotProfile
         if (quizzes is null)
             return profile;
 
-        var topicAgg = new Dictionary<
-            (string Course, string Topic),
-            (int Lapses, int WrongCount, double MinEase, string DisplayTopic)
-        >();
+        var topicAgg =
+            new Dictionary<
+                (string Course, string Topic),
+                (int Lapses, int WrongCount, double MinEase, string DisplayTopic)
+            >();
 
         foreach (var quiz in quizzes)
         {
@@ -136,11 +137,9 @@ public sealed class KnowledgeWeakSpotProfile
                     + (lowEase ? 6.0 : 0.0);
 
                 var qReason =
-                    lastWrong && q.SrsLapses > 0
-                        ? $"Missed recently · {q.SrsLapses} lapse(s)"
-                        : lastWrong
-                            ? "Missed on last attempt"
-                            : $"{q.SrsLapses} SRS lapse(s)";
+                    lastWrong && q.SrsLapses > 0 ? $"Missed recently · {q.SrsLapses} lapse(s)"
+                    : lastWrong ? "Missed on last attempt"
+                    : $"{q.SrsLapses} SRS lapse(s)";
 
                 profile._weakQuestionById[q.Id] = (Math.Min(30.0, qWeakScore), qReason);
 
@@ -165,7 +164,10 @@ public sealed class KnowledgeWeakSpotProfile
         {
             double boost = Math.Min(
                 24.0,
-                8.0 + (stats.Lapses * 3.5) + (stats.WrongCount * 5.0) + (stats.MinEase < 2.1 ? 4.0 : 0.0)
+                8.0
+                    + (stats.Lapses * 3.5)
+                    + (stats.WrongCount * 5.0)
+                    + (stats.MinEase < 2.1 ? 4.0 : 0.0)
             );
             var entry = (boost, stats.DisplayTopic, stats.Lapses + stats.WrongCount);
             profile._weakCourseTopic[$"{courseLower}::{topicLower}"] = entry;
@@ -190,7 +192,10 @@ public sealed class KnowledgeWeakSpotProfile
         string? content
     )
     {
-        if (!string.IsNullOrWhiteSpace(questionId) && _weakQuestionById.TryGetValue(questionId, out var qHit))
+        if (
+            !string.IsNullOrWhiteSpace(questionId)
+            && _weakQuestionById.TryGetValue(questionId, out var qHit)
+        )
         {
             return (qHit.Score, true, qHit.Reason);
         }
@@ -205,13 +210,19 @@ public sealed class KnowledgeWeakSpotProfile
         foreach (var (topicLower, globalStats) in _weakGlobalTopic)
         {
             (double Score, string Topic, int Lapses) stats = globalStats;
-            bool sameCourse = _weakCourseTopic.TryGetValue($"{courseLower}::{topicLower}", out var courseStats);
+            bool sameCourse = _weakCourseTopic.TryGetValue(
+                $"{courseLower}::{topicLower}",
+                out var courseStats
+            );
             if (sameCourse)
                 stats = courseStats;
 
             bool matchedTagOrSection =
                 (!string.IsNullOrWhiteSpace(tags) && ContainsTopicToken(tags, topicLower))
-                || (!string.IsNullOrWhiteSpace(sectionTitle) && ContainsTopicToken(sectionTitle, topicLower));
+                || (
+                    !string.IsNullOrWhiteSpace(sectionTitle)
+                    && ContainsTopicToken(sectionTitle, topicLower)
+                );
 
             bool matchedContent =
                 !matchedTagOrSection

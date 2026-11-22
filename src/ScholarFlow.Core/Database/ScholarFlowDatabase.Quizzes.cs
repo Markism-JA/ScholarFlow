@@ -116,8 +116,14 @@ public static partial class ScholarFlowDatabase
                 itemCmd.Parameters.AddWithValue("$explanation", q.Explanation);
                 itemCmd.Parameters.AddWithValue("$source_pdf_path", q.SourcePdfPath);
                 itemCmd.Parameters.AddWithValue("$source_page", q.SourcePage);
-                itemCmd.Parameters.AddWithValue("$source_start_line", (object?)q.SourceStartLine ?? DBNull.Value);
-                itemCmd.Parameters.AddWithValue("$source_end_line", (object?)q.SourceEndLine ?? DBNull.Value);
+                itemCmd.Parameters.AddWithValue(
+                    "$source_start_line",
+                    (object?)q.SourceStartLine ?? DBNull.Value
+                );
+                itemCmd.Parameters.AddWithValue(
+                    "$source_end_line",
+                    (object?)q.SourceEndLine ?? DBNull.Value
+                );
                 itemCmd.Parameters.AddWithValue("$section_title", q.SectionTitle);
                 itemCmd.Parameters.AddWithValue("$verbatim_quote", q.VerbatimQuote);
                 itemCmd.Parameters.AddWithValue(
@@ -164,14 +170,8 @@ public static partial class ScholarFlowDatabase
                     "$image_path",
                     (object?)q.ImagePath ?? DBNull.Value
                 );
-                itemCmd.Parameters.AddWithValue(
-                    "$hint",
-                    (object?)q.Hint ?? DBNull.Value
-                );
-                itemCmd.Parameters.AddWithValue(
-                    "$archetype",
-                    (object?)q.Archetype ?? DBNull.Value
-                );
+                itemCmd.Parameters.AddWithValue("$hint", (object?)q.Hint ?? DBNull.Value);
+                itemCmd.Parameters.AddWithValue("$archetype", (object?)q.Archetype ?? DBNull.Value);
                 await itemCmd.ExecuteNonQueryAsync(ct);
             }
 
@@ -331,8 +331,10 @@ public static partial class ScholarFlowDatabase
                         MathLatex = r.FieldCount > 25 && !r.IsDBNull(25) ? r.GetString(25) : null,
                         Diagram = r.FieldCount > 26 && !r.IsDBNull(26) ? r.GetString(26) : null,
                         ImagePath = r.FieldCount > 28 && !r.IsDBNull(28) ? r.GetString(28) : null,
-                        SourceStartLine = r.FieldCount > 29 && !r.IsDBNull(29) ? r.GetInt32(29) : null,
-                        SourceEndLine = r.FieldCount > 30 && !r.IsDBNull(30) ? r.GetInt32(30) : null,
+                        SourceStartLine =
+                            r.FieldCount > 29 && !r.IsDBNull(29) ? r.GetInt32(29) : null,
+                        SourceEndLine =
+                            r.FieldCount > 30 && !r.IsDBNull(30) ? r.GetInt32(30) : null,
                         Hint = r.FieldCount > 31 && !r.IsDBNull(31) ? r.GetString(31) : null,
                         Archetype = r.FieldCount > 32 && !r.IsDBNull(32) ? r.GetString(32) : null,
                     };
@@ -385,7 +387,10 @@ public static partial class ScholarFlowDatabase
             bool hypercorrection = confidence == ConfidenceLevel.Certain;
             question.SrsLapses += hypercorrection ? 2 : 1;
             question.SrsIntervalDays = 1.0;
-            question.SrsEaseFactor = Math.Max(1.3, question.SrsEaseFactor - (hypercorrection ? 0.30 : 0.20));
+            question.SrsEaseFactor = Math.Max(
+                1.3,
+                question.SrsEaseFactor - (hypercorrection ? 0.30 : 0.20)
+            );
             question.SrsDueDate = today.AddDays(1);
         }
         else
@@ -400,7 +405,10 @@ public static partial class ScholarFlowDatabase
                     question.SrsIntervalDays = 2.0;
                 else
                     question.SrsIntervalDays = Math.Round(
-                        Math.Max(2.0, question.SrsIntervalDays * Math.Max(1.2, question.SrsEaseFactor * 0.75)),
+                        Math.Max(
+                            2.0,
+                            question.SrsIntervalDays * Math.Max(1.2, question.SrsEaseFactor * 0.75)
+                        ),
                         1
                     );
             }
@@ -757,7 +765,8 @@ public static partial class ScholarFlowDatabase
                 using (var sel = conn.CreateCommand())
                 {
                     sel.Transaction = tx;
-                    sel.CommandText = $"SELECT id, source_pdf_path FROM {table} WHERE source_pdf_path != '';";
+                    sel.CommandText =
+                        $"SELECT id, source_pdf_path FROM {table} WHERE source_pdf_path != '';";
                     using var reader = sel.ExecuteReader();
                     while (reader.Read())
                         rows.Add((reader.GetString(0), reader.GetString(1)));
@@ -771,7 +780,12 @@ public static partial class ScholarFlowDatabase
 
                 foreach (var (id, currentPath) in rows)
                 {
-                    string? remapped = TryRemapPath(currentPath, oldPathOrPrefix, newPathOrPrefix, isPrefix);
+                    string? remapped = TryRemapPath(
+                        currentPath,
+                        oldPathOrPrefix,
+                        newPathOrPrefix,
+                        isPrefix
+                    );
                     if (remapped is null)
                         continue;
 
@@ -811,8 +825,14 @@ public static partial class ScholarFlowDatabase
             return null;
         }
 
-        var oldNorm = oldPathOrPrefix.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
-        var newNorm = newPathOrPrefix.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var oldNorm = oldPathOrPrefix.TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar
+        );
+        var newNorm = newPathOrPrefix.TrimEnd(
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar
+        );
 
         if (
             currentPath.Length > oldNorm.Length

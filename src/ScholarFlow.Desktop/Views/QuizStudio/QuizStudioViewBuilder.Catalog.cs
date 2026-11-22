@@ -77,10 +77,7 @@ public static partial class QuizStudioViewBuilder
         var interleavedBtn = UiBuilder.GhostButton(
             "Interleaved Review",
             MaterialIconKind.ShuffleVariant,
-            () =>
-                studio.StartInterleavedReviewSession(
-                    allCourses: studio.CatalogShowAllCourses
-                )
+            () => studio.StartInterleavedReviewSession(allCourses: studio.CatalogShowAllCourses)
         );
         interleavedBtn.Margin = new Thickness(0, 0, 6, 4);
         actionsWrap.Children.Add(interleavedBtn);
@@ -123,10 +120,8 @@ public static partial class QuizStudioViewBuilder
         importJsonBtn.Margin = new Thickness(0, 0, 6, 4);
         actionsWrap.Children.Add(importJsonBtn);
 
-        var newAssessBtn = UiBuilder.PrimaryButton(
-            "New Assessment",
-            MaterialIconKind.Plus,
-            () => studio.SetSubTab(QuizStudioSubTab.Builder)
+        var newAssessBtn = UiBuilder.PrimaryButton("New Assessment", MaterialIconKind.Plus, () =>
+            studio.SetSubTab(QuizStudioSubTab.Builder)
         );
         newAssessBtn.Margin = new Thickness(0, 0, 0, 4);
         actionsWrap.Children.Add(newAssessBtn);
@@ -225,10 +220,7 @@ public static partial class QuizStudioViewBuilder
                 $"Interleaved Review ({studio.SelectedQuizIdsForMerge.Count})",
                 MaterialIconKind.Brain,
                 () =>
-                    studio.StartInterleavedReviewSession(
-                        allCourses: true,
-                        selectedDecksOnly: true
-                    ),
+                    studio.StartInterleavedReviewSession(allCourses: true, selectedDecksOnly: true),
                 isActive: true
             );
             interleavedSelectedBtn.Margin = new Thickness(0, 0, 6, 4);
@@ -433,10 +425,8 @@ public static partial class QuizStudioViewBuilder
                 )
             );
             actions.Children.Add(
-                UiBuilder.GhostButton(
-                    "Restart",
-                    MaterialIconKind.Restart,
-                    () => studio.StartQuizSession(quiz, resumeSavedProgress: false)
+                UiBuilder.GhostButton("Restart", MaterialIconKind.Restart, () =>
+                    studio.StartQuizSession(quiz, resumeSavedProgress: false)
                 )
             );
         }
@@ -464,10 +454,8 @@ public static partial class QuizStudioViewBuilder
         );
         actions.Children.Add(shuffleStartBtn);
 
-        var organizeBtn = UiBuilder.GhostButton(
-            "Organize",
-            MaterialIconKind.TuneVariant,
-            () => studio.OpenQuizInOrganizer(quiz)
+        var organizeBtn = UiBuilder.GhostButton("Organize", MaterialIconKind.TuneVariant, () =>
+            studio.OpenQuizInOrganizer(quiz)
         );
         actions.Children.Add(organizeBtn);
 
@@ -491,7 +479,11 @@ public static partial class QuizStudioViewBuilder
 
         if (!compact)
         {
-            async Task ExportCatalogPdfAsync(string suffix, string dialogTitle, QuizPdfExportOptions options)
+            async Task ExportCatalogPdfAsync(
+                string suffix,
+                string dialogTitle,
+                QuizPdfExportOptions options
+            )
             {
                 var top = TopLevel.GetTopLevel(actions);
                 if (top?.StorageProvider is null)
@@ -515,13 +507,25 @@ public static partial class QuizStudioViewBuilder
             var printFlyout = new MenuFlyout();
             var mExam = new MenuItem { Header = "Printable Exam (Worksheet + Hints + Key)" };
             mExam.Click += async (_, _) =>
-                await ExportCatalogPdfAsync("_Exam", "Export Printable Exam PDF", QuizPdfExportOptions.ExamDefault);
+                await ExportCatalogPdfAsync(
+                    "_Exam",
+                    "Export Printable Exam PDF",
+                    QuizPdfExportOptions.ExamDefault
+                );
             var mGuide = new MenuItem { Header = "Study Guide (Inline Answers & Feedback)" };
             mGuide.Click += async (_, _) =>
-                await ExportCatalogPdfAsync("_StudyGuide", "Export Study Guide PDF", QuizPdfExportOptions.StudyGuide);
+                await ExportCatalogPdfAsync(
+                    "_StudyGuide",
+                    "Export Study Guide PDF",
+                    QuizPdfExportOptions.StudyGuide
+                );
             var mBlank = new MenuItem { Header = "Questions Only (Blank Exam Sheet)" };
             mBlank.Click += async (_, _) =>
-                await ExportCatalogPdfAsync("_QuestionsOnly", "Export Questions-Only PDF", QuizPdfExportOptions.QuestionsOnly);
+                await ExportCatalogPdfAsync(
+                    "_QuestionsOnly",
+                    "Export Questions-Only PDF",
+                    QuizPdfExportOptions.QuestionsOnly
+                );
             printFlyout.Items.Add(mExam);
             printFlyout.Items.Add(mGuide);
             printFlyout.Items.Add(mBlank);
@@ -537,7 +541,10 @@ public static partial class QuizStudioViewBuilder
                 14.5,
                 ThemeService.Brush(ThemeService.TextSecondary)
             );
-            ToolTip.SetTip(exportPdfBtn, "Export Printable PDF (Exam, Study Guide, or Questions Only)");
+            ToolTip.SetTip(
+                exportPdfBtn,
+                "Export Printable PDF (Exam, Study Guide, or Questions Only)"
+            );
             actions.Children.Add(exportPdfBtn);
 
             var exportJsonBtn = UiBuilder.IconButton(

@@ -254,10 +254,7 @@ public static class KnowledgeSearchViewBuilder
         return row;
     }
 
-    private static Control BuildQueryBarCard(
-        KnowledgeSearchViewModel ks,
-        out TextBox queryBox
-    )
+    private static Control BuildQueryBarCard(KnowledgeSearchViewModel ks, out TextBox queryBox)
     {
         var cardGrid = new Grid
         {
@@ -338,21 +335,14 @@ public static class KnowledgeSearchViewBuilder
         Grid.SetColumn(queryBox, 1);
         inputRow.Children.Add(queryBox);
 
-        var clearBtn = UiBuilder.GhostButton(
-            "Clear",
-            MaterialIconKind.Close,
-            ks.ClearAllFilters
-        );
+        var clearBtn = UiBuilder.GhostButton("Clear", MaterialIconKind.Close, ks.ClearAllFilters);
         Grid.SetColumn(clearBtn, 2);
         inputRow.Children.Add(clearBtn);
 
         cardGrid.Children.Add(inputRow);
 
         // Syntax quick-reference strip
-        var syntaxStrip = new WrapPanel
-        {
-            Orientation = Orientation.Horizontal,
-        };
+        var syntaxStrip = new WrapPanel { Orientation = Orientation.Horizontal };
 
         void AddSyntaxHint(string token, string desc)
         {
@@ -408,11 +398,7 @@ public static class KnowledgeSearchViewBuilder
         // Row 1: Source Kind Filters + Weak Spot Toggle
         var sourceWrap = new WrapPanel { Orientation = Orientation.Horizontal };
 
-        void AddSourceChip(
-            string label,
-            MaterialIconKind icon,
-            KnowledgeSourceFilterKind? kind
-        )
+        void AddSourceChip(string label, MaterialIconKind icon, KnowledgeSourceFilterKind? kind)
         {
             bool active =
                 ks.SelectedSourceFilter == kind
@@ -453,17 +439,13 @@ public static class KnowledgeSearchViewBuilder
 
         bool weakActive = ks.OnlyWeakSpots || ks.ParsedQuery.OnlyWeakSpots;
         var weakLabel =
-            ks.WeakTopicCount > 0
-                ? $"Weak Spots ({ks.WeakTopicCount})"
-                : "Weak Spots (@weak)";
+            ks.WeakTopicCount > 0 ? $"Weak Spots ({ks.WeakTopicCount})" : "Weak Spots (@weak)";
         var weakBtn = UiBuilder.GhostButton(
             weakLabel,
             MaterialIconKind.AlertRhombusOutline,
             ks.ToggleOnlyWeakSpots,
             isActive: weakActive,
-            customFg: weakActive
-                ? ThemeService.Brush(ThemeService.PriorityP2Fg)
-                : null
+            customFg: weakActive ? ThemeService.Brush(ThemeService.PriorityP2Fg) : null
         );
         weakBtn.Margin = new Thickness(4, 0, 0, 4);
         ToolTip.SetTip(
@@ -550,12 +532,14 @@ public static class KnowledgeSearchViewBuilder
             Focusable = false,
             Padding = new Thickness(0, 2, 0, 18),
             ItemsPanel = new FuncTemplate<Panel?>(() => new VirtualizingStackPanel()),
-            ItemTemplate = new FuncDataTemplate<IndexedResultRow>((row, _) =>
-            {
-                if (row is null)
-                    return new Border();
-                return BuildResultRowCard(ks, row.Index, row.Item);
-            }),
+            ItemTemplate = new FuncDataTemplate<IndexedResultRow>(
+                (row, _) =>
+                {
+                    if (row is null)
+                        return new Border();
+                    return BuildResultRowCard(ks, row.Index, row.Item);
+                }
+            ),
         };
 
         lb.Styles.Add(
@@ -755,11 +739,10 @@ public static class KnowledgeSearchViewBuilder
             ? ThemeService.Brush(ThemeService.BgElevated)
             : ThemeService.Brush(ThemeService.BgSurface);
         var hoverBg = ThemeService.Brush(ThemeService.BgHover);
-        var normalBorder = isSelected
-            ? ThemeService.Brush(ThemeService.AccentPrimary)
-            : item.IsWeakSpot
-                ? ThemeService.Brush(ThemeService.PriorityP2Fg)
-                : ThemeService.Brush(ThemeService.BorderSubtle);
+        var normalBorder =
+            isSelected ? ThemeService.Brush(ThemeService.AccentPrimary)
+            : item.IsWeakSpot ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+            : ThemeService.Brush(ThemeService.BorderSubtle);
 
         var card = new Border
         {
@@ -868,12 +851,9 @@ public static class KnowledgeSearchViewBuilder
         }
     }
 
-    private static (
-        MaterialIconKind Icon,
-        string Label,
-        IBrush Fg,
-        IBrush Bg
-    ) GetSourceVisualStyle(string sourceKind)
+    private static (MaterialIconKind Icon, string Label, IBrush Fg, IBrush Bg) GetSourceVisualStyle(
+        string sourceKind
+    )
     {
         return sourceKind.ToLowerInvariant() switch
         {
@@ -1040,10 +1020,8 @@ public static class KnowledgeSearchViewBuilder
         )
         {
             var captured = query;
-            var btn = UiBuilder.GhostButton(
-                label,
-                MaterialIconKind.Magnify,
-                () => ks.ApplyExampleQuery(captured)
+            var btn = UiBuilder.GhostButton(label, MaterialIconKind.Magnify, () =>
+                ks.ApplyExampleQuery(captured)
             );
             btn.Margin = new Thickness(3);
             examplesWrap.Children.Add(btn);

@@ -13,9 +13,7 @@ public sealed partial class QuizLlmService
 {
     private const int MaxVisionImages = 8;
 
-    public static ContentModalityProfile DetectFileSourceModalities(
-        QuizGenerationRequest request
-    )
+    public static ContentModalityProfile DetectFileSourceModalities(QuizGenerationRequest request)
     {
         if (request.ModalityMode == QuizContentModalityMode.StandardProseOnly)
             return new ContentModalityProfile(HasCode: false, HasMath: false, HasDiagrams: false);
@@ -65,7 +63,9 @@ public sealed partial class QuizLlmService
         string? pdfContent = null;
         IReadOnlyList<GroundedPdfPage> pdfPages = [];
 
-        int fileBudget = request.IsMixedSources ? Math.Max(12_000, (int)(maxChars * 0.45)) : maxChars;
+        int fileBudget = request.IsMixedSources
+            ? Math.Max(12_000, (int)(maxChars * 0.45))
+            : maxChars;
         bundle = FileSourceQuizSupport.BuildPromptBundle(request.SourceFilePaths, fileBudget);
 
         if (request.IsMixedSources)
@@ -81,10 +81,17 @@ public sealed partial class QuizLlmService
             );
             totalPdfPages = pdfPages.Count;
             int remainingPdfBudget = Math.Max(10_000, maxChars - bundle.Content.Length);
-            pdfContent = PdfQuizGrounder.FormatPagesForPrompt(pdfPages, remainingPdfBudget, out includedPdfPages);
+            pdfContent = PdfQuizGrounder.FormatPagesForPrompt(
+                pdfPages,
+                remainingPdfBudget,
+                out includedPdfPages
+            );
         }
 
-        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(request.BasinRoot, request.CourseFolder);
+        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(
+            request.BasinRoot,
+            request.CourseFolder
+        );
         var modality = MergeModalities(request, pdfPages);
         int count = Math.Clamp(request.QuestionCount, 1, 150);
         return BuildSystemInstructions(request, weakTopics, modality)
@@ -125,7 +132,10 @@ public sealed partial class QuizLlmService
         IReadOnlyList<(int OriginalPage, string SectionBreadcrumb)>? pdfManifest = null
     )
     {
-        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(request.BasinRoot, request.CourseFolder);
+        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(
+            request.BasinRoot,
+            request.CourseFolder
+        );
         var modality = DetectFileSourceModalities(request);
         int count = Math.Clamp(request.QuestionCount, 1, 150);
 
@@ -136,11 +146,15 @@ public sealed partial class QuizLlmService
         if (pdfManifest is { Count: > 0 })
         {
             sb.AppendLine("ATTACHED SCOPED PDF PAGES:");
-            sb.AppendLine("For PDF-grounded questions, use the ORIGINAL page number below for \"evidence.pageNumber\" and set \"evidence.file\": null:");
+            sb.AppendLine(
+                "For PDF-grounded questions, use the ORIGINAL page number below for \"evidence.pageNumber\" and set \"evidence.file\": null:"
+            );
             for (int i = 0; i < pdfManifest.Count; i++)
             {
                 var (origPage, section) = pdfManifest[i];
-                sb.AppendLine($"- Uploaded PDF Page {i + 1} = [PAGE {origPage}] | Section: {section}");
+                sb.AppendLine(
+                    $"- Uploaded PDF Page {i + 1} = [PAGE {origPage}] | Section: {section}"
+                );
             }
             sb.AppendLine();
         }
@@ -149,11 +163,15 @@ public sealed partial class QuizLlmService
         {
             int pageOffset = pdfManifest?.Count ?? 0;
             sb.AppendLine("ATTACHED IMAGE PACKET (PDF, one image per page):");
-            sb.AppendLine("Use the ORIGINAL image file name below for \"evidence.file\" so the app can link each question back to its image:");
+            sb.AppendLine(
+                "Use the ORIGINAL image file name below for \"evidence.file\" so the app can link each question back to its image:"
+            );
             foreach (var p in pages)
                 sb.AppendLine($"- Uploaded PDF Page {pageOffset + p.PageNumber} = {p.FileName}");
             sb.AppendLine();
-            sb.AppendLine("Image-based questions must be answerable from what is visible (labels, structure, arrows, values). Prefer diagram reading, component identification, and flow/ordering questions. For each image question, include a specific directional visual pointer in \"evidence.verbatimQuote\" (where to look + what proves the answer) and an approximate normalized \"evidence.region\": {\"x\": 0..1, \"y\": 0..1, \"w\": 0..1, \"h\": 0..1} box.");
+            sb.AppendLine(
+                "Image-based questions must be answerable from what is visible (labels, structure, arrows, values). Prefer diagram reading, component identification, and flow/ordering questions. For each image question, include a specific directional visual pointer in \"evidence.verbatimQuote\" (where to look + what proves the answer) and an approximate normalized \"evidence.region\": {\"x\": 0..1, \"y\": 0..1, \"w\": 0..1, \"h\": 0..1} box."
+            );
         }
 
         if (textBundle is not null && !string.IsNullOrWhiteSpace(textBundle.Content))
@@ -164,7 +182,9 @@ public sealed partial class QuizLlmService
         }
 
         sb.AppendLine();
-        sb.AppendLine($"Generate {count} grounded questions from the attached sources strictly following the JSON schema above.");
+        sb.AppendLine(
+            $"Generate {count} grounded questions from the attached sources strictly following the JSON schema above."
+        );
         return sb.ToString();
     }
 
@@ -183,17 +203,20 @@ public sealed partial class QuizLlmService
             exactCounts.Where(kv => kv.Value > 0).Select(kv => $"{kv.Value} {kv.Key}")
         );
 
-        var excludeBlock = req.ExcludePromptsOrTopics.Count > 0
-            ? $"\nDo NOT repeat or duplicate any of these existing questions/topics:\n- {string.Join("\n- ", req.ExcludePromptsOrTopics.Take(25))}\n"
-            : string.Empty;
+        var excludeBlock =
+            req.ExcludePromptsOrTopics.Count > 0
+                ? $"\nDo NOT repeat or duplicate any of these existing questions/topics:\n- {string.Join("\n- ", req.ExcludePromptsOrTopics.Take(25))}\n"
+                : string.Empty;
 
-        var imageNote = bundle.ImageFiles.Count > 0
-            ? $"\nImages ({bundle.ImageFiles.Count}): {string.Join(", ", bundle.ImageFiles.Select(Path.GetFileName))} — {(imagesAttachedAsPdf ? "attached as a PDF packet (one image per page)" : "attached to this message")}. Use the exact image file name as \"evidence.file\"."
-            : string.Empty;
+        var imageNote =
+            bundle.ImageFiles.Count > 0
+                ? $"\nImages ({bundle.ImageFiles.Count}): {string.Join(", ", bundle.ImageFiles.Select(Path.GetFileName))} — {(imagesAttachedAsPdf ? "attached as a PDF packet (one image per page)" : "attached to this message")}. Use the exact image file name as \"evidence.file\"."
+                : string.Empty;
 
-        var truncNote = bundle.TruncatedFiles.Count > 0
-            ? $"\nNote: some content was truncated or skipped for size: {string.Join(", ", bundle.TruncatedFiles)}."
-            : string.Empty;
+        var truncNote =
+            bundle.TruncatedFiles.Count > 0
+                ? $"\nNote: some content was truncated or skipped for size: {string.Join(", ", bundle.TruncatedFiles)}."
+                : string.Empty;
 
         bool hasPdf = !string.IsNullOrWhiteSpace(pdfContent);
         var sourceTypeLabel = hasPdf
@@ -217,7 +240,13 @@ public sealed partial class QuizLlmService
         return $"""
             Course: {req.CourseTitle}
             Source type: {sourceTypeLabel}
-            Required Question Breakdown ({Math.Clamp(count, 1, 150)} total): {breakdown}{imageNote}{truncNote}{excludeBlock}{BuildGuardedCustomInstructionsBlock(req.CustomInstructions)}
+            Required Question Breakdown ({Math.Clamp(
+                count,
+                1,
+                150
+            )} total): {breakdown}{imageNote}{truncNote}{excludeBlock}{BuildGuardedCustomInstructionsBlock(
+                req.CustomInstructions
+            )}
             Generate high-quality, evidence-grounded questions strictly matching the required question breakdown from the following sources:
 
             {body}
@@ -232,13 +261,16 @@ public sealed partial class QuizLlmService
         var effectiveKey = !string.IsNullOrWhiteSpace(request.ApiKey)
             ? request.ApiKey.Trim()
             : Environment.GetEnvironmentVariable("GEMINI_API_KEY")
-              ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+                ?? Environment.GetEnvironmentVariable("OPENAI_API_KEY");
 
         bool isLocalEndpoint =
             request.ProviderBaseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)
             || request.ProviderBaseUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase);
 
-        if (request.UseOfflineHeuristicFallback || (!isLocalEndpoint && string.IsNullOrWhiteSpace(effectiveKey)))
+        if (
+            request.UseOfflineHeuristicFallback
+            || (!isLocalEndpoint && string.IsNullOrWhiteSpace(effectiveKey))
+        )
         {
             throw new InvalidOperationException(
                 "The Offline Smart analyzer only supports PDFs. Configure an AI engine, or use Web AI JSON for code / text / image sources."
@@ -247,7 +279,9 @@ public sealed partial class QuizLlmService
 
         int desiredCount = Math.Clamp(request.QuestionCount, 1, 150);
         int charBudget = isLocalEndpoint ? 28_000 : 100_000;
-        int fileBudget = request.IsMixedSources ? Math.Max(12_000, (int)(charBudget * 0.45)) : charBudget;
+        int fileBudget = request.IsMixedSources
+            ? Math.Max(12_000, (int)(charBudget * 0.45))
+            : charBudget;
 
         var bundle = await Task.Run(
             () => FileSourceQuizSupport.BuildPromptBundle(request.SourceFilePaths, fileBudget),
@@ -259,15 +293,16 @@ public sealed partial class QuizLlmService
         if (request.IsMixedSources)
         {
             pdfPages = await Task.Run(
-                () => PdfQuizGrounder.ExtractGroundedPages(
-                    request.SourcePdfPath,
-                    request.Term,
-                    request.SectionFilter,
-                    request.StartPage,
-                    request.EndPage,
-                    request.SelectedRanges,
-                    maxPages: 250
-                ),
+                () =>
+                    PdfQuizGrounder.ExtractGroundedPages(
+                        request.SourcePdfPath,
+                        request.Term,
+                        request.SectionFilter,
+                        request.StartPage,
+                        request.EndPage,
+                        request.SelectedRanges,
+                        maxPages: 250
+                    ),
                 ct
             );
             if (pdfPages.Count > 0)
@@ -277,8 +312,14 @@ public sealed partial class QuizLlmService
             }
         }
 
-        if (string.IsNullOrWhiteSpace(bundle.Content) && bundle.ImageFiles.Count == 0 && string.IsNullOrWhiteSpace(pdfContent))
-            throw new InvalidOperationException("No readable text, code, image, or PDF content was found in the selected sources.");
+        if (
+            string.IsNullOrWhiteSpace(bundle.Content)
+            && bundle.ImageFiles.Count == 0
+            && string.IsNullOrWhiteSpace(pdfContent)
+        )
+            throw new InvalidOperationException(
+                "No readable text, code, image, or PDF content was found in the selected sources."
+            );
 
         var imageUris = new List<string>();
         foreach (var img in bundle.ImageFiles.Take(MaxVisionImages))
@@ -288,10 +329,19 @@ public sealed partial class QuizLlmService
                 imageUris.Add(uri);
         }
 
-        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(request.BasinRoot, request.CourseFolder);
+        var weakTopics = ScholarFlowDatabase.GetWeakTopicTags(
+            request.BasinRoot,
+            request.CourseFolder
+        );
         var modality = MergeModalities(request, pdfPages);
         var sysPrompt = BuildSystemInstructions(request, weakTopics, modality);
-        var usrPrompt = BuildFileUserPrompt(request, bundle, desiredCount, modality, pdfContent: pdfContent);
+        var usrPrompt = BuildFileUserPrompt(
+            request,
+            bundle,
+            desiredCount,
+            modality,
+            pdfContent: pdfContent
+        );
 
         var raw = await CallOpenAiCompatibleChatAsync(
             request.ProviderBaseUrl,
@@ -305,6 +355,12 @@ public sealed partial class QuizLlmService
 
         var dto = ParseQuizResponseJson(raw);
         dto.Questions = dto.Questions.Take(desiredCount).ToList();
-        return await BuildGroundAndPersistSessionAsync(request, dto, request.ModelName, pdfPages, ct);
+        return await BuildGroundAndPersistSessionAsync(
+            request,
+            dto,
+            request.ModelName,
+            pdfPages,
+            ct
+        );
     }
 }
