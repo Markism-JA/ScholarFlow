@@ -55,6 +55,13 @@ public enum PageTocFilterMode
     Excluded,
 }
 
+public enum StudioInspectorMode
+{
+    Balanced,
+    ExpandedLeft,
+    FullView,
+}
+
 public sealed class PdfOutlineTreeNode
 {
     public required PdfOutlineSectionInfo Section { get; init; }
@@ -174,6 +181,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public bool IsBuilderPageTocOpen { get; private set; }
     public bool IsStudioPageTocOpen { get; private set; } = true;
     public bool IsStudioCompactInspectorOpen { get; private set; }
+    public StudioInspectorMode StudioInspectorLayout { get; private set; } =
+        StudioInspectorMode.Balanced;
     public bool IsBuilderCompactPreviewOpen { get; private set; }
     public PageTocFilterMode PageTocFilter { get; private set; } = PageTocFilterMode.All;
     public int PageTocWindowIndex { get; private set; }

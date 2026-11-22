@@ -69,7 +69,13 @@ public static class ShortcutDispatcher
                 if (vm.QuizStudio.IsPageGridOpen)
                 {
                     e.Handled = true;
-                    vm.QuizStudio.ClosePageGrid();
+                    if (
+                        vm.QuizStudio.StudioInspectorLayout == StudioInspectorMode.FullView
+                        || vm.QuizStudio.IsStudioCompactInspectorOpen
+                    )
+                        vm.QuizStudio.SetStudioCompactInspectorOpen(false);
+                    else
+                        vm.QuizStudio.ClosePageGrid();
                     return;
                 }
                 if (vm.QuizStudio.IsDedicatedSnipperOpen)

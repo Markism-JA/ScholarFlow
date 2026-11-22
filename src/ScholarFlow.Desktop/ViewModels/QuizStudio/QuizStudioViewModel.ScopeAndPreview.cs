@@ -197,6 +197,7 @@ public sealed partial class QuizStudioViewModel
 
         IsPageGridOpen = false;
         IsStudioCompactInspectorOpen = false;
+        StudioInspectorLayout = StudioInspectorMode.Balanced;
         _mainVm.RequestUiRefresh();
     }
 
@@ -206,7 +207,26 @@ public sealed partial class QuizStudioViewModel
             return;
 
         IsStudioCompactInspectorOpen = open;
+        StudioInspectorLayout = open
+            ? StudioInspectorMode.FullView
+            : StudioInspectorMode.Balanced;
         _mainVm.RequestUiRefresh();
+    }
+
+    public void SetStudioPageTocOpenQuiet(bool open)
+    {
+        IsStudioPageTocOpen = open;
+    }
+
+    public void SetStudioInspectorLayoutQuiet(StudioInspectorMode mode)
+    {
+        StudioInspectorLayout = mode;
+        IsStudioCompactInspectorOpen = mode == StudioInspectorMode.FullView;
+    }
+
+    public void SetPreviewZoomPercentQuiet(int percent)
+    {
+        PreviewZoomPercent = Math.Clamp(percent, 40, 350);
     }
 
     public void SetBuilderCompactPreviewOpen(bool open)

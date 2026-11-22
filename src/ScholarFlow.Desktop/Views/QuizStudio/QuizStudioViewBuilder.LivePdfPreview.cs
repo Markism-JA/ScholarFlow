@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -375,6 +376,8 @@ public static partial class QuizStudioViewBuilder
     /// with a spacious multi-column Thumbnail Grid on the left and a zoomable High-Res Page Inspector
     /// + Saved Custom Sections panel on the right.
     /// </summary>
+    private static double _lastStudioViewportWidth;
+
     private static Control BuildDedicatedPageStudioView(
         MainWindowViewModel vm,
         QuizStudioViewModel studio
@@ -392,13 +395,7 @@ public static partial class QuizStudioViewBuilder
             ClipToBounds = true,
         };
 
-        // 1. Top Navigation & Scope Header Bar
-        var headerGrid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
-            ColumnSpacing = 12,
-        };
-
+        // 1. Responsive Top Navigation & Scope Header Bar
         var leftHeaderNav = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -412,21 +409,20 @@ public static partial class QuizStudioViewBuilder
                 studio.ClosePageGrid
             )
         );
-        leftHeaderNav.Children.Add(
-            UiBuilder.GhostButton(
-                "Pages TOC",
-                MaterialIconKind.FormatListChecks,
-                studio.ToggleStudioPageToc,
-                isActive: studio.IsStudioPageTocOpen
-            )
+        Action<bool>? setTocOpenAction = null;
+        var tocToggleBtn = UiBuilder.GhostButton(
+            "Pages TOC",
+            MaterialIconKind.FormatListChecks,
+            () => setTocOpenAction?.Invoke(!studio.IsStudioPageTocOpen),
+            isActive: studio.IsStudioPageTocOpen
         );
-        headerGrid.Children.Add(leftHeaderNav);
+        ToolTip.SetTip(tocToggleBtn, "Toggle collapsible Pages TOC drawer");
+        leftHeaderNav.Children.Add(tocToggleBtn);
 
         var titleStack = new StackPanel
         {
             Spacing = 2,
             VerticalAlignment = VerticalAlignment.Center,
-            [Grid.ColumnProperty] = 1,
         };
         var pdfName = string.IsNullOrWhiteSpace(studio.SelectedPdfPath)
             ? "PDF"
@@ -451,13 +447,11 @@ public static partial class QuizStudioViewBuilder
                 TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
-        headerGrid.Children.Add(titleStack);
 
         var rightHeaderActions = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
-            [Grid.ColumnProperty] = 2,
         };
         var rangeBox = new TextBox
         {
@@ -518,9 +512,65 @@ public static partial class QuizStudioViewBuilder
             studio.ClosePageGrid
         );
         doneBtn.Margin = new Thickness(0, 0, 0, 2);
-        rightHeaderActions.Children.Add(doneBtn);
-        headerGrid.Children.Add(rightHeaderActions);
-        root.Children.Add(headerGrid);
+
+        var responsiveHeaderHost = new Border();
+        bool? lastCompactStudioHeader = null;
+        void ApplyStudioHeaderLayout(bool compactHeader)
+        {
+            if (lastCompactStudioHeader == compactHeader && responsiveHeaderHost.Child is not null)
+                return;
+            lastCompactStudioHeader = compactHeader;
+
+            static void Detach(Control c)
+            {
+                if (c.Parent is Panel p)
+                    p.Children.Remove(c);
+                else if (c.Parent is Decorator d && ReferenceEquals(d.Child, c))
+                    d.Child = null;
+            }
+
+            Detach(leftHeaderNav);
+            Detach(titleStack);
+            Detach(rightHeaderActions);
+            Detach(doneBtn);
+
+            if (compactHeader)
+            {
+                var row1 = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
+                    ColumnSpacing = 10,
+                };
+                row1.Children.Add(leftHeaderNav);
+                Grid.SetColumn(titleStack, 1);
+                row1.Children.Add(titleStack);
+                Grid.SetColumn(doneBtn, 2);
+                row1.Children.Add(doneBtn);
+
+                responsiveHeaderHost.Child = new StackPanel
+                {
+                    Spacing = 6,
+                    Children = { row1, rightHeaderActions },
+                };
+            }
+            else
+            {
+                rightHeaderActions.Children.Add(doneBtn);
+                var row = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
+                    ColumnSpacing = 12,
+                };
+                row.Children.Add(leftHeaderNav);
+                Grid.SetColumn(titleStack, 1);
+                row.Children.Add(titleStack);
+                Grid.SetColumn(rightHeaderActions, 2);
+                row.Children.Add(rightHeaderActions);
+                responsiveHeaderHost.Child = row;
+            }
+        }
+        ApplyStudioHeaderLayout(false);
+        root.Children.Add(responsiveHeaderHost);
 
         // Optional inline Save Section bar / error row
         var subBar = new StackPanel { Spacing = 6 };
@@ -593,24 +643,50 @@ public static partial class QuizStudioViewBuilder
             root.Children.Add(subBar);
         }
 
-        // 2. Main Split Body: [Optional Collapsible 245px Page TOC] | Thumbnail Grid | High-Res Page Inspector
+        // 2. Animated 3-Pane Split Body: [Animated TOC Slot] | [Animated Thumbnail Grid Slot] | [Page Inspector (*)]
         var splitBody = new Grid
         {
-            ColumnDefinitions = studio.IsStudioPageTocOpen
-                ? ColumnDefinitions.Parse("245,12,1.8*,12,1.1*")
-                : ColumnDefinitions.Parse("1.9*,14,1.1*"),
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,Auto,*"),
         };
 
-        int gridCol = 0;
-        int inspCol = 2;
-        if (studio.IsStudioPageTocOpen)
+        var tocPanel = BuildCollapsiblePageTocPanel(
+            studio,
+            isFullHeight: true,
+            onCloseOverride: () => setTocOpenAction?.Invoke(false)
+        );
+
+        var dockedTocSlot = new Border
         {
-            var tocPanel = BuildCollapsiblePageTocPanel(studio, isFullHeight: true);
-            Grid.SetColumn(tocPanel, 0);
-            splitBody.Children.Add(tocPanel);
-            gridCol = 2;
-            inspCol = 4;
-        }
+            ClipToBounds = true,
+            Padding = new Thickness(0, 0, 12, 0),
+            Width = 0,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Child = tocPanel,
+        };
+        Grid.SetColumn(dockedTocSlot, 0);
+        splitBody.Children.Add(dockedTocSlot);
+
+        // Floating TOC drawer + scrim (slides smoothly from left on Mid/Compact or Expanded/Full Inspector)
+        var tocFloatingScrim = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#66000000")),
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        tocFloatingScrim.PointerPressed += (_, _) => setTocOpenAction?.Invoke(false);
+
+        var tocDrawerTransform = new TranslateTransform(-270, 0);
+        var tocFloatingDrawer = new Border
+        {
+            Width = 258,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            BoxShadow = BoxShadows.Parse("8 0 28 0 #70000000"),
+            RenderTransform = tocDrawerTransform,
+            Opacity = 0,
+            IsHitTestVisible = false,
+        };
 
         // --- LEFT: Spacious Thumbnail Grid ---
         var leftGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*,Auto") };
@@ -790,6 +866,24 @@ public static partial class QuizStudioViewBuilder
                 Child = tileContent,
             };
 
+            var baseTileBg = tileBorder.Background;
+            var baseTileBorder = tileBorder.BorderBrush;
+            tileBorder.PointerEntered += (_, _) =>
+            {
+                if (!isInspected)
+                {
+                    tileBorder.Background = ThemeService.Brush(ThemeService.BgHover);
+                    tileBorder.BorderBrush = ThemeService.Brush(ThemeService.BorderStrong);
+                }
+            };
+            tileBorder.PointerExited += (_, _) =>
+            {
+                if (!isInspected)
+                {
+                    tileBorder.Background = baseTileBg;
+                    tileBorder.BorderBrush = baseTileBorder;
+                }
+            };
             tileBorder.PointerPressed += (_, e) =>
             {
                 if (e.GetCurrentPoint(tileBorder).Properties.IsLeftButtonPressed)
@@ -856,10 +950,16 @@ public static partial class QuizStudioViewBuilder
         leftGrid.Children.Add(batchFooter);
 
         var leftCard = UiBuilder.Card(leftGrid, padding: new Thickness(12, 10));
-        Grid.SetColumn(leftCard, gridCol);
-        splitBody.Children.Add(leftCard);
+        var leftGridSlot = new Border
+        {
+            ClipToBounds = true,
+            Padding = new Thickness(0, 0, 12, 0),
+            Child = leftCard,
+        };
+        Grid.SetColumn(leftGridSlot, 1);
+        splitBody.Children.Add(leftGridSlot);
 
-        // --- RIGHT: Live High-Res Page Inspector ---
+        // --- RIGHT: Live High-Res Page Inspector (with Expand Left 2-Col & Full View toggles) ---
         var rightInspector = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*,Auto") };
 
         var inspHeader = new Grid
@@ -894,6 +994,82 @@ public static partial class QuizStudioViewBuilder
         );
         inspHeader.Children.Add(inspInfo);
 
+        Action<StudioInspectorMode>? setInspectorModeAction = null;
+        var inspHeaderActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var expandLeftIcon = UiBuilder.Icon(
+            studio.StudioInspectorLayout == StudioInspectorMode.ExpandedLeft
+                ? MaterialIconKind.ChevronDoubleRight
+                : MaterialIconKind.ChevronDoubleLeft,
+            15.5,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        var expandLeftBtn = new Button
+        {
+            Content = expandLeftIcon,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(5),
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        expandLeftBtn.PointerEntered += (_, _) =>
+            expandLeftBtn.Background = ThemeService.Brush(ThemeService.BgHover);
+        expandLeftBtn.PointerExited += (_, _) =>
+            expandLeftBtn.Background =
+                studio.StudioInspectorLayout == StudioInspectorMode.ExpandedLeft
+                    ? ThemeService.Brush(ThemeService.BgElevated)
+                    : Brushes.Transparent;
+        expandLeftBtn.Click += (_, _) =>
+        {
+            var next =
+                studio.StudioInspectorLayout == StudioInspectorMode.ExpandedLeft
+                    ? StudioInspectorMode.Balanced
+                    : StudioInspectorMode.ExpandedLeft;
+            setInspectorModeAction?.Invoke(next);
+        };
+        ToolTip.SetTip(expandLeftBtn, "Expand Inspector left (collapses thumbnail grid to 2 columns)");
+        inspHeaderActions.Children.Add(expandLeftBtn);
+
+        var fullViewIcon = UiBuilder.Icon(
+            studio.StudioInspectorLayout == StudioInspectorMode.FullView
+                ? MaterialIconKind.FullscreenExit
+                : MaterialIconKind.Fullscreen,
+            15.5,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        var fullViewBtn = new Button
+        {
+            Content = fullViewIcon,
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(5),
+            Cursor = new Cursor(StandardCursorType.Hand),
+        };
+        fullViewBtn.PointerEntered += (_, _) =>
+            fullViewBtn.Background = ThemeService.Brush(ThemeService.BgHover);
+        fullViewBtn.PointerExited += (_, _) =>
+            fullViewBtn.Background =
+                studio.StudioInspectorLayout == StudioInspectorMode.FullView
+                    ? ThemeService.Brush(ThemeService.BgElevated)
+                    : Brushes.Transparent;
+        fullViewBtn.Click += (_, _) =>
+        {
+            var next =
+                studio.StudioInspectorLayout == StudioInspectorMode.FullView
+                    ? StudioInspectorMode.Balanced
+                    : StudioInspectorMode.FullView;
+            setInspectorModeAction?.Invoke(next);
+        };
+        ToolTip.SetTip(fullViewBtn, "Toggle full-canvas Page Inspector (Esc to restore)");
+        inspHeaderActions.Children.Add(fullViewBtn);
+
         if (
             !string.IsNullOrWhiteSpace(studio.SelectedPdfPath)
             && File.Exists(studio.SelectedPdfPath)
@@ -901,16 +1077,18 @@ public static partial class QuizStudioViewBuilder
         {
             var openReaderBtn = UiBuilder.GhostButton(
                 "Reader",
-                MaterialIconKind.ArrowExpandAll,
+                MaterialIconKind.BookOpenPageVariantOutline,
                 () =>
                 {
                     vm.OpenPdfInReader(studio.SelectedPdfPath);
                     vm.PdfReader.JumpToPage(studio.CurrentPreviewPdfPage);
                 }
             );
-            Grid.SetColumn(openReaderBtn, 1);
-            inspHeader.Children.Add(openReaderBtn);
+            ToolTip.SetTip(openReaderBtn, $"Open page {studio.CurrentPreviewPdfPage} in Full PDF Reader");
+            inspHeaderActions.Children.Add(openReaderBtn);
         }
+        Grid.SetColumn(inspHeaderActions, 1);
+        inspHeader.Children.Add(inspHeaderActions);
         rightInspector.Children.Add(inspHeader);
 
         var bmp = studio.GetCurrentPreviewBitmap();
@@ -924,8 +1102,6 @@ public static partial class QuizStudioViewBuilder
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Top,
             };
-            if (studio.PreviewZoomPercent != 100)
-                img.Width = 480 * (studio.PreviewZoomPercent / 100.0);
 
             var sheet = new Border
             {
@@ -949,27 +1125,48 @@ public static partial class QuizStudioViewBuilder
                     ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
                     : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
             );
-            int inspZoom = studio.PreviewZoomPercent;
+            int inspZoom = Math.Clamp(studio.PreviewZoomPercent, 40, 350);
+
+            void ApplyInspectorZoom(int zoomPercent)
+            {
+                if (zoomPercent == 100)
+                {
+                    img.Width = double.NaN;
+                    sheet.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    scroll.HorizontalScrollBarVisibility =
+                        Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled;
+                }
+                else
+                {
+                    double viewportBase = Math.Max(320, scroll.Bounds.Width - 28);
+                    img.Width = Math.Max(140, viewportBase * (zoomPercent / 100.0));
+                    sheet.HorizontalAlignment = HorizontalAlignment.Center;
+                    scroll.HorizontalScrollBarVisibility =
+                        zoomPercent > 100
+                            ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+                            : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled;
+                }
+            }
+
+            scroll.SizeChanged += (_, e) =>
+            {
+                if (e.NewSize.Width > 0 && inspZoom != 100)
+                    ApplyInspectorZoom(inspZoom);
+            };
+
             UiBuilder.AttachPdfWheelAndPan(
                 scroll,
                 delta =>
                 {
                     int oldZ = inspZoom;
-                    inspZoom = Math.Clamp(inspZoom + delta, 100, 300);
+                    inspZoom = Math.Clamp(inspZoom + delta, 40, 350);
                     if (inspZoom == oldZ)
                         return;
+                    studio.SetPreviewZoomPercentQuiet(inspZoom);
                     double ratio = inspZoom / (double)oldZ;
-                    img.Width = inspZoom == 100 ? double.NaN : 480 * (inspZoom / 100.0);
-                    sheet.HorizontalAlignment =
-                        inspZoom == 100
-                            ? HorizontalAlignment.Stretch
-                            : HorizontalAlignment.Center;
-                    scroll.HorizontalScrollBarVisibility =
-                        inspZoom > 100
-                            ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
-                            : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled;
+                    ApplyInspectorZoom(inspZoom);
                     scroll.Offset = new Vector(
-                        scroll.Offset.X,
+                        Math.Max(0, scroll.Offset.X * ratio),
                         Math.Max(0, scroll.Offset.Y * ratio)
                     );
                 }
@@ -1029,17 +1226,13 @@ public static partial class QuizStudioViewBuilder
         rightInspector.Children.Add(inspFooter);
 
         var rightCard = UiBuilder.Card(rightInspector, padding: new Thickness(12, 10));
-        Grid.SetColumn(rightCard, inspCol);
+        Grid.SetColumn(rightCard, 2);
         splitBody.Children.Add(rightCard);
 
-        // Responsive Page Studio Breakpoints:
-        // - Compact (< 900px): never squish Inspector into an illegible sliver; swap full-width Grid <-> full-width Inspector!
-        // - Medium (900-1180px): keep Grid + Inspector side-by-side; hide TOC drawer unless narrow enough
-        // - Wide (>= 1180px): full 3-pane layout
         var compactBackToGridBtn = UiBuilder.GhostButton(
             "Back to Grid",
             MaterialIconKind.ViewGridOutline,
-            () => studio.SetStudioCompactInspectorOpen(false)
+            () => setInspectorModeAction?.Invoke(StudioInspectorMode.Balanced)
         );
         compactBackToGridBtn.IsVisible = false;
         compactBackToGridBtn.Margin = new Thickness(0, 0, 6, 0);
@@ -1055,57 +1248,258 @@ public static partial class QuizStudioViewBuilder
         inspTitleRow.Children.Add(existingInspInfo);
         inspHeader.Children.Insert(0, inspTitleRow);
 
-        void ApplyStudioResponsiveLayout(double width)
+        void SetStudioPaneTransitions(bool enabled)
+        {
+            if (enabled)
+            {
+                dockedTocSlot.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Layoutable.WidthProperty,
+                        Duration = TimeSpan.FromMilliseconds(185),
+                        Easing = new CubicEaseOut(),
+                    },
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(150),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                leftGridSlot.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Layoutable.WidthProperty,
+                        Duration = TimeSpan.FromMilliseconds(185),
+                        Easing = new CubicEaseOut(),
+                    },
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(150),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                tocFloatingScrim.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(160),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                tocDrawerTransform.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = TranslateTransform.XProperty,
+                        Duration = TimeSpan.FromMilliseconds(190),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                tocFloatingDrawer.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(160),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+            }
+            else
+            {
+                dockedTocSlot.Transitions = null;
+                leftGridSlot.Transitions = null;
+                tocFloatingScrim.Transitions = null;
+                tocDrawerTransform.Transitions = null;
+                tocFloatingDrawer.Transitions = null;
+            }
+        }
+
+        void ApplyStudioResponsiveLayout(double width, bool animate)
         {
             if (width <= 0)
                 return;
 
+            _lastStudioViewportWidth = width;
+            SetStudioPaneTransitions(animate);
+
+            ApplyStudioHeaderLayout(width < 1060);
+
             bool isCompact = width < 900;
-            if (isCompact)
+            var mode = studio.StudioInspectorLayout;
+            bool isFullView = mode == StudioInspectorMode.FullView || (isCompact && studio.IsStudioCompactInspectorOpen);
+            bool isExpandedLeft = !isCompact && mode == StudioInspectorMode.ExpandedLeft;
+            bool tocOpen = studio.IsStudioPageTocOpen;
+
+            // Update TOC button active styling in place
+            tocToggleBtn.Background = tocOpen
+                ? ThemeService.Brush(ThemeService.BgElevated)
+                : Brushes.Transparent;
+            tocToggleBtn.BorderBrush = tocOpen
+                ? ThemeService.Brush(ThemeService.BorderStrong)
+                : Brushes.Transparent;
+            tocToggleBtn.BorderThickness = new Thickness(tocOpen ? 1 : 0);
+
+            // Update Inspector layout button icons & tooltips in place
+            expandLeftBtn.IsVisible = !isCompact && !isFullView;
+            expandLeftIcon.Kind = isExpandedLeft
+                ? MaterialIconKind.ChevronDoubleRight
+                : MaterialIconKind.ChevronDoubleLeft;
+            expandLeftBtn.Background = isExpandedLeft
+                ? ThemeService.Brush(ThemeService.BgElevated)
+                : Brushes.Transparent;
+            ToolTip.SetTip(
+                expandLeftBtn,
+                isExpandedLeft
+                    ? "Restore balanced Grid / Inspector split"
+                    : "Expand Inspector left (collapses thumbnail grid to 2 columns)"
+            );
+
+            fullViewIcon.Kind = isFullView
+                ? MaterialIconKind.FullscreenExit
+                : MaterialIconKind.Fullscreen;
+            fullViewBtn.Background = isFullView
+                ? ThemeService.Brush(ThemeService.BgElevated)
+                : Brushes.Transparent;
+            compactBackToGridBtn.IsVisible = isFullView;
+
+            // 1. Animate TOC: docked width-shift on Wide (>= 1180px) in Balanced mode, floating drawer otherwise!
+            bool useDockedToc = width >= 1180 && !isExpandedLeft && !isFullView;
+            if (useDockedToc)
             {
-                bool showInsp = studio.IsStudioCompactInspectorOpen;
-                compactBackToGridBtn.IsVisible = showInsp;
-                if (studio.IsStudioPageTocOpen)
+                tocFloatingScrim.Opacity = 0;
+                tocFloatingScrim.IsHitTestVisible = false;
+                tocDrawerTransform.X = -270;
+                tocFloatingDrawer.Opacity = 0;
+                tocFloatingDrawer.IsHitTestVisible = false;
+
+                if (tocPanel.Parent == tocFloatingDrawer)
                 {
-                    // Hide TOC in compact mode so Grid or Inspector gets 100% legible width
-                    splitBody.Children[0].IsVisible = false;
-                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse(
-                        showInsp ? "0,0,0,0,*" : "0,0,*,0,0"
-                    );
+                    tocFloatingDrawer.Child = null;
+                    dockedTocSlot.Child = tocPanel;
                 }
-                else
-                {
-                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse(
-                        showInsp ? "0,0,*" : "*,0,0"
-                    );
-                }
-                leftCard.IsVisible = !showInsp;
-                rightCard.IsVisible = showInsp;
+
+                dockedTocSlot.Width = tocOpen ? 248 : 0;
+                dockedTocSlot.Opacity = tocOpen ? 1.0 : 0.0;
+                dockedTocSlot.IsHitTestVisible = tocOpen;
             }
             else
             {
-                compactBackToGridBtn.IsVisible = false;
-                leftCard.IsVisible = true;
-                rightCard.IsVisible = true;
-                if (studio.IsStudioPageTocOpen)
+                dockedTocSlot.Width = 0;
+                dockedTocSlot.Opacity = 0;
+                dockedTocSlot.IsHitTestVisible = false;
+
+                if (tocPanel.Parent == dockedTocSlot)
                 {
-                    bool showToc = width >= 1120;
-                    splitBody.Children[0].IsVisible = showToc;
-                    splitBody.ColumnDefinitions = showToc
-                        ? ColumnDefinitions.Parse("235,12,1.8*,12,1.1*")
-                        : ColumnDefinitions.Parse("0,0,1.7*,12,1.1*");
+                    dockedTocSlot.Child = null;
+                    tocFloatingDrawer.Child = tocPanel;
+                }
+
+                tocFloatingScrim.Opacity = tocOpen ? 1.0 : 0.0;
+                tocFloatingScrim.IsHitTestVisible = tocOpen;
+                tocDrawerTransform.X = tocOpen ? 0 : -270;
+                tocFloatingDrawer.Opacity = tocOpen ? 1.0 : 0.0;
+                tocFloatingDrawer.IsHitTestVisible = tocOpen;
+            }
+
+            // 2. Snap Left Thumbnail Grid Slot Width to exact column multiples (zero empty dead space; extra pixels go to PDF Inspector!)
+            // Each tile is 126 + 12 (padding) + 10 (margin) = 148px; card + scroll + slot gap chrome = ~62px
+            const double TilePitch = 148;
+            const double GridChrome = 62;
+            const double MinInspectorWidth = 340;
+            double avail = Math.Max(320, width - 36);
+
+            if (isCompact)
+            {
+                if (isFullView)
+                {
+                    leftGridSlot.Padding = new Thickness(0);
+                    leftGridSlot.Width = 0;
+                    leftGridSlot.Opacity = 0;
+                    leftGridSlot.IsHitTestVisible = false;
+                    rightCard.IsVisible = true;
                 }
                 else
                 {
-                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse("1.75*,12,1.15*");
+                    leftGridSlot.Padding = new Thickness(0);
+                    leftGridSlot.Width = avail;
+                    leftGridSlot.Opacity = 1;
+                    leftGridSlot.IsHitTestVisible = true;
+                    rightCard.IsVisible = false;
+                }
+            }
+            else
+            {
+                rightCard.IsVisible = true;
+                if (isFullView)
+                {
+                    leftGridSlot.Padding = new Thickness(0);
+                    leftGridSlot.Width = 0;
+                    leftGridSlot.Opacity = 0;
+                    leftGridSlot.IsHitTestVisible = false;
+                }
+                else if (isExpandedLeft)
+                {
+                    // Exact 2-column strip (358px) if Inspector still gets >= 380px, else exact 1-column strip (210px)
+                    double twoColWidth = 2 * TilePitch + GridChrome;
+                    double oneColWidth = 1 * TilePitch + GridChrome;
+                    double targetW = avail - twoColWidth >= 380 ? twoColWidth : oneColWidth;
+                    leftGridSlot.Padding = new Thickness(0, 0, 12, 0);
+                    leftGridSlot.Width = targetW;
+                    leftGridSlot.Opacity = 1;
+                    leftGridSlot.IsHitTestVisible = true;
+                }
+                else
+                {
+                    double rem = avail - (useDockedToc && tocOpen ? 248 : 0);
+                    double maxGridBudget = Math.Max(1 * TilePitch + GridChrome, rem - MinInspectorWidth);
+                    int targetCols = Math.Max(1, (int)Math.Floor((Math.Min(rem * 0.62, maxGridBudget) - GridChrome) / TilePitch));
+                    double snappedW = Math.Min(maxGridBudget, targetCols * TilePitch + GridChrome);
+                    leftGridSlot.Padding = new Thickness(0, 0, 12, 0);
+                    leftGridSlot.Width = snappedW;
+                    leftGridSlot.Opacity = 1;
+                    leftGridSlot.IsHitTestVisible = true;
                 }
             }
         }
 
-        root.SizeChanged += (_, e) => ApplyStudioResponsiveLayout(e.NewSize.Width);
+        setTocOpenAction = open =>
+        {
+            studio.SetStudioPageTocOpenQuiet(open);
+            ApplyStudioResponsiveLayout(
+                root.Bounds.Width > 0 ? root.Bounds.Width : _lastStudioViewportWidth,
+                animate: true
+            );
+        };
+
+        setInspectorModeAction = nextMode =>
+        {
+            studio.SetStudioInspectorLayoutQuiet(nextMode);
+            ApplyStudioResponsiveLayout(
+                root.Bounds.Width > 0 ? root.Bounds.Width : _lastStudioViewportWidth,
+                animate: true
+            );
+        };
+
+        // Apply exact layout synchronously BEFORE first frame so page switches / fresh boot never flicker or shift!
+        if (_lastStudioViewportWidth > 0)
+            ApplyStudioResponsiveLayout(_lastStudioViewportWidth, animate: false);
+
+        root.SizeChanged += (_, e) => ApplyStudioResponsiveLayout(e.NewSize.Width, animate: false);
 
         Grid.SetRow(splitBody, 2);
         root.Children.Add(splitBody);
+
+        Grid.SetRow(tocFloatingScrim, 2);
+        root.Children.Add(tocFloatingScrim);
+        Grid.SetRow(tocFloatingDrawer, 2);
+        root.Children.Add(tocFloatingDrawer);
+
         return root;
     }
 
@@ -1116,7 +1510,8 @@ public static partial class QuizStudioViewBuilder
     /// </summary>
     private static Control BuildCollapsiblePageTocPanel(
         QuizStudioViewModel studio,
-        bool isFullHeight
+        bool isFullHeight,
+        Action? onCloseOverride = null
     )
     {
         var inScopeSet = studio.MatchedScopePages.Select(p => p.PageNumber).ToHashSet();
@@ -1204,10 +1599,11 @@ public static partial class QuizStudioViewBuilder
         {
             var collapseBtn = UiBuilder.IconButton(
                 MaterialIconKind.ChevronDoubleLeft,
-                studio.ToggleStudioPageToc,
+                onCloseOverride ?? studio.ToggleStudioPageToc,
                 15,
                 ThemeService.Brush(ThemeService.TextSecondary)
             );
+            ToolTip.SetTip(collapseBtn, "Collapse Pages TOC");
             Grid.SetColumn(collapseBtn, 2);
             headerBar.Children.Add(collapseBtn);
         }
