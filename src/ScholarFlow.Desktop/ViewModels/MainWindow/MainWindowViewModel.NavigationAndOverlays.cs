@@ -108,7 +108,10 @@ public sealed partial class MainWindowViewModel
         NotifyStateChanged(UiChangeKind.SearchOrTaskList);
     }
 
-    public void RequestUiRefresh() => NotifyStateChanged(UiChangeKind.FullLayout);
+    public void RequestUiRefresh() => NotifyStateChanged(UiChangeKind.CenterBodyOnly);
+
+    public void RequestUiRefresh(bool fullLayout) =>
+        NotifyStateChanged(fullLayout ? UiChangeKind.FullLayout : UiChangeKind.CenterBodyOnly);
 
     public async Task SelectQuizStudioViewAsync(
         BasinCourseEntry? course = null,

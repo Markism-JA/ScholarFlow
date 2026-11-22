@@ -57,8 +57,8 @@ public sealed partial class MainWindow : Window
         Title = "ScholarFlow";
         Width = 1360;
         Height = 860;
-        MinWidth = 640;
-        MinHeight = 480;
+        MinWidth = 760;
+        MinHeight = 560;
 
         _quickAddBox = new TextBox
         {
@@ -213,6 +213,10 @@ public sealed partial class MainWindow : Window
                     if (ShouldFloatInspectorOverlay)
                         RefreshOverlayModal();
                 }
+                break;
+
+            case UiChangeKind.CenterBodyOnly:
+                RefreshCenterBodyAndInspector();
                 break;
 
             case UiChangeKind.SearchOrTaskList:

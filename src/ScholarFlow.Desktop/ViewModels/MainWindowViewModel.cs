@@ -32,6 +32,7 @@ public enum TaskGroupingMode
 public enum UiChangeKind
 {
     FullLayout,
+    CenterBodyOnly,
     SelectionOnly,
     QuickAddOnly,
     SearchOrTaskList,

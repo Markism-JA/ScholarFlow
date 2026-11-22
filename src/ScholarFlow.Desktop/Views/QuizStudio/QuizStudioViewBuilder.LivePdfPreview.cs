@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -81,6 +82,10 @@ public static partial class QuizStudioViewBuilder
                 "Page Studio",
                 MaterialIconKind.ViewGridOutline,
                 studio.OpenPageGrid
+            );
+            ToolTip.SetTip(
+                gridModeBtn,
+                "Open full-screen Page & Section Studio to visually pick pages, exclude slides, and save chapters"
             );
             gridModeBtn.Margin = new Thickness(0, 0, 4, 2);
             headerActions.Children.Add(gridModeBtn);
@@ -567,6 +572,7 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.CheckboxMultipleMarkedOutline,
             () => studio.SetBatchPagesInScope(true)
         );
+        ToolTip.SetTip(selBatchBtn, $"Include all visible pages ({batchStart}–{batchEnd}) in scope");
         selBatchBtn.Margin = new Thickness(0, 0, 5, 3);
         actionBar.Children.Add(selBatchBtn);
 
@@ -575,6 +581,7 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.CheckboxMultipleBlankOutline,
             () => studio.SetBatchPagesInScope(false)
         );
+        ToolTip.SetTip(exclBatchBtn, $"Remove all visible pages ({batchStart}–{batchEnd}) from scope");
         exclBatchBtn.Margin = new Thickness(0, 0, 5, 3);
         actionBar.Children.Add(exclBatchBtn);
 
@@ -583,6 +590,7 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.SwapHorizontal,
             studio.InvertPdfScope
         );
+        ToolTip.SetTip(invertBtn, "Flip included and excluded pages across the entire PDF");
         invertBtn.Margin = new Thickness(0, 0, 5, 3);
         actionBar.Children.Add(invertBtn);
 
@@ -591,6 +599,7 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.SelectAll,
             studio.ClearScopeFilters
         );
+        ToolTip.SetTip(resetAllBtn, "Reset scope filters to include all pages");
         resetAllBtn.Margin = new Thickness(0, 0, 5, 3);
         actionBar.Children.Add(resetAllBtn);
         leftGrid.Children.Add(actionBar);
@@ -618,6 +627,14 @@ public static partial class QuizStudioViewBuilder
                     Opacity = inScope ? 1.0 : 0.36,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
+                    Transitions =
+                    [
+                        new DoubleTransition
+                        {
+                            Property = Visual.OpacityProperty,
+                            Duration = TimeSpan.FromMilliseconds(130),
+                        },
+                    ],
                 }
                 : new Border
                 {
@@ -671,6 +688,7 @@ public static partial class QuizStudioViewBuilder
                     ? ThemeService.Brush(ThemeService.AccentPrimary)
                     : ThemeService.Brush(ThemeService.TextSecondary)
             );
+            ToolTip.SetTip(inspectBtn, $"Inspect page {capturedPage} full-size");
             Grid.SetColumn(inspectBtn, 2);
             tileFooter.Children.Add(inspectBtn);
 
@@ -703,6 +721,19 @@ public static partial class QuizStudioViewBuilder
                 Padding = new Thickness(6),
                 Margin = new Thickness(0, 0, 10, 10),
                 Cursor = new Cursor(StandardCursorType.Hand),
+                Transitions =
+                [
+                    new BrushTransition
+                    {
+                        Property = Border.BorderBrushProperty,
+                        Duration = TimeSpan.FromMilliseconds(120),
+                    },
+                    new BrushTransition
+                    {
+                        Property = Border.BackgroundProperty,
+                        Duration = TimeSpan.FromMilliseconds(120),
+                    },
+                ],
                 Child = tileContent,
             };
 
@@ -920,6 +951,73 @@ public static partial class QuizStudioViewBuilder
         var rightCard = UiBuilder.Card(rightInspector, padding: new Thickness(12, 10));
         Grid.SetColumn(rightCard, inspCol);
         splitBody.Children.Add(rightCard);
+
+        // Responsive Page Studio Breakpoints:
+        // - Compact (< 900px): never squish Inspector into an illegible sliver; swap full-width Grid <-> full-width Inspector!
+        // - Medium (900-1180px): keep Grid + Inspector side-by-side; hide TOC drawer unless narrow enough
+        // - Wide (>= 1180px): full 3-pane layout
+        var compactBackToGridBtn = UiBuilder.GhostButton(
+            "Back to Grid",
+            MaterialIconKind.ViewGridOutline,
+            () => studio.SetStudioCompactInspectorOpen(false)
+        );
+        compactBackToGridBtn.IsVisible = false;
+        compactBackToGridBtn.Margin = new Thickness(0, 0, 6, 0);
+        var inspTitleRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        var existingInspInfo = inspHeader.Children[0];
+        inspHeader.Children.RemoveAt(0);
+        inspTitleRow.Children.Add(compactBackToGridBtn);
+        inspTitleRow.Children.Add(existingInspInfo);
+        inspHeader.Children.Insert(0, inspTitleRow);
+
+        void ApplyStudioResponsiveLayout(double width)
+        {
+            if (width <= 0)
+                return;
+
+            bool isCompact = width < 900;
+            if (isCompact)
+            {
+                bool showInsp = studio.IsStudioCompactInspectorOpen;
+                compactBackToGridBtn.IsVisible = showInsp;
+                if (studio.IsStudioPageTocOpen)
+                {
+                    // Hide TOC in compact mode so Grid or Inspector gets 100% legible width
+                    splitBody.Children[0].IsVisible = false;
+                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse(
+                        showInsp ? "0,0,0,0,*" : "0,0,*,0,0"
+                    );
+                }
+                else
+                {
+                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse(
+                        showInsp ? "0,0,*" : "*,0,0"
+                    );
+                }
+                leftCard.IsVisible = !showInsp;
+                rightCard.IsVisible = showInsp;
+            }
+            else
+            {
+                compactBackToGridBtn.IsVisible = false;
+                leftCard.IsVisible = true;
+                rightCard.IsVisible = true;
+                if (studio.IsStudioPageTocOpen)
+                {
+                    bool showToc = width >= 1120;
+                    splitBody.Children[0].IsVisible = showToc;
+                    splitBody.ColumnDefinitions = showToc
+                        ? ColumnDefinitions.Parse("235,12,1.8*,12,1.1*")
+                        : ColumnDefinitions.Parse("0,0,1.7*,12,1.1*");
+                }
+                else
+                {
+                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse("1.75*,12,1.15*");
+                }
+            }
+        }
+
+        root.SizeChanged += (_, e) => ApplyStudioResponsiveLayout(e.NewSize.Width);
 
         Grid.SetRow(splitBody, 2);
         root.Children.Add(splitBody);

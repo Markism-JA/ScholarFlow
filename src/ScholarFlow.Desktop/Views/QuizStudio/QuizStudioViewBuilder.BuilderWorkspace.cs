@@ -181,6 +181,10 @@ public static partial class QuizStudioViewBuilder
             FontSize = 12,
             Margin = new Thickness(4, 0, 4, 4),
         };
+        ToolTip.SetTip(
+            pageRangeBox,
+            "Enter pages or ranges (e.g. 1-15, 22, !4-6). Prefix ! to exclude pages."
+        );
 
         void ApplyPageExpr() => studio.ApplyPageRangeExpression(pageRangeBox.Text);
 
@@ -198,6 +202,7 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.Check,
             ApplyPageExpr
         );
+        ToolTip.SetTip(applyPagesBtn, "Apply page range expression to scope");
         applyPagesBtn.Margin = new Thickness(0, 0, 4, 4);
 
         var saveSectionBtn = UiBuilder.GhostButton(
@@ -205,6 +210,10 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.BookmarkPlusOutline,
             studio.ToggleAddCustomSectionForm,
             isActive: studio.IsAddCustomSectionOpen
+        );
+        ToolTip.SetTip(
+            saveSectionBtn,
+            "Save current page selection as a reusable custom chapter for this PDF"
         );
         saveSectionBtn.Margin = new Thickness(0, 0, 4, 4);
 

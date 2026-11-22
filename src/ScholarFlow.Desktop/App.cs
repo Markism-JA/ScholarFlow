@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
@@ -137,6 +138,31 @@ public sealed class App : Application
             },
         };
         Styles.Add(menuItemSelectedStyle);
+
+        Styles.Add(
+            new Style(x => x.OfType<Button>())
+            {
+                Setters =
+                {
+                    new Setter(
+                        Animatable.TransitionsProperty,
+                        new Transitions
+                        {
+                            new BrushTransition
+                            {
+                                Property = TemplatedControl.BackgroundProperty,
+                                Duration = TimeSpan.FromMilliseconds(110),
+                            },
+                            new BrushTransition
+                            {
+                                Property = TemplatedControl.BorderBrushProperty,
+                                Duration = TimeSpan.FromMilliseconds(110),
+                            },
+                        }
+                    ),
+                },
+            }
+        );
 
         // Global sleek, slim overlay ScrollBars across every ScrollViewer without touching individual widgets
         Styles.Add(

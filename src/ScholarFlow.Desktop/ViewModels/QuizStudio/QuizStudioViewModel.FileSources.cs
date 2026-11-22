@@ -37,7 +37,13 @@ public sealed partial class QuizStudioViewModel
     {
         ShowStudyFiles = !ShowStudyFiles;
         if (ShowStudyFiles)
-            RebuildStudyFilesForCourse(force: true);
+            RebuildStudyFilesForCourse(force: false, silentRevalidate: true);
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void RefreshStudyFilesExplicitly()
+    {
+        RebuildStudyFilesForCourse(force: true, silentRevalidate: false);
         _mainVm.RequestUiRefresh();
     }
 
@@ -150,7 +156,7 @@ public sealed partial class QuizStudioViewModel
         new(StringComparer.OrdinalIgnoreCase);
     public bool IsLoadingStudyFiles { get; private set; }
 
-    private void RebuildStudyFilesForCourse(bool force = false)
+    private void RebuildStudyFilesForCourse(bool force = false, bool silentRevalidate = false)
     {
         var folder = SelectedCourse?.FolderName;
         bool courseChanged = !string.Equals(
@@ -158,7 +164,7 @@ public sealed partial class QuizStudioViewModel
             _studyFilesCourseFolder,
             StringComparison.OrdinalIgnoreCase
         );
-        if (!courseChanged && !force)
+        if (!courseChanged && !force && !silentRevalidate)
             return;
 
         _studyFilesCourseFolder = folder;
@@ -170,6 +176,8 @@ public sealed partial class QuizStudioViewModel
             return;
         }
 
+        var courseDir = Path.Combine(_mainVm.BasinRoot, folder);
+
         if (!force && _studyFilesCache.TryGetValue(folder, out var cached))
         {
             StudyFiles = cached;
@@ -177,22 +185,29 @@ public sealed partial class QuizStudioViewModel
             _selectedFileSourcePaths.RemoveWhere(p =>
                 !StudyFiles.Any(f => f.FilePath.Equals(p, StringComparison.OrdinalIgnoreCase))
             );
+            if (silentRevalidate)
+                _ = LoadStudyFilesAsync(folder, courseDir, silent: true);
             return;
         }
 
-        var courseDir = Path.Combine(_mainVm.BasinRoot, folder);
         StudyFiles = [];
         IsLoadingStudyFiles = true;
-        _ = LoadStudyFilesAsync(folder, courseDir);
+        _ = LoadStudyFilesAsync(folder, courseDir, silent: false);
     }
 
-    private async Task LoadStudyFilesAsync(string folder, string courseDir)
+    private async Task LoadStudyFilesAsync(string folder, string courseDir, bool silent = false)
     {
         try
         {
             var discovered = await Task.Run(() =>
                 FileSourceQuizSupport.DiscoverCourseStudyFiles(courseDir)
             );
+            bool changed =
+                !_studyFilesCache.TryGetValue(folder, out var prev)
+                || prev.Count != discovered.Count
+                || !prev.Select(f => f.FilePath)
+                    .SequenceEqual(discovered.Select(f => f.FilePath), StringComparer.OrdinalIgnoreCase);
+
             _studyFilesCache[folder] = discovered;
 
             if (string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase))
@@ -201,19 +216,27 @@ public sealed partial class QuizStudioViewModel
                 _selectedFileSourcePaths.RemoveWhere(p =>
                     !StudyFiles.Any(f => f.FilePath.Equals(p, StringComparison.OrdinalIgnoreCase))
                 );
+                if (silent && changed)
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() => _mainVm.RequestUiRefresh());
             }
         }
         catch
         {
-            if (string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase))
+            if (
+                !silent
+                && string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase)
+            )
                 StudyFiles = [];
         }
         finally
         {
-            if (string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase))
+            if (
+                !silent
+                && string.Equals(_studyFilesCourseFolder, folder, StringComparison.OrdinalIgnoreCase)
+            )
             {
                 IsLoadingStudyFiles = false;
-                Avalonia.Threading.Dispatcher.UIThread.Post(_mainVm.RequestUiRefresh);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() => _mainVm.RequestUiRefresh());
             }
         }
     }

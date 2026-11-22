@@ -196,6 +196,16 @@ public sealed partial class QuizStudioViewModel
             return;
 
         IsPageGridOpen = false;
+        IsStudioCompactInspectorOpen = false;
+        _mainVm.RequestUiRefresh();
+    }
+
+    public void SetStudioCompactInspectorOpen(bool open)
+    {
+        if (IsStudioCompactInspectorOpen == open)
+            return;
+
+        IsStudioCompactInspectorOpen = open;
         _mainVm.RequestUiRefresh();
     }
 
@@ -417,6 +427,7 @@ public sealed partial class QuizStudioViewModel
 
         PreviewBrowseAllPages = true;
         PreviewBrowsePageNumber = Math.Clamp(pageOneBased, 1, PdfTotalPages);
+        IsStudioCompactInspectorOpen = true;
         _mainVm.RequestUiRefresh();
     }
 

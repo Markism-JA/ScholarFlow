@@ -82,18 +82,33 @@ public static partial class QuizStudioViewBuilder
 
         if (studio.StudyFiles.Count > 0)
         {
-            headerActions.Children.Add(
-                UiBuilder.GhostButton(
-                    studio.ShowStudyFiles
-                        ? "Hide Files"
-                        : $"Browse Files ({studio.StudyFiles.Count})",
-                    studio.ShowStudyFiles
-                        ? MaterialIconKind.ChevronUp
-                        : MaterialIconKind.ChevronDown,
-                    studio.ToggleShowStudyFiles,
-                    isActive: studio.ShowStudyFiles
-                )
+            if (studio.ShowStudyFiles)
+            {
+                var refreshFilesBtn = UiBuilder.IconButton(
+                    MaterialIconKind.Refresh,
+                    studio.RefreshStudyFilesExplicitly,
+                    14,
+                    ThemeService.Brush(ThemeService.TextSecondary)
+                );
+                ToolTip.SetTip(refreshFilesBtn, "Rescan course folder for new or updated files");
+                headerActions.Children.Add(refreshFilesBtn);
+            }
+
+            var browseBtn = UiBuilder.GhostButton(
+                studio.ShowStudyFiles
+                    ? "Hide Files"
+                    : $"Browse Files ({studio.StudyFiles.Count})",
+                studio.ShowStudyFiles
+                    ? MaterialIconKind.ChevronUp
+                    : MaterialIconKind.ChevronDown,
+                studio.ToggleShowStudyFiles,
+                isActive: studio.ShowStudyFiles
             );
+            ToolTip.SetTip(
+                browseBtn,
+                "Show or hide study files (code, notes, images) in this course folder"
+            );
+            headerActions.Children.Add(browseBtn);
         }
 
         Grid.SetColumn(headerActions, 1);
