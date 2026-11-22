@@ -334,7 +334,7 @@ public sealed partial class MainWindowViewModel
     public void ToggleSidebar()
     {
         IsSidebarCollapsed = !IsSidebarCollapsed;
-        NotifyStateChanged(UiChangeKind.FullLayout);
+        NotifyStateChanged(UiChangeKind.SidebarOnly);
     }
 
     public void ToggleQuickAddModal()

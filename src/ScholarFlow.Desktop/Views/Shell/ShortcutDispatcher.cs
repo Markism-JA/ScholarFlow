@@ -54,6 +54,12 @@ public static class ShortcutDispatcher
                     vm.QuizStudio.CloseImageZoom();
                     return;
                 }
+                if (vm.QuizStudio.IsPageGridOpen)
+                {
+                    e.Handled = true;
+                    vm.QuizStudio.ClosePageGrid();
+                    return;
+                }
                 if (vm.QuizStudio.IsDedicatedSnipperOpen)
                 {
                     e.Handled = true;
@@ -82,7 +88,10 @@ public static class ShortcutDispatcher
             if (vm.ActiveMode == WorkspaceTabMode.PdfReader)
             {
                 e.Handled = true;
-                vm.ReturnFromPdfReader();
+                if (vm.PdfReader.IsSearchBarOpen)
+                    vm.PdfReader.CloseSearchBar();
+                else
+                    vm.ReturnFromPdfReader();
                 return;
             }
             if (vm.ActiveMode == WorkspaceTabMode.SourceViewer)
@@ -178,6 +187,12 @@ public static class ShortcutDispatcher
             {
                 e.Handled = true;
                 vm.ToggleKnowledgeSearchModal();
+                return;
+            }
+            if (e.Key == Key.F && vm.ActiveMode == WorkspaceTabMode.PdfReader)
+            {
+                e.Handled = true;
+                vm.PdfReader.ToggleSearchBar();
                 return;
             }
             if (e.Key is Key.K or Key.F)
@@ -371,6 +386,14 @@ public static class ShortcutDispatcher
             case Key.End when vm.ActiveMode == WorkspaceTabMode.PdfReader:
                 e.Handled = true;
                 vm.PdfReader.JumpToPage(vm.PdfReader.PageCount);
+                break;
+
+            case Key.R when vm.ActiveMode == WorkspaceTabMode.PdfReader:
+                e.Handled = true;
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+                    vm.PdfReader.RotateLeft();
+                else
+                    vm.PdfReader.RotateRight();
                 break;
 
             case Key.Home when isOrganizerActive:

@@ -1448,20 +1448,35 @@ public static partial class QuizStudioViewBuilder
                 async () => await studio.LoadEditorSnipPageAsync(Math.Max(1, curPage - 1))
             )
         );
-        navRow.Children.Add(
-            new Border
+        var pageJumpBox = new TextBox
+        {
+            Text = curPage.ToString(),
+            Width = 50,
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(5, 3),
+        };
+        ToolTip.SetTip(pageJumpBox, "Type a page number and press Enter to jump");
+        pageJumpBox.KeyDown += async (_, e) =>
+        {
+            if (e.Key == Avalonia.Input.Key.Enter && int.TryParse(pageJumpBox.Text?.Trim(), out int target))
             {
-                Background = ThemeService.Brush(ThemeService.BgElevated),
-                CornerRadius = new CornerRadius(5),
-                Padding = new Thickness(8, 3.5),
+                e.Handled = true;
+                await studio.LoadEditorSnipPageAsync(target);
+            }
+        };
+        navRow.Children.Add(pageJumpBox);
+        navRow.Children.Add(
+            new TextBlock
+            {
+                Text = $"/ {totalPages}",
+                FontSize = 12,
+                FontWeight = FontWeight.SemiBold,
+                Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                 VerticalAlignment = VerticalAlignment.Center,
-                Child = new TextBlock
-                {
-                    Text = $"{curPage} / {totalPages}",
-                    FontSize = 12,
-                    FontWeight = FontWeight.SemiBold,
-                    Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                },
+                Margin = new Thickness(2, 0, 2, 0),
             }
         );
         navRow.Children.Add(
@@ -1478,10 +1493,9 @@ public static partial class QuizStudioViewBuilder
         );
         rightControls.Children.Add(navRow);
 
-        var zoomRow = new StackPanel
+        var zoomRow = new WrapPanel
         {
             Orientation = Orientation.Horizontal,
-            Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
         };
         zoomRow.Children.Add(
@@ -1511,6 +1525,19 @@ public static partial class QuizStudioViewBuilder
                 async () => await studio.ZoomSnipAsync(+25)
             )
         );
+        var snipRotL = UiBuilder.IconButton(
+            MaterialIconKind.RotateLeft,
+            async () => await studio.RotateSnipAsync(-90)
+        );
+        ToolTip.SetTip(snipRotL, "Rotate page 90° counter-clockwise");
+        zoomRow.Children.Add(snipRotL);
+
+        var snipRotR = UiBuilder.IconButton(
+            MaterialIconKind.RotateRight,
+            async () => await studio.RotateSnipAsync(+90)
+        );
+        ToolTip.SetTip(snipRotR, "Rotate page 90° clockwise");
+        zoomRow.Children.Add(snipRotR);
         zoomRow.Children.Add(
             UiBuilder.GhostButton(
                 "Pin Highlight",
@@ -1648,15 +1675,39 @@ public static partial class QuizStudioViewBuilder
                 Child = pageLayer,
             };
 
-            var snipScroll = new ScrollViewer
-            {
-                HorizontalScrollBarVisibility = studio.SnipFitToWidth
+            var snipScroll = UiBuilder.PersistentScrollViewer(
+                $"snip-pdf-canvas:{studio.EditingQuestionDraft?.SourcePdfPath}:{curPage}",
+                sheet,
+                horizontalVisibility: studio.SnipFitToWidth
                     ? ScrollBarVisibility.Disabled
-                    : ScrollBarVisibility.Auto,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                Content = sheet,
-            };
-            UiBuilder.AttachPdfWheelAndPan(snipScroll, delta => _ = studio.ZoomSnipAsync(delta));
+                    : ScrollBarVisibility.Auto
+            );
+            int snipLocalZoom = studio.SnipZoomPercent;
+            UiBuilder.AttachPdfWheelAndPan(
+                snipScroll,
+                delta =>
+                {
+                    int oldZ = snipLocalZoom;
+                    snipLocalZoom = Math.Clamp(snipLocalZoom + delta, 50, 300);
+                    if (snipLocalZoom == oldZ)
+                        return;
+                    double ratio = snipLocalZoom / (double)oldZ;
+                    img.Width = 760 * (snipLocalZoom / 100.0);
+                    sheet.MaxWidth = double.PositiveInfinity;
+                    sheet.HorizontalAlignment = HorizontalAlignment.Center;
+                    snipScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+                    snipScroll.Offset = new Vector(
+                        snipScroll.Offset.X,
+                        Math.Max(0, snipScroll.Offset.Y * ratio)
+                    );
+                },
+                onEdgePageFlip: dir =>
+                {
+                    int nextP = Math.Clamp(curPage + dir, 1, totalPages);
+                    if (nextP != curPage)
+                        _ = studio.LoadEditorSnipPageAsync(nextP);
+                }
+            );
             canvasContent = snipScroll;
         }
         else
@@ -1792,6 +1843,34 @@ public static partial class QuizStudioViewBuilder
 
         Grid.SetRow(body, 1);
         root.Children.Add(body);
+
+        root.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width <= 0)
+                return;
+
+            bool compactSnip = e.NewSize.Width < 1040;
+            bool veryNarrow = e.NewSize.Width < 860;
+            if (showOutline && body.Children.Count >= 3)
+            {
+                var outlineCtrl = body.Children[0];
+                outlineCtrl.IsVisible = !compactSnip;
+                railCard.IsVisible = !veryNarrow;
+                body.ColumnDefinitions = veryNarrow
+                    ? ColumnDefinitions.Parse("0,0,*,0,0")
+                    : compactSnip
+                        ? ColumnDefinitions.Parse("0,0,*,10,220")
+                        : ColumnDefinitions.Parse("230,10,*,10,240");
+            }
+            else
+            {
+                railCard.IsVisible = !veryNarrow;
+                body.ColumnDefinitions = veryNarrow
+                    ? ColumnDefinitions.Parse("*,0,0")
+                    : ColumnDefinitions.Parse("*,10,230");
+            }
+        };
+
         return root;
     }
 

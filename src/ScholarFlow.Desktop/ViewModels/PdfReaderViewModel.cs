@@ -19,14 +19,28 @@ public sealed class PdfBookmarkNode
     public bool IsExpanded { get; set; } = true;
 }
 
+public enum PdfFitMode
+{
+    FitWidth,
+    FitPage,
+    Custom,
+}
+
 /// <summary>
 /// Built-in PDF reader ViewModel backed by PDFtoImage (PDFium + SkiaSharp) and PdfPig hierarchical outlines.
+/// Features parallel fast-preview cold open, 2-tier progressive rendering (96 -> 180/280 DPI),
+/// 24-page LRU cache with bidirectional prefetch, page rotation, Fit Width/Page modes, and in-PDF search.
 /// </summary>
 public sealed class PdfReaderViewModel : IDisposable
 {
-    private readonly Dictionary<(int Page, int Dpi), Bitmap> _pageCache = [];
-    private readonly HashSet<(int Page, int Dpi)> _pendingPageRenders = [];
+    private const int FastPreviewDpi = 96;
+    private const int MaxCacheEntries = 24;
+
+    private readonly Dictionary<(int Page, int Dpi, int Rotation), Bitmap> _pageCache = [];
+    private readonly LinkedList<(int Page, int Dpi, int Rotation)> _lruOrder = [];
+    private readonly HashSet<(int Page, int Dpi, int Rotation)> _pendingPageRenders = [];
     private CancellationTokenSource? _loadCts;
+    private CancellationTokenSource? _searchCts;
     private int? _pendingJumpPage;
     private byte[]? _pdfBytes;
 
@@ -36,7 +50,9 @@ public sealed class PdfReaderViewModel : IDisposable
     public int PageCount { get; private set; }
     public int CurrentPage { get; private set; } = 1; // 1-based
     public int ZoomPercent { get; private set; } = 100;
-    public bool FitToWidth { get; private set; } = true;
+    public PdfFitMode FitMode { get; private set; } = PdfFitMode.FitWidth;
+    public bool FitToWidth => FitMode == PdfFitMode.FitWidth;
+    public int RotationDegrees { get; private set; }
     public bool IsOutlineVisible { get; private set; } = true;
     public bool IsLoadingDocument { get; private set; }
     public bool IsRenderingPage { get; private set; }
@@ -48,19 +64,59 @@ public sealed class PdfReaderViewModel : IDisposable
     public string? ActiveEvidenceQuote { get; private set; }
     public string? ActiveEvidenceQuestionPrompt { get; private set; }
 
+    // In-PDF Text Search (Ctrl+F)
+    public bool IsSearchBarOpen { get; private set; }
+    public string SearchQuery { get; set; } = string.Empty;
+    public bool IsSearchingPdf { get; private set; }
+    public IReadOnlyList<(int PageNumber, NormalizedHighlightRect Rect)> SearchMatches
+    {
+        get;
+        private set;
+    } = [];
+    public int ActiveSearchMatchIndex { get; private set; } = -1;
+
     public event EventHandler? Changed;
+    public event Action<int, Bitmap>? PageBitmapReady;
+    public event Action<int>? NavigationRequested;
+    public event Action? ZoomChangedInPlace;
+    public event Action<bool>? OutlineVisibilityChanged;
+
+    public void SetCurrentPageQuietly(int oneBasedPage)
+    {
+        if (PageCount <= 0)
+            return;
+        CurrentPage = Math.Clamp(oneBasedPage, 1, PageCount);
+    }
+
+    public IReadOnlyList<NormalizedHighlightRect> GetPageSearchHighlights(int oneBasedPage)
+    {
+        if (!IsSearchBarOpen || SearchMatches.Count == 0)
+            return [];
+
+        return SearchMatches
+            .Where(m => m.PageNumber == oneBasedPage)
+            .Select(m => m.Rect)
+            .ToList();
+    }
 
     public void LoadPdf(string filePath, string? basinRoot = null)
     {
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         _loadCts = null;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
 
         ClearCache();
         ClearEvidenceHighlight(notify: false);
         _pendingPageRenders.Clear();
         _pendingJumpPage = null;
         _pdfBytes = null;
+        RotationDegrees = 0;
+        SearchMatches = [];
+        ActiveSearchMatchIndex = -1;
+        IsSearchingPdf = false;
 
         CurrentFilePath = filePath;
         ErrorMessage = null;
@@ -94,20 +150,44 @@ public sealed class PdfReaderViewModel : IDisposable
         var token = cts.Token;
         try
         {
-            var (bytes, pageCount, roots) = await Task.Run(
-                () =>
-                {
-                    token.ThrowIfCancellationRequested();
-                    var data = File.ReadAllBytes(filePath);
-                    token.ThrowIfCancellationRequested();
-                    using var doc = PdfDocument.Open(data);
-                    int pages = doc.NumberOfPages;
-                    var tree = ExtractBookmarkRoots(doc);
-                    MergeCustomSavedSectionsIntoBookmarks(tree, basinRoot, filePath, pages);
-                    return (data, pages, tree);
-                },
-                token
-            );
+            var (bytes, pageCount, roots, initialPageZeroBased, initialPreviewPixels) =
+                await Task.Run(
+                    () =>
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var data = File.ReadAllBytes(filePath);
+                        token.ThrowIfCancellationRequested();
+                        using var doc = PdfDocument.Open(data);
+                        int pages = doc.NumberOfPages;
+                        var tree = ExtractBookmarkRoots(doc);
+                        MergeCustomSavedSectionsIntoBookmarks(tree, basinRoot, filePath, pages);
+
+                        // Render target start page at fast 96 DPI inside the initial load task
+                        // so Page 1 appears immediately on first frame (zero extra round-trip).
+                        int targetOneBased = _pendingJumpPage ?? 1;
+                        int zPage = pages > 0 ? Math.Clamp(targetOneBased - 1, 0, pages - 1) : 0;
+                        RenderedPdfPixels? previewPx = null;
+                        if (pages > 0 && !token.IsCancellationRequested)
+                        {
+                            try
+                            {
+                                previewPx = PdfBitmapRenderer.RenderPagePixels(
+                                    data,
+                                    zPage,
+                                    FastPreviewDpi,
+                                    0
+                                );
+                            }
+                            catch
+                            {
+                                // Non-fatal; standard render path will retry
+                            }
+                        }
+
+                        return (data, pages, tree, zPage, previewPx);
+                    },
+                    token
+                );
 
             if (token.IsCancellationRequested || _loadCts != cts)
                 return;
@@ -123,6 +203,15 @@ public sealed class PdfReaderViewModel : IDisposable
                 int target = _pendingJumpPage ?? CurrentPage;
                 _pendingJumpPage = null;
                 CurrentPage = pageCount > 0 ? Math.Clamp(target, 1, pageCount) : 1;
+
+                if (initialPreviewPixels is not null && pageCount > 0)
+                {
+                    PutCache(
+                        (initialPageZeroBased, FastPreviewDpi, 0),
+                        PdfBitmapRenderer.CreateWriteableBitmap(initialPreviewPixels)
+                    );
+                }
+
                 IsLoadingDocument = false;
                 Changed?.Invoke(this, EventArgs.Empty);
             });
@@ -150,46 +239,110 @@ public sealed class PdfReaderViewModel : IDisposable
         }
     }
 
-    public Bitmap? GetCurrentPageBitmap()
+    public Bitmap? GetCurrentPageBitmap() => GetPageBitmap(CurrentPage);
+
+    public Bitmap? GetPageBitmap(int oneBasedPage, bool requestRenderIfMissing = true)
     {
         if (IsLoadingDocument || _pdfBytes is null || PageCount <= 0)
             return null;
 
-        int zeroBased = Math.Clamp(CurrentPage - 1, 0, PageCount - 1);
-        int targetDpi = (!FitToWidth && ZoomPercent > 150) ? 280 : 180;
+        int zeroBased = Math.Clamp(oneBasedPage - 1, 0, PageCount - 1);
+        int rot = RotationDegrees;
+        int targetDpi = (FitMode == PdfFitMode.Custom && ZoomPercent > 150) ? 280 : 180;
+        var exactKey = (zeroBased, targetDpi, rot);
 
-        if (_pageCache.TryGetValue((zeroBased, targetDpi), out var cached))
+        if (TryGetCache(exactKey, out var cached))
             return cached;
 
-        // Zero-flash zoom fallback: display any cached DPI tier for this page immediately
-        // while the target DPI tier renders silently in the background.
-        var fallback = _pageCache
-            .Where(kv => kv.Key.Page == zeroBased)
-            .OrderByDescending(kv => kv.Key.Dpi)
-            .Select(kv => kv.Value)
-            .FirstOrDefault();
+        // Zero-flash progressive fallback: return any cached DPI tier for this (page, rotation) immediately
+        Bitmap? fallback = null;
+        int bestDpi = -1;
+        foreach (var kv in _pageCache)
+        {
+            if (kv.Key.Page == zeroBased && kv.Key.Rotation == rot && kv.Key.Dpi > bestDpi)
+            {
+                bestDpi = kv.Key.Dpi;
+                fallback = kv.Value;
+            }
+        }
 
-        _ = RenderPageInBackgroundAsync(
-            _pdfBytes,
-            zeroBased,
-            targetDpi,
-            CurrentFilePath,
-            notifyOnComplete: true,
-            showLoadingIndicator: fallback is null
-        );
+        if (!requestRenderIfMissing)
+            return fallback;
+
+        if (fallback is null)
+        {
+            // Fast-preview first (~15ms at 96 DPI), then auto-sharpen to crisp targetDpi
+            _ = RenderPageInBackgroundAsync(
+                _pdfBytes,
+                zeroBased,
+                FastPreviewDpi,
+                rot,
+                CurrentFilePath,
+                notifyOnComplete: true,
+                showLoadingIndicator: oneBasedPage == CurrentPage,
+                upgradeToDpi: targetDpi
+            );
+        }
+        else
+        {
+            // Already displaying fast preview -> silently sharpen to targetDpi with zero flash
+            _ = RenderPageInBackgroundAsync(
+                _pdfBytes,
+                zeroBased,
+                targetDpi,
+                rot,
+                CurrentFilePath,
+                notifyOnComplete: true,
+                showLoadingIndicator: false
+            );
+        }
+
         return fallback;
+    }
+
+    private bool TryGetCache((int Page, int Dpi, int Rotation) key, out Bitmap? bmp)
+    {
+        if (_pageCache.TryGetValue(key, out bmp))
+        {
+            _lruOrder.Remove(key);
+            _lruOrder.AddLast(key);
+            return true;
+        }
+        return false;
+    }
+
+    private void PutCache((int Page, int Dpi, int Rotation) key, Bitmap bmp)
+    {
+        // Never synchronously Dispose() bitmaps during eviction or replacement: Avalonia's
+        // background compositor may still be rendering a frame referencing the previous Bitmap.
+        // Removing from the dictionary lets GC finalize safely after all frames complete.
+        if (_pageCache.ContainsKey(key))
+        {
+            _lruOrder.Remove(key);
+        }
+        else if (_pageCache.Count >= MaxCacheEntries && _lruOrder.First is not null)
+        {
+            var oldest = _lruOrder.First.Value;
+            _lruOrder.RemoveFirst();
+            _pageCache.Remove(oldest);
+        }
+
+        _pageCache[key] = bmp;
+        _lruOrder.AddLast(key);
     }
 
     private async Task RenderPageInBackgroundAsync(
         byte[] pdfBytes,
         int zeroBased,
         int dpi,
+        int rotation,
         string? filePath,
         bool notifyOnComplete,
-        bool showLoadingIndicator = true
+        bool showLoadingIndicator = true,
+        int? upgradeToDpi = null
     )
     {
-        var key = (zeroBased, dpi);
+        var key = (zeroBased, dpi, rotation);
         if (!_pendingPageRenders.Add(key))
             return;
 
@@ -199,7 +352,7 @@ public sealed class PdfReaderViewModel : IDisposable
         try
         {
             var rendered = await Task.Run(() =>
-                PdfBitmapRenderer.RenderPagePixels(pdfBytes, zeroBased, dpi)
+                PdfBitmapRenderer.RenderPagePixels(pdfBytes, zeroBased, dpi, rotation)
             );
 
             Dispatcher.UIThread.Post(() =>
@@ -211,30 +364,68 @@ public sealed class PdfReaderViewModel : IDisposable
                     return;
 
                 var bmp = PdfBitmapRenderer.CreateWriteableBitmap(rendered);
-
-                if (_pageCache.Count >= 16)
-                {
-                    var firstKey = _pageCache.Keys.First();
-                    _pageCache[firstKey].Dispose();
-                    _pageCache.Remove(firstKey);
-                }
-
-                _pageCache[key] = bmp;
+                PutCache(key, bmp);
+                PageBitmapReady?.Invoke(zeroBased + 1, bmp);
 
                 if (notifyOnComplete)
                 {
-                    Changed?.Invoke(this, EventArgs.Empty);
+                    // If a live continuous-scroll view is subscribed to PageBitmapReady, it updates the
+                    // page Image.Source in-place without rebuilding the entire ScrollViewer!
+                    if (PageBitmapReady is null)
+                        Changed?.Invoke(this, EventArgs.Empty);
 
-                    // Prefetch next page silently for smooth paging on large textbooks
-                    if (zeroBased + 1 < PageCount && !_pageCache.ContainsKey((zeroBased + 1, dpi)))
+                    // Progressive sharpen: if we just finished the fast 96 DPI preview, upgrade to crisp DPI
+                    if (
+                        upgradeToDpi.HasValue
+                        && upgradeToDpi.Value > dpi
+                        && Math.Abs((zeroBased + 1) - CurrentPage) <= 1
+                        && rotation == RotationDegrees
+                        && !_pageCache.ContainsKey((zeroBased, upgradeToDpi.Value, rotation))
+                    )
                     {
                         _ = RenderPageInBackgroundAsync(
                             pdfBytes,
-                            zeroBased + 1,
-                            dpi,
+                            zeroBased,
+                            upgradeToDpi.Value,
+                            rotation,
                             filePath,
-                            notifyOnComplete: false
+                            notifyOnComplete: true,
+                            showLoadingIndicator: false
                         );
+                    }
+                    else if (!upgradeToDpi.HasValue)
+                    {
+                        // Bidirectional silent prefetch (page + 1 AND page - 1) for instant flipping
+                        if (
+                            zeroBased + 1 < PageCount
+                            && !_pageCache.ContainsKey((zeroBased + 1, dpi, rotation))
+                        )
+                        {
+                            _ = RenderPageInBackgroundAsync(
+                                pdfBytes,
+                                zeroBased + 1,
+                                dpi,
+                                rotation,
+                                filePath,
+                                notifyOnComplete: false,
+                                showLoadingIndicator: false
+                            );
+                        }
+                        if (
+                            zeroBased - 1 >= 0
+                            && !_pageCache.ContainsKey((zeroBased - 1, dpi, rotation))
+                        )
+                        {
+                            _ = RenderPageInBackgroundAsync(
+                                pdfBytes,
+                                zeroBased - 1,
+                                dpi,
+                                rotation,
+                                filePath,
+                                notifyOnComplete: false,
+                                showLoadingIndicator: false
+                            );
+                        }
                     }
                 }
             });
@@ -262,7 +453,10 @@ public sealed class PdfReaderViewModel : IDisposable
         if (CurrentPage < PageCount)
         {
             CurrentPage++;
-            Changed?.Invoke(this, EventArgs.Empty);
+            if (NavigationRequested is not null)
+                NavigationRequested.Invoke(CurrentPage);
+            else
+                Changed?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -271,7 +465,10 @@ public sealed class PdfReaderViewModel : IDisposable
         if (CurrentPage > 1)
         {
             CurrentPage--;
-            Changed?.Invoke(this, EventArgs.Empty);
+            if (NavigationRequested is not null)
+                NavigationRequested.Invoke(CurrentPage);
+            else
+                Changed?.Invoke(this, EventArgs.Empty);
         }
     }
 
@@ -286,7 +483,10 @@ public sealed class PdfReaderViewModel : IDisposable
         }
 
         CurrentPage = Math.Clamp(oneBasedPage, 1, PageCount);
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (NavigationRequested is not null)
+            NavigationRequested.Invoke(CurrentPage);
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void SetEvidenceHighlight(
@@ -323,35 +523,59 @@ public sealed class PdfReaderViewModel : IDisposable
             Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void ZoomIn() => ZoomIn(25);
+    public void ZoomIn() => ZoomIn(20);
 
     public void ZoomIn(int step)
     {
-        FitToWidth = false;
-        ZoomPercent = Math.Min(250, ZoomPercent + step);
-        Changed?.Invoke(this, EventArgs.Empty);
+        bool wasFitPage = FitMode == PdfFitMode.FitPage;
+        FitMode = PdfFitMode.Custom;
+        ZoomPercent = Math.Min(350, ZoomPercent + step);
+        if (!wasFitPage && ZoomChangedInPlace is not null)
+            ZoomChangedInPlace.Invoke();
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public void ZoomOut() => ZoomOut(25);
+    public void ZoomOut() => ZoomOut(20);
 
     public void ZoomOut(int step)
     {
-        FitToWidth = false;
+        bool wasFitPage = FitMode == PdfFitMode.FitPage;
+        FitMode = PdfFitMode.Custom;
         ZoomPercent = Math.Max(50, ZoomPercent - step);
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (!wasFitPage && ZoomChangedInPlace is not null)
+            ZoomChangedInPlace.Invoke();
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ResetZoom()
     {
-        FitToWidth = false;
+        bool wasFitPage = FitMode == PdfFitMode.FitPage;
+        FitMode = PdfFitMode.Custom;
         ZoomPercent = 100;
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (!wasFitPage && ZoomChangedInPlace is not null)
+            ZoomChangedInPlace.Invoke();
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public void ToggleFitToWidth()
     {
-        FitToWidth = !FitToWidth;
-        if (FitToWidth)
+        bool wasFitPage = FitMode == PdfFitMode.FitPage;
+        FitMode = FitMode == PdfFitMode.FitWidth ? PdfFitMode.Custom : PdfFitMode.FitWidth;
+        if (FitMode == PdfFitMode.FitWidth)
+            ZoomPercent = 100;
+        if (!wasFitPage && ZoomChangedInPlace is not null)
+            ZoomChangedInPlace.Invoke();
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ToggleFitToPage()
+    {
+        FitMode = FitMode == PdfFitMode.FitPage ? PdfFitMode.FitWidth : PdfFitMode.FitPage;
+        if (FitMode != PdfFitMode.Custom)
             ZoomPercent = 100;
         Changed?.Invoke(this, EventArgs.Empty);
     }
@@ -359,8 +583,248 @@ public sealed class PdfReaderViewModel : IDisposable
     public void ToggleOutline()
     {
         IsOutlineVisible = !IsOutlineVisible;
+        if (OutlineVisibilityChanged is not null)
+            OutlineVisibilityChanged.Invoke(IsOutlineVisible);
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RotateRight()
+    {
+        RotationDegrees = (RotationDegrees + 90) % 360;
         Changed?.Invoke(this, EventArgs.Empty);
     }
+
+    public void RotateLeft()
+    {
+        RotationDegrees = (RotationDegrees + 270) % 360;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void ToggleSearchBar()
+    {
+        IsSearchBarOpen = !IsSearchBarOpen;
+        if (!IsSearchBarOpen)
+        {
+            SearchMatches = [];
+            ActiveSearchMatchIndex = -1;
+            IsSearchingPdf = false;
+        }
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void CloseSearchBar()
+    {
+        if (!IsSearchBarOpen)
+            return;
+        IsSearchBarOpen = false;
+        SearchMatches = [];
+        ActiveSearchMatchIndex = -1;
+        IsSearchingPdf = false;
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public IReadOnlyList<NormalizedHighlightRect> GetActivePageSearchHighlights()
+    {
+        if (!IsSearchBarOpen || SearchMatches.Count == 0)
+            return [];
+
+        return SearchMatches
+            .Where(m => m.PageNumber == CurrentPage)
+            .Select(m => m.Rect)
+            .ToList();
+    }
+
+    public async Task RunSearchAsync(string? rawQuery)
+    {
+        var query = (rawQuery ?? string.Empty).Trim();
+        SearchQuery = query;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
+
+        if (string.IsNullOrWhiteSpace(query) || _pdfBytes is null || PageCount <= 0)
+        {
+            SearchMatches = [];
+            ActiveSearchMatchIndex = -1;
+            IsSearchingPdf = false;
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        var cts = new CancellationTokenSource();
+        _searchCts = cts;
+        var token = cts.Token;
+        var bytesSnapshot = _pdfBytes;
+        IsSearchingPdf = true;
+        Changed?.Invoke(this, EventArgs.Empty);
+
+        try
+        {
+            var terms = query.Split(
+                ' ',
+                StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+            );
+            var matches = await Task.Run(
+                () =>
+                {
+                    var found = new List<(int PageNumber, NormalizedHighlightRect Rect)>();
+                    using var doc = PdfDocument.Open(bytesSnapshot);
+                    for (int p = 1; p <= doc.NumberOfPages; p++)
+                    {
+                        token.ThrowIfCancellationRequested();
+                        var page = doc.GetPage(p);
+                        double pw = page.Width > 0 ? page.Width : 612.0;
+                        double ph = page.Height > 0 ? page.Height : 792.0;
+                        var words = page.GetWords().ToList();
+                        if (words.Count == 0)
+                            continue;
+
+                        if (terms.Length == 1)
+                        {
+                            var needle = terms[0];
+                            foreach (var w in words)
+                            {
+                                if (w.Text.Contains(needle, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    found.Add((p, ToNormalizedRect(w.BoundingBox, pw, ph)));
+                                    if (found.Count >= 400)
+                                        return found;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            for (int i = 0; i <= words.Count - terms.Length; i++)
+                            {
+                                bool allMatch = true;
+                                for (int k = 0; k < terms.Length; k++)
+                                {
+                                    if (
+                                        !words[i + k]
+                                            .Text.Contains(
+                                                terms[k],
+                                                StringComparison.OrdinalIgnoreCase
+                                            )
+                                    )
+                                    {
+                                        allMatch = false;
+                                        break;
+                                    }
+                                }
+                                if (allMatch)
+                                {
+                                    double minL = words
+                                        .Skip(i)
+                                        .Take(terms.Length)
+                                        .Min(w => w.BoundingBox.Left);
+                                    double maxR = words
+                                        .Skip(i)
+                                        .Take(terms.Length)
+                                        .Max(w => w.BoundingBox.Right);
+                                    double minB = words
+                                        .Skip(i)
+                                        .Take(terms.Length)
+                                        .Min(w => w.BoundingBox.Bottom);
+                                    double maxT = words
+                                        .Skip(i)
+                                        .Take(terms.Length)
+                                        .Max(w => w.BoundingBox.Top);
+                                    found.Add(
+                                        (
+                                            p,
+                                            new NormalizedHighlightRect(
+                                                Math.Clamp(minL / pw, 0, 1),
+                                                Math.Clamp((ph - maxT) / ph, 0, 1),
+                                                Math.Clamp((maxR - minL) / pw, 0.01, 1),
+                                                Math.Clamp((maxT - minB) / ph, 0.01, 1)
+                                            )
+                                        )
+                                    );
+                                    if (found.Count >= 400)
+                                        return found;
+                                }
+                            }
+                        }
+                    }
+                    return found;
+                },
+                token
+            );
+
+            if (token.IsCancellationRequested || _searchCts != cts)
+                return;
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (token.IsCancellationRequested || _searchCts != cts)
+                    return;
+
+                SearchMatches = matches;
+                IsSearchingPdf = false;
+                if (matches.Count > 0)
+                {
+                    int firstOnOrAfterCurrent = matches.FindIndex(m => m.PageNumber >= CurrentPage);
+                    ActiveSearchMatchIndex = firstOnOrAfterCurrent >= 0 ? firstOnOrAfterCurrent : 0;
+                    CurrentPage = matches[ActiveSearchMatchIndex].PageNumber;
+                }
+                else
+                {
+                    ActiveSearchMatchIndex = -1;
+                }
+                Changed?.Invoke(this, EventArgs.Empty);
+            });
+        }
+        catch (OperationCanceledException)
+        {
+            // Superseded
+        }
+        catch
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsSearchingPdf = false;
+                Changed?.Invoke(this, EventArgs.Empty);
+            });
+        }
+    }
+
+    public void NextSearchMatch()
+    {
+        if (SearchMatches.Count == 0)
+            return;
+        ActiveSearchMatchIndex = (ActiveSearchMatchIndex + 1) % SearchMatches.Count;
+        CurrentPage = SearchMatches[ActiveSearchMatchIndex].PageNumber;
+        if (NavigationRequested is not null)
+            NavigationRequested.Invoke(CurrentPage);
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void PreviousSearchMatch()
+    {
+        if (SearchMatches.Count == 0)
+            return;
+        ActiveSearchMatchIndex =
+            (ActiveSearchMatchIndex - 1 + SearchMatches.Count) % SearchMatches.Count;
+        CurrentPage = SearchMatches[ActiveSearchMatchIndex].PageNumber;
+        if (NavigationRequested is not null)
+            NavigationRequested.Invoke(CurrentPage);
+        else
+            Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    private static NormalizedHighlightRect ToNormalizedRect(
+        UglyToad.PdfPig.Core.PdfRectangle box,
+        double pw,
+        double ph
+    ) =>
+        new(
+            Math.Clamp(box.Left / pw, 0, 1),
+            Math.Clamp((ph - box.Top) / ph, 0, 1),
+            Math.Clamp(box.Width / pw, 0.01, 1),
+            Math.Clamp(box.Height / ph, 0.01, 1)
+        );
 
     public void ToggleNodeExpanded(PdfBookmarkNode node)
     {
@@ -508,9 +972,9 @@ public sealed class PdfReaderViewModel : IDisposable
 
     private void ClearCache()
     {
-        foreach (var bmp in _pageCache.Values)
-            bmp.Dispose();
+        // Let GC finalize old WriteableBitmaps safely after Avalonia's compositor finishes rendering.
         _pageCache.Clear();
+        _lruOrder.Clear();
     }
 
     public void Reset()
@@ -518,12 +982,21 @@ public sealed class PdfReaderViewModel : IDisposable
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         _loadCts = null;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
 
         ClearCache();
         ClearEvidenceHighlight(notify: false);
         _pendingPageRenders.Clear();
         _pendingJumpPage = null;
         _pdfBytes = null;
+        RotationDegrees = 0;
+        IsSearchBarOpen = false;
+        SearchQuery = string.Empty;
+        SearchMatches = [];
+        ActiveSearchMatchIndex = -1;
+        IsSearchingPdf = false;
 
         CurrentFilePath = null;
         ErrorMessage = null;
@@ -540,6 +1013,9 @@ public sealed class PdfReaderViewModel : IDisposable
         _loadCts?.Cancel();
         _loadCts?.Dispose();
         _loadCts = null;
+        _searchCts?.Cancel();
+        _searchCts?.Dispose();
+        _searchCts = null;
         ClearCache();
     }
 }

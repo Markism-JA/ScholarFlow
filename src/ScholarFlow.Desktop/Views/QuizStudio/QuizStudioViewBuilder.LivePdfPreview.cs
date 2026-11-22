@@ -46,8 +46,8 @@ public static partial class QuizStudioViewBuilder
                     $"{studio.CurrentPreviewSectionTitle}  ·  PDF p.{studio.CurrentPreviewPdfPage}/{Math.Max(1, studio.PdfTotalPages)} ({scopeStateLabel})",
                 FontSize = 11.5,
                 Foreground = studio.IsCurrentPreviewPageInScope
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
-                    : ThemeService.Brush(ThemeService.PriorityP1Fg),
+                    ? ThemeService.Brush(ThemeService.TextSecondary)
+                    : ThemeService.Brush(ThemeService.TextMuted),
                 TextWrapping = TextWrapping.Wrap,
                 MaxLines = 2,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -154,7 +154,31 @@ public static partial class QuizStudioViewBuilder
                     ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
                     : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
             );
-            UiBuilder.AttachPdfWheelAndPan(previewScroll, studio.ZoomPreview);
+            int localZoom = studio.PreviewZoomPercent;
+            UiBuilder.AttachPdfWheelAndPan(
+                previewScroll,
+                delta =>
+                {
+                    int oldZ = localZoom;
+                    localZoom = Math.Clamp(localZoom + delta, 100, 300);
+                    if (localZoom == oldZ)
+                        return;
+                    double ratio = localZoom / (double)oldZ;
+                    previewImg.Width = localZoom == 100 ? double.NaN : 480 * (localZoom / 100.0);
+                    pageSheet.HorizontalAlignment =
+                        localZoom == 100
+                            ? HorizontalAlignment.Stretch
+                            : HorizontalAlignment.Center;
+                    previewScroll.HorizontalScrollBarVisibility =
+                        localZoom > 100
+                            ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+                            : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled;
+                    previewScroll.Offset = new Vector(
+                        previewScroll.Offset.X,
+                        Math.Max(0, previewScroll.Offset.Y * ratio)
+                    );
+                }
+            );
             pageVisual = previewScroll;
         }
         else if (studio.IsLoadingPreviewPage || studio.IsInspectingPdf)
@@ -692,7 +716,7 @@ public static partial class QuizStudioViewBuilder
                     inScope ? MaterialIconKind.CheckCircle : MaterialIconKind.CircleOutline,
                     13,
                     inScope
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
+                        ? ThemeService.Brush(ThemeService.SuccessFg)
                         : ThemeService.Brush(ThemeService.TextMuted)
                 )
             );
@@ -738,14 +762,14 @@ public static partial class QuizStudioViewBuilder
             var tileBorder = new Border
             {
                 Background = inScope
-                    ? ThemeService.Brush(ThemeService.AccentSoftBg)
+                    ? ThemeService.Brush(ThemeService.BgElevated)
                     : ThemeService.Brush(ThemeService.BgSurface),
                 BorderBrush = isInspected
-                    ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+                    ? ThemeService.Brush(ThemeService.TextPrimary)
                     : inScope
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
+                        ? ThemeService.Brush(ThemeService.BorderStrong)
                         : ThemeService.Brush(ThemeService.BorderSubtle),
-                BorderThickness = new Thickness(isInspected ? 2 : inScope ? 1.5 : 1),
+                BorderThickness = new Thickness(isInspected ? 1.8 : 1),
                 CornerRadius = new CornerRadius(7),
                 Padding = new Thickness(6),
                 Margin = new Thickness(0, 0, 10, 10),
@@ -861,8 +885,8 @@ public static partial class QuizStudioViewBuilder
                 Text = $"{studio.CurrentPreviewSectionTitle}  ·  {(curInScope ? "In Scope" : "Excluded")}",
                 FontSize = 11.5,
                 Foreground = curInScope
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
-                    : ThemeService.Brush(ThemeService.PriorityP1Fg),
+                    ? ThemeService.Brush(ThemeService.TextSecondary)
+                    : ThemeService.Brush(ThemeService.TextMuted),
                 TextWrapping = TextWrapping.Wrap,
                 MaxLines = 2,
                 TextTrimming = TextTrimming.CharacterEllipsis,
@@ -925,7 +949,31 @@ public static partial class QuizStudioViewBuilder
                     ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
                     : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
             );
-            UiBuilder.AttachPdfWheelAndPan(scroll, studio.ZoomPreview);
+            int inspZoom = studio.PreviewZoomPercent;
+            UiBuilder.AttachPdfWheelAndPan(
+                scroll,
+                delta =>
+                {
+                    int oldZ = inspZoom;
+                    inspZoom = Math.Clamp(inspZoom + delta, 100, 300);
+                    if (inspZoom == oldZ)
+                        return;
+                    double ratio = inspZoom / (double)oldZ;
+                    img.Width = inspZoom == 100 ? double.NaN : 480 * (inspZoom / 100.0);
+                    sheet.HorizontalAlignment =
+                        inspZoom == 100
+                            ? HorizontalAlignment.Stretch
+                            : HorizontalAlignment.Center;
+                    scroll.HorizontalScrollBarVisibility =
+                        inspZoom > 100
+                            ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
+                            : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled;
+                    scroll.Offset = new Vector(
+                        scroll.Offset.X,
+                        Math.Max(0, scroll.Offset.Y * ratio)
+                    );
+                }
+            );
             inspVisual = scroll;
         }
         else
@@ -1144,8 +1192,8 @@ public static partial class QuizStudioViewBuilder
 
         var countPill = UiBuilder.Pill(
             $"{inScopeCount}/{totalPages} in scope",
-            ThemeService.Brush(ThemeService.AccentPrimary),
-            ThemeService.Brush(ThemeService.AccentSoftBg),
+            ThemeService.Brush(ThemeService.TextSecondary),
+            ThemeService.Brush(ThemeService.BgElevated),
             fontSize: 10.5
         );
         Grid.SetColumn(countPill, 1);
@@ -1260,7 +1308,7 @@ public static partial class QuizStudioViewBuilder
                     () => studio.ToggleSinglePageInScope(capturedPage),
                     15,
                     inScope
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
+                        ? ThemeService.Brush(ThemeService.SuccessFg)
                         : ThemeService.Brush(ThemeService.TextMuted)
                 );
                 rowGrid.Children.Add(chkBtn);
@@ -1308,10 +1356,10 @@ public static partial class QuizStudioViewBuilder
                 var stateBadge = UiBuilder.Pill(
                     inScope ? "In" : "Out",
                     inScope
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
+                        ? ThemeService.Brush(ThemeService.SuccessFg)
                         : ThemeService.Brush(ThemeService.TextMuted),
                     inScope
-                        ? ThemeService.Brush(ThemeService.AccentSoftBg)
+                        ? ThemeService.Brush(ThemeService.SuccessBg)
                         : ThemeService.Brush(ThemeService.BgElevated),
                     fontSize: 9.5
                 );

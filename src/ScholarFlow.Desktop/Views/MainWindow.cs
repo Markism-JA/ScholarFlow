@@ -219,6 +219,11 @@ public sealed partial class MainWindow : Window
                 RefreshCenterBodyAndInspector();
                 break;
 
+            case UiChangeKind.SidebarOnly:
+                UpdateResponsiveShellColumns(Bounds.Width);
+                RefreshSidebar();
+                break;
+
             case UiChangeKind.SearchOrTaskList:
                 SyncTextBoxesFromVm();
                 if (_vm.IsSearchModalOpen)

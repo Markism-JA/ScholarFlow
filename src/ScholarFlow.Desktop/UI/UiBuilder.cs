@@ -161,15 +161,13 @@ public static class UiBuilder
             customFg
             ?? (
                 isActive
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    ? ThemeService.Brush(ThemeService.TextPrimary)
                     : ThemeService.Brush(ThemeService.TextSecondary)
             );
         var normalBg = isActive
-            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+            ? ThemeService.Brush(ThemeService.BgElevated)
             : Brushes.Transparent;
-        var hoverBg = isActive
-            ? ThemeService.Brush(ThemeService.AccentSoftBg)
-            : ThemeService.Brush(ThemeService.BgHover);
+        var hoverBg = ThemeService.Brush(ThemeService.BgHover);
 
         var row = new StackPanel
         {
@@ -200,7 +198,7 @@ public static class UiBuilder
             Content = row,
             Background = normalBg,
             BorderBrush = isActive
-                ? ThemeService.Brush(ThemeService.AccentPrimary)
+                ? ThemeService.Brush(ThemeService.BorderStrong)
                 : ThemeService.Brush(ThemeService.BorderSubtle),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(5),
@@ -364,18 +362,75 @@ public static class UiBuilder
     }
 
     /// <summary>
-    /// Enables Ctrl+ScrollWheel zooming and middle-mouse-button drag panning on any PDF ScrollViewer.
+    /// Enables Ctrl+ScrollWheel zooming (intercepted in Tunnel phase BEFORE ScrollViewer steals the wheel),
+    /// Shift+ScrollWheel horizontal panning, optional edge-scroll page flipping, and middle-mouse drag panning.
     /// </summary>
-    public static void AttachPdfWheelAndPan(ScrollViewer scroll, Action<int> onZoomDelta)
+    public static void AttachPdfWheelAndPan(
+        ScrollViewer scroll,
+        Action<int> onZoomDelta,
+        Action<int>? onEdgePageFlip = null
+    )
     {
-        scroll.PointerWheelChanged += (_, e) =>
-        {
-            if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && Math.Abs(e.Delta.Y) > 0.01)
+        int edgeOverscrollTicks = 0;
+        int lastEdgeDirection = 0;
+
+        scroll.AddHandler(
+            InputElement.PointerWheelChangedEvent,
+            (_, e) =>
             {
-                e.Handled = true;
-                onZoomDelta(e.Delta.Y > 0 ? 15 : -15);
-            }
-        };
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Control) && Math.Abs(e.Delta.Y) > 0.01)
+                {
+                    e.Handled = true;
+                    onZoomDelta(e.Delta.Y > 0 ? 15 : -15);
+                    return;
+                }
+
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Shift) && Math.Abs(e.Delta.Y) > 0.01)
+                {
+                    e.Handled = true;
+                    double maxX = Math.Max(0, scroll.Extent.Width - scroll.Viewport.Width);
+                    double nextX = Math.Clamp(scroll.Offset.X - (e.Delta.Y * 52), 0, maxX);
+                    scroll.Offset = new Vector(nextX, scroll.Offset.Y);
+                    return;
+                }
+
+                if (onEdgePageFlip is not null && Math.Abs(e.Delta.Y) > 0.01)
+                {
+                    double maxY = Math.Max(0, scroll.Extent.Height - scroll.Viewport.Height);
+                    bool atTop = scroll.Offset.Y <= 1.5;
+                    bool atBottom = scroll.Offset.Y >= maxY - 1.5;
+
+                    if (e.Delta.Y < 0 && atBottom)
+                    {
+                        edgeOverscrollTicks = lastEdgeDirection == 1 ? edgeOverscrollTicks + 1 : 1;
+                        lastEdgeDirection = 1;
+                        if (edgeOverscrollTicks >= 2)
+                        {
+                            edgeOverscrollTicks = 0;
+                            e.Handled = true;
+                            onEdgePageFlip(1);
+                        }
+                    }
+                    else if (e.Delta.Y > 0 && atTop)
+                    {
+                        edgeOverscrollTicks = lastEdgeDirection == -1 ? edgeOverscrollTicks + 1 : 1;
+                        lastEdgeDirection = -1;
+                        if (edgeOverscrollTicks >= 2)
+                        {
+                            edgeOverscrollTicks = 0;
+                            e.Handled = true;
+                            onEdgePageFlip(-1);
+                        }
+                    }
+                    else
+                    {
+                        edgeOverscrollTicks = 0;
+                        lastEdgeDirection = 0;
+                    }
+                }
+            },
+            Avalonia.Interactivity.RoutingStrategies.Tunnel
+        );
 
         Point? panLast = null;
         scroll.PointerPressed += (_, e) =>

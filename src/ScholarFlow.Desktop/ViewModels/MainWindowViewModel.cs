@@ -33,6 +33,7 @@ public enum UiChangeKind
 {
     FullLayout,
     CenterBodyOnly,
+    SidebarOnly,
     SelectionOnly,
     QuickAddOnly,
     SearchOrTaskList,

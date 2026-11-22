@@ -270,6 +270,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public int EditingSnipTotalPages { get; private set; }
     public bool SnipFitToWidth { get; private set; } = true;
     public int SnipZoomPercent { get; private set; } = 100;
+    public int SnipRotationDegrees { get; private set; }
     public int PreviewZoomPercent { get; private set; } = 100;
     public bool IsSnipOutlineOpen { get; private set; } = true;
     public SnipCaptureMode SnipMode { get; private set; } = SnipCaptureMode.PinHighlight;

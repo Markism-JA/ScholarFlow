@@ -14,10 +14,27 @@ public sealed record RenderedPdfPixels(byte[] BgraPixels, int Width, int Height)
 /// </summary>
 public static class PdfBitmapRenderer
 {
-    public static RenderedPdfPixels RenderPagePixels(byte[] pdfBytes, int zeroBasedPage, int dpi)
+    public static RenderedPdfPixels RenderPagePixels(
+        byte[] pdfBytes,
+        int zeroBasedPage,
+        int dpi,
+        int rotationDegrees = 0
+    )
     {
+        var normRot = ((rotationDegrees % 360) + 360) % 360;
 #pragma warning disable CA1416
-        var renderOpts = new PDFtoImage.RenderOptions(Dpi: dpi, BackgroundColor: SKColors.White);
+        var pdfRotation = normRot switch
+        {
+            90 => PDFtoImage.PdfRotation.Rotate90,
+            180 => PDFtoImage.PdfRotation.Rotate180,
+            270 => PDFtoImage.PdfRotation.Rotate270,
+            _ => PDFtoImage.PdfRotation.Rotate0,
+        };
+        var renderOpts = new PDFtoImage.RenderOptions(
+            Dpi: dpi,
+            BackgroundColor: SKColors.White,
+            Rotation: pdfRotation
+        );
         using var raw = PDFtoImage.Conversion.ToImage(
             pdfBytes,
             page: (Index)zeroBasedPage,

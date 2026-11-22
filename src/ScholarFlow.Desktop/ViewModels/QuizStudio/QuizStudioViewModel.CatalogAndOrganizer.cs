@@ -1065,10 +1065,19 @@ public sealed partial class QuizStudioViewModel
     public async Task ZoomSnipAsync(int delta)
     {
         SnipFitToWidth = false;
-        SnipZoomPercent = Math.Clamp(SnipZoomPercent + delta, 50, 250);
+        SnipZoomPercent = Math.Clamp(SnipZoomPercent + delta, 50, 300);
         _mainVm.RequestUiRefresh();
         if (EditingSnipPageNumber > 0 && SnipZoomPercent > 150)
             await LoadEditorSnipPageAsync(EditingSnipPageNumber, showLoading: false);
+    }
+
+    public async Task RotateSnipAsync(int deltaDegrees)
+    {
+        SnipRotationDegrees = ((SnipRotationDegrees + deltaDegrees) % 360 + 360) % 360;
+        if (EditingSnipPageNumber > 0)
+            await LoadEditorSnipPageAsync(EditingSnipPageNumber, showLoading: false);
+        else
+            _mainVm.RequestUiRefresh();
     }
 
     public async Task LoadEditorSnipPageAsync(int oneBasedPage, bool showLoading = true)
@@ -1085,11 +1094,13 @@ public sealed partial class QuizStudioViewModel
         }
 
         int targetDpi = (!SnipFitToWidth && SnipZoomPercent > 150) ? 280 : 180;
+        int rot = SnipRotationDegrees;
+        int cacheDpiKey = targetDpi * 10 + (rot / 90);
         int clampedReq = Math.Max(1, oneBasedPage);
         if (
             EditingSnipTotalPages > 0
             && _snipBitmapCache.TryGetValue(
-                (pdfPath, Math.Clamp(clampedReq, 1, EditingSnipTotalPages), targetDpi),
+                (pdfPath, Math.Clamp(clampedReq, 1, EditingSnipTotalPages), cacheDpiKey),
                 out var cachedBmp
             )
             && string.Equals(_snipOutlinePdfPath, pdfPath, StringComparison.OrdinalIgnoreCase)
@@ -1143,7 +1154,8 @@ public sealed partial class QuizStudioViewModel
                 var rendered = Services.PdfBitmapRenderer.RenderPagePixels(
                     pdfBytes,
                     clamped - 1,
-                    dpi: targetDpi
+                    dpi: targetDpi,
+                    rotationDegrees: rot
                 );
                 return (rendered, total, clamped, roots);
             });
@@ -1155,9 +1167,9 @@ public sealed partial class QuizStudioViewModel
                 _snipOutlinePdfPath = pdfPath;
             }
             var bmp = Services.PdfBitmapRenderer.CreateWriteableBitmap(pixels);
-            if (_snipBitmapCache.Count >= 16)
+            if (_snipBitmapCache.Count >= 24)
                 _snipBitmapCache.Clear();
-            _snipBitmapCache[(pdfPath, resolvedPage, targetDpi)] = bmp;
+            _snipBitmapCache[(pdfPath, resolvedPage, cacheDpiKey)] = bmp;
             EditingSnipPageNumber = resolvedPage;
             EditingSnipTotalPages = totalPages;
             EditingSnipPageBitmap = bmp;
