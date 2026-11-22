@@ -366,10 +366,14 @@ public sealed partial class QuizLlmService
             7. For TrueFalse:
                - "options" must be ["True", "False"] and "correctAnswer" must be "True" or "False".
             8. Ignore syllabus boilerplate, headers/footers ("STI College", copyright lines, table of contents).
-            9. SELF-CONTAINED CONCEPTUAL STEMS & FIGURE-TO-DIAGRAM RECONSTRUCTION:
+            9. SELF-CONTAINED CONCEPTUAL STEMS & HYBRID SOURCE-FIGURE vs. MERMAID SELECTION:
                - Every question "prompt" and "options" MUST be 100% self-contained for a human in a closed-book exam: always name or describe the actual concept, system, protocol, or mathematical object being tested (e.g., "In the TCP three-way handshake..." or "In a write-back L1 cache...").
                - NEVER write opaque document-location references in "prompt", "options", or "hint" such as "In Figure 3.2...", "According to Table 1...", "In Section 4.1...", "On Page 12...", or "In the handout..."—a human student does not have those figure numbers memorized.
-               - When the source text references a figure, chart, or architecture (e.g., "Figure 3.2 illustrates..."): use that figure marker as a cue to EITHER reconstruct the figure's structure/flow directly in the "diagram" field (using Mermaid "flowchart LR", "sequenceDiagram", or "[A] -> [B]", optionally masking the tested node as "[???]" if the full label would give away the answer) OR state the concept and scenario directly in "prompt" by name without citing "Figure X".
+               - CHOOSING BETWEEN REAL SOURCE FIGURE ("sourceFigureId") vs. MERMAID ("diagram"):
+                 * When a page header lists "[EXTRACTABLE SOURCE FIGURES ON PAGE N: id=\"pN_figM\" (...)]" and the figure is a mathematical plot, circuit, geometry figure, hardware layout, screenshot, or complex diagram where the real image is clearer than Mermaid: set "sourceFigureId": "pN_figM" (and leave "diagram": null) so the app automatically crops and attaches the actual source figure image to the question card!
+                 * NO-ANSWER-LEAKAGE RULE FOR ATTACHED SOURCE FIGURES: Because a cropped source figure has its original labels visibly printed inside the image, NEVER ask the student to simply read or name a label that is already printed in the figure. Instead, ask an interpretation, causal perturbation ("What happens if stage X stalls?"), calculation, or mechanism question about the figure.
+                 * When testing a logical/process flow, state machine, sequence interaction, or a cloze-masked node ("[???]") where hiding a label is essential: populate "diagram" (Mermaid "flowchart LR", "sequenceDiagram", or "[A] -> [B]") and keep "sourceFigureId": null.
+                 * If neither a cropped figure nor a diagram adds value, keep both "sourceFigureId": null and "diagram": null and state the concept directly in "prompt".
 
             REQUIRED JSON SCHEMA:
             {
@@ -393,6 +397,7 @@ public sealed partial class QuizLlmService
                   "codeLanguage": null,
                   "mathLatex": null,
                   "diagram": null,
+                  "sourceFigureId": null,
                   "evidence": {{evidenceSchema}}
                 }
               ]

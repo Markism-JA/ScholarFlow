@@ -96,6 +96,18 @@ public sealed record ContentModalityProfile(
 /// </summary>
 public sealed record NormalizedHighlightRect(double X, double Y, double Width, double Height);
 
+/// <summary>
+/// Represents an extractable visual figure (embedded raster image or caption-anchored vector diagram region)
+/// discovered on a 1-based PDF page during grounding.
+/// </summary>
+public sealed record ExtractablePdfFigure(
+    string FigureId,
+    int PageNumber,
+    string Caption,
+    NormalizedHighlightRect Region,
+    int EmbeddedImageIndex = -1
+);
+
 public sealed record GroundedEvidenceAnchor(
     int PageNumber,
     string SectionTitle,
@@ -260,6 +272,13 @@ public sealed class GeneratedQuestionDto
 
     [JsonPropertyName("diagram")]
     public string? Diagram { get; set; }
+
+    /// <summary>
+    /// Optional ID of an extractable figure discovered on a source PDF page (e.g. "p12_fig1").
+    /// When set, ScholarFlow crops/extracts the actual figure from the PDF and attaches it to <see cref="QuizQuestionRecord.ImagePath"/>.
+    /// </summary>
+    [JsonPropertyName("sourceFigureId")]
+    public string? SourceFigureId { get; set; }
 
     [JsonPropertyName("evidence")]
     public EvidenceAnchorDto Evidence { get; set; } = new();

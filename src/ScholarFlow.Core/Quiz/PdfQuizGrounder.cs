@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text;
+using System.Text.RegularExpressions;
 using ScholarFlow.Core.Models;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.Content;
@@ -11,7 +12,8 @@ public sealed record GroundedPdfPage(
     int PageNumber,
     string? Term,
     string SectionBreadcrumb,
-    string Text
+    string Text,
+    IReadOnlyList<ExtractablePdfFigure>? Figures = null
 );
 
 /// <summary>
@@ -20,11 +22,31 @@ public sealed record GroundedPdfPage(
 /// </summary>
 public static class PdfQuizGrounder
 {
+    /// <summary>
+    /// Optional high-fidelity PDF page region rasterizer (registered by Desktop/Test hosts using PDFium/PDFtoImage)
+    /// that renders a normalized [0..1] top-left rectangle of a 1-based PDF page to a PNG file.
+    /// Parameters: (pdfPath, oneBasedPage, region, outputPngPath, dpi).
+    /// When null, <see cref="MaterializeQuestionSourceFigures"/> falls back to extracting embedded raster images via PdfPig.
+    /// </summary>
+    public static Action<
+        string,
+        int,
+        NormalizedHighlightRect,
+        string,
+        int
+    >? CustomPageRegionRasterizer { get; set; }
+
+    private static readonly Regex FigureCaptionLineRegex = new(
+        @"^(?:Figure|Fig\.?|Diagram|Chart|Exhibit|Plate)\s+\d+(?:[\.\-]\d+)?[a-z]?(?:\s*[:\.\-—]\s*|\s+).{3,140}$",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled
+    );
+
     private sealed record CachedPdfTextData(
         long LastWriteTicks,
         int TotalPages,
         (string? Term, string SectionBreadcrumb)[] PageSections,
         ConcurrentDictionary<int, string> PageTexts,
+        ConcurrentDictionary<int, IReadOnlyList<ExtractablePdfFigure>> PageFigures,
         object ExtractionLock
     );
 
@@ -339,6 +361,7 @@ public static class PdfQuizGrounder
                 docPages,
                 sections,
                 new ConcurrentDictionary<int, string>(),
+                new ConcurrentDictionary<int, IReadOnlyList<ExtractablePdfFigure>>(),
                 new object()
             );
             PdfTextCache[pdfPath] = cached;
@@ -432,7 +455,8 @@ public static class PdfQuizGrounder
                     SectionBreadcrumb: string.IsNullOrWhiteSpace(breadcrumb)
                         ? Path.GetFileNameWithoutExtension(pdfPath)
                         : breadcrumb,
-                    Text: text
+                    Text: text,
+                    Figures: cached.PageFigures.GetValueOrDefault(p, [])
                 )
             );
 
@@ -469,7 +493,8 @@ public static class PdfQuizGrounder
                         SectionBreadcrumb: string.IsNullOrWhiteSpace(breadcrumb)
                             ? Path.GetFileNameWithoutExtension(pdfPath)
                             : breadcrumb,
-                        Text: text
+                        Text: text,
+                        Figures: cached.PageFigures.GetValueOrDefault(p, [])
                     )
                 );
             }
@@ -496,14 +521,20 @@ public static class PdfQuizGrounder
         foreach (var p in cleaned)
         {
             var header = $"=== [PAGE {p.PageNumber}] | Section: {p.SectionBreadcrumb} ===";
+            var figLine =
+                p.Figures is { Count: > 0 }
+                    ? $"[EXTRACTABLE SOURCE FIGURES ON PAGE {p.PageNumber}: {string.Join(", ", p.Figures.Select(f => $"id=\"{f.FigureId}\" (\"{f.Caption}\")"))}]\n"
+                    : string.Empty;
             if (
                 maxChars < int.MaxValue
-                && sb.Length + header.Length + p.Text.Length + 8 > maxChars
+                && sb.Length + header.Length + figLine.Length + p.Text.Length + 8 > maxChars
                 && sb.Length > 0
             )
                 break;
 
             sb.AppendLine(header);
+            if (figLine.Length > 0)
+                sb.Append(figLine);
             sb.AppendLine(p.Text);
             sb.AppendLine();
             includedCount++;
@@ -912,13 +943,420 @@ public static class PdfQuizGrounder
                 continue;
 
             var outPath = Path.Combine(outputDir, $"p{oneBasedPage}_fig{idx++}.png");
-            if (img.TryGetPng(out var pngBytes) && pngBytes is { Length: > 0 })
+            if (TryWritePdfImageAsPng(img, outPath))
             {
-                File.WriteAllBytes(outPath, pngBytes);
                 saved.Add(outPath);
             }
         }
         return saved;
+    }
+
+    private static bool TryWritePdfImageAsPng(IPdfImage img, string outPath)
+    {
+        try
+        {
+            if (img.TryGetPng(out var pngBytes) && pngBytes is { Length: > 0 })
+            {
+                var dir = Path.GetDirectoryName(outPath);
+                if (!string.IsNullOrWhiteSpace(dir))
+                    Directory.CreateDirectory(dir);
+                File.WriteAllBytes(outPath, pngBytes);
+                return true;
+            }
+
+            var rawSpan = img.RawBytes;
+            if (rawSpan.Length > 4)
+            {
+                // Fallback if the embedded stream is already a valid JPEG/PNG image stream
+                if (
+                    (rawSpan[0] == 0x89 && rawSpan[1] == 0x50)
+                    || (rawSpan[0] == 0xFF && rawSpan[1] == 0xD8)
+                )
+                {
+                    var dir = Path.GetDirectoryName(outPath);
+                    if (!string.IsNullOrWhiteSpace(dir))
+                        Directory.CreateDirectory(dir);
+                    File.WriteAllBytes(outPath, rawSpan.ToArray());
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+            // Ignore malformed image object
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Discovers extractable figures on a PDF page using a 2-tier hybrid strategy:
+    /// Tier A: Embedded raster XObject images (filtered to exclude small logos/headers/footers) paired with nearby Figure captions.
+    /// Tier B: Caption-anchored vector diagram regions ("Figure X.Y: ...") when a diagram is drawn with vector paths (TikZ/PowerPoint) rather than a bitmap.
+    /// </summary>
+    private static List<ExtractablePdfFigure> DiscoverPageFigures(
+        Page page,
+        int pageNumber,
+        List<Word> sortedWords
+    )
+    {
+        var discovered = new List<ExtractablePdfFigure>();
+        double pw = Math.Max(1.0, page.Width);
+        double ph = Math.Max(1.0, page.Height);
+
+        // 1. Group words into horizontal reading lines with normalized top-left [0..1] Y bounds
+        var lines = new List<(string Text, double TopY, double BottomY, double LeftX, double RightX)>();
+        if (sortedWords.Count > 0)
+        {
+            var curWords = new List<Word> { sortedWords[0] };
+            double lastBottom = sortedWords[0].BoundingBox.Bottom;
+
+            void FlushLine()
+            {
+                if (curWords.Count == 0)
+                    return;
+                var txt = string.Join(" ", curWords.Select(w => w.Text.Trim())).Trim();
+                if (txt.Length > 0)
+                {
+                    double minL = curWords.Min(w => w.BoundingBox.Left) / pw;
+                    double maxR = curWords.Max(w => w.BoundingBox.Right) / pw;
+                    double topY = 1.0 - (curWords.Max(w => w.BoundingBox.Top) / ph);
+                    double botY = 1.0 - (curWords.Min(w => w.BoundingBox.Bottom) / ph);
+                    lines.Add(
+                        (
+                            txt,
+                            Math.Clamp(topY, 0.0, 1.0),
+                            Math.Clamp(botY, 0.0, 1.0),
+                            Math.Clamp(minL, 0.0, 1.0),
+                            Math.Clamp(maxR, 0.0, 1.0)
+                        )
+                    );
+                }
+                curWords.Clear();
+            }
+
+            for (int i = 1; i < sortedWords.Count; i++)
+            {
+                var w = sortedWords[i];
+                if (Math.Abs(w.BoundingBox.Bottom - lastBottom) > 5.0)
+                    FlushLine();
+                curWords.Add(w);
+                lastBottom = w.BoundingBox.Bottom;
+            }
+            FlushLine();
+        }
+
+        var captions = new List<(int LineIndex, string Caption, double TopY, double BottomY, bool Paired)>();
+        for (int i = 0; i < lines.Count; i++)
+        {
+            var ln = lines[i];
+            if (FigureCaptionLineRegex.IsMatch(ln.Text))
+            {
+                var capText = ln.Text.Length > 110 ? ln.Text[..110].Trim() + "..." : ln.Text;
+                captions.Add((i, capText, ln.TopY, ln.BottomY, false));
+            }
+        }
+
+        // 2. Tier A: Embedded Raster Images (page.GetImages())
+        List<IPdfImage> rawImages;
+        try
+        {
+            rawImages = [.. page.GetImages()];
+        }
+        catch
+        {
+            rawImages = [];
+        }
+
+        int figCounter = 1;
+        for (int imgIdx = 0; imgIdx < rawImages.Count; imgIdx++)
+        {
+            var img = rawImages[imgIdx];
+            if (img.WidthInSamples < 80 || img.HeightInSamples < 60)
+                continue;
+
+            var b = img.BoundingBox;
+            double nx = Math.Clamp(b.Left / pw, 0.0, 0.96);
+            double ny = Math.Clamp(1.0 - (b.Top / ph), 0.0, 0.96);
+            double nw = Math.Clamp(b.Width / pw, 0.04, 1.0 - nx);
+            double nh = Math.Clamp(b.Height / ph, 0.04, 1.0 - ny);
+
+            // Skip small logos/icons and top-banner institutional logos (e.g. STI header emblem)
+            if (nw < 0.14 || nh < 0.07)
+                continue;
+            if (ny < 0.09 && nh < 0.10 && nw < 0.35)
+                continue;
+            // Skip full-page background scan/watermark plates (> 92% width AND > 92% height)
+            if (nw > 0.94 && nh > 0.94 && rawImages.Count == 1 && captions.Count == 0)
+                continue;
+
+            // Pair with nearest Figure caption within 0.18 vertical distance
+            string? matchedCaption = null;
+            double bestDist = 0.18;
+            int matchedCapIdx = -1;
+
+            for (int cIdx = 0; cIdx < captions.Count; cIdx++)
+            {
+                var cap = captions[cIdx];
+                if (cap.Paired)
+                    continue;
+
+                double distBelow = Math.Abs(cap.TopY - (ny + nh));
+                double distAbove = Math.Abs(ny - cap.BottomY);
+                double dist = Math.Min(distBelow, distAbove);
+                if (dist <= bestDist)
+                {
+                    bestDist = dist;
+                    matchedCaption = cap.Caption;
+                    matchedCapIdx = cIdx;
+                }
+            }
+
+            if (matchedCapIdx >= 0)
+            {
+                var cap = captions[matchedCapIdx];
+                captions[matchedCapIdx] = cap with { Paired = true };
+                // Expand crop slightly to include the figure caption for context
+                double minTop = Math.Min(ny, cap.TopY);
+                double maxBot = Math.Max(ny + nh, cap.BottomY);
+                ny = Math.Max(0.0, minTop - 0.01);
+                nh = Math.Min(1.0 - ny, (maxBot - minTop) + 0.02);
+            }
+
+            // Add a small 1.5% padding margin around the embedded figure so borders/axes aren't clipped
+            double padX = Math.Max(0.0, nx - 0.015);
+            double padY = Math.Max(0.0, ny - 0.015);
+            double padW = Math.Min(1.0 - padX, nw + 0.03);
+            double padH = Math.Min(1.0 - padY, nh + 0.03);
+
+            var figId = $"p{pageNumber}_fig{figCounter++}";
+            var label = matchedCaption ?? $"Embedded Figure {figCounter - 1} (Page {pageNumber})";
+            discovered.Add(
+                new ExtractablePdfFigure(
+                    figId,
+                    pageNumber,
+                    label,
+                    new NormalizedHighlightRect(padX, padY, padW, padH),
+                    EmbeddedImageIndex: imgIdx
+                )
+            );
+        }
+
+        // 3. Tier B: Caption-Anchored Vector Diagram Band (for pure-vector TikZ / PowerPoint / Visio figures with no IPdfImage)
+        foreach (var cap in captions)
+        {
+            if (cap.Paired)
+                continue;
+
+            // Search upwards from the caption for the preceding full-width prose paragraph line
+            double bandTopY = Math.Max(0.06, cap.TopY - 0.34);
+            for (int li = cap.LineIndex - 1; li >= 0; li--)
+            {
+                var prevLine = lines[li];
+                double gapAboveLine = cap.TopY - prevLine.BottomY;
+                if (gapAboveLine > 0.42)
+                    break;
+
+                bool looksLikeBodyParagraph =
+                    prevLine.Text.Length >= 55 && (prevLine.RightX - prevLine.LeftX) >= 0.48;
+                if (looksLikeBodyParagraph && gapAboveLine >= 0.10)
+                {
+                    bandTopY = prevLine.BottomY + 0.012;
+                    break;
+                }
+            }
+
+            double bandBottomY = Math.Min(0.95, cap.BottomY + 0.015);
+            double bandHeight = bandBottomY - bandTopY;
+            if (bandHeight >= 0.10)
+            {
+                var figId = $"p{pageNumber}_fig{figCounter++}";
+                discovered.Add(
+                    new ExtractablePdfFigure(
+                        figId,
+                        pageNumber,
+                        cap.Caption,
+                        new NormalizedHighlightRect(
+                            0.06,
+                            bandTopY,
+                            0.88,
+                            Math.Clamp(bandHeight, 0.10, 0.55)
+                        ),
+                        EmbeddedImageIndex: -1
+                    )
+                );
+            }
+        }
+
+        return discovered;
+    }
+
+    /// <summary>
+    /// Materializes cropped/extracted source figure images for any question that specified a <c>sourceFigureId</c>
+    /// (Tier A/B) or an explicit <c>evidence.region</c> bounding box on a PDF page (Tier C), saving the PNG under
+    /// <c>.scholarflow/quiz_media/&lt;quizId&gt;/</c> and populating <see cref="QuizQuestionRecord.ImagePath"/>.
+    /// </summary>
+    public static void MaterializeQuestionSourceFigures(
+        string pdfPath,
+        string? basinRoot,
+        string quizId,
+        IReadOnlyList<GroundedPdfPage> extractedPages,
+        IReadOnlyList<(
+            QuizQuestionRecord Question,
+            string? SourceFigureId,
+            EvidenceAnchorDto? Evidence
+        )> items
+    )
+    {
+        if (string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath) || items.Count == 0)
+            return;
+
+        var actionable = items
+            .Where(x =>
+                string.IsNullOrWhiteSpace(x.Question.ImagePath)
+                && (
+                    !string.IsNullOrWhiteSpace(x.SourceFigureId)
+                    || x.Evidence?.TryParseRegion() is not null
+                )
+            )
+            .ToList();
+
+        if (actionable.Count == 0)
+            return;
+
+        // Build lookup of discovered figures across extracted pages (and on-demand for any referenced page)
+        var figsById = new Dictionary<string, ExtractablePdfFigure>(
+            StringComparer.OrdinalIgnoreCase
+        );
+        var figsByPage = new Dictionary<int, List<ExtractablePdfFigure>>();
+
+        void RegisterFigures(IEnumerable<ExtractablePdfFigure>? figs)
+        {
+            if (figs is null)
+                return;
+            foreach (var f in figs)
+            {
+                figsById[f.FigureId] = f;
+                if (!figsByPage.TryGetValue(f.PageNumber, out var list))
+                {
+                    list = [];
+                    figsByPage[f.PageNumber] = list;
+                }
+                if (
+                    !list.Any(x =>
+                        x.FigureId.Equals(f.FigureId, StringComparison.OrdinalIgnoreCase)
+                    )
+                )
+                    list.Add(f);
+            }
+        }
+
+        foreach (var p in extractedPages)
+            RegisterFigures(p.Figures);
+
+        var mediaDir = !string.IsNullOrWhiteSpace(basinRoot)
+            ? Path.Combine(
+                basinRoot,
+                ".scholarflow",
+                "quiz_media",
+                string.IsNullOrWhiteSpace(quizId) ? "auto" : quizId
+            )
+            : Path.Combine(
+                Path.GetTempPath(),
+                "ScholarFlow-QuizMedia",
+                string.IsNullOrWhiteSpace(quizId) ? "auto" : quizId
+            );
+
+        using var doc = PdfDocument.Open(pdfPath);
+        int totalPages = doc.NumberOfPages;
+        if (totalPages <= 0)
+            return;
+
+        foreach (var (question, rawFigId, evidence) in actionable)
+        {
+            int targetPage = Math.Clamp(
+                question.SourcePage > 0 ? question.SourcePage : (evidence?.PageNumber ?? 1),
+                1,
+                totalPages
+            );
+
+            if (!figsByPage.ContainsKey(targetPage))
+            {
+                var page = doc.GetPage(targetPage);
+                var words = GetVisibleWordsInReadingOrder(page);
+                RegisterFigures(DiscoverPageFigures(page, targetPage, words));
+            }
+
+            ExtractablePdfFigure? matchedFig = null;
+            if (!string.IsNullOrWhiteSpace(rawFigId))
+            {
+                var cleanId = rawFigId.Trim();
+                if (!figsById.TryGetValue(cleanId, out matchedFig))
+                {
+                    // Fuzzy match by caption substring or first figure on the question's grounded page
+                    if (figsByPage.TryGetValue(targetPage, out var pageFigs) && pageFigs.Count > 0)
+                    {
+                        matchedFig =
+                            pageFigs.FirstOrDefault(f =>
+                                f.Caption.Contains(cleanId, StringComparison.OrdinalIgnoreCase)
+                                || cleanId.Contains(f.FigureId, StringComparison.OrdinalIgnoreCase)
+                            ) ?? pageFigs[0];
+                    }
+                }
+            }
+
+            NormalizedHighlightRect? cropRegion = matchedFig?.Region ?? evidence?.TryParseRegion();
+            if (matchedFig is null && cropRegion is null)
+                continue;
+
+            int figPage = matchedFig?.PageNumber ?? targetPage;
+            var outFileName =
+                $"{question.Id}_{matchedFig?.FigureId ?? $"p{figPage}_crop"}.png";
+            var outFullPath = Path.Combine(mediaDir, outFileName);
+            bool saved = false;
+
+            // 1. Prefer CustomPageRegionRasterizer (PDFtoImage/PDFium) when available:
+            //    renders both embedded raster images AND vector TikZ/PowerPoint drawings + overlaid labels at 220 DPI.
+            if (CustomPageRegionRasterizer is not null && cropRegion is not null)
+            {
+                try
+                {
+                    CustomPageRegionRasterizer(pdfPath, figPage, cropRegion, outFullPath, 220);
+                    saved = File.Exists(outFullPath);
+                }
+                catch
+                {
+                    saved = false;
+                }
+            }
+
+            // 2. Pure-Core PdfPig fallback for embedded raster images (works even without CustomPageRegionRasterizer)
+            if (!saved && matchedFig is { EmbeddedImageIndex: >= 0 })
+            {
+                try
+                {
+                    var pdfPage = doc.GetPage(figPage);
+                    var pageImages = pdfPage.GetImages().ToList();
+                    if (matchedFig.EmbeddedImageIndex < pageImages.Count)
+                    {
+                        saved = TryWritePdfImageAsPng(
+                            pageImages[matchedFig.EmbeddedImageIndex],
+                            outFullPath
+                        );
+                    }
+                }
+                catch
+                {
+                    saved = false;
+                }
+            }
+
+            if (saved && File.Exists(outFullPath))
+            {
+                question.ImagePath = !string.IsNullOrWhiteSpace(basinRoot)
+                    ? Path.GetRelativePath(basinRoot, outFullPath)
+                    : outFullPath;
+            }
+        }
     }
 
     private sealed record CachedPageWordIndex(
@@ -1340,14 +1778,21 @@ public static class PdfQuizGrounder
             using var doc = PdfDocument.Open(pdfPath);
             foreach (int p in missing)
             {
-                cached.PageTexts[p] = ExtractCleanPageText(doc.GetPage(p));
+                var page = doc.GetPage(p);
+                cached.PageTexts[p] = ExtractCleanPageText(page, p, out var figures);
+                cached.PageFigures[p] = figures;
             }
         }
     }
 
-    private static string ExtractCleanPageText(Page page)
+    private static string ExtractCleanPageText(
+        Page page,
+        int pageNumber,
+        out IReadOnlyList<ExtractablePdfFigure> figures
+    )
     {
         var words = GetVisibleWordsInReadingOrder(page);
+        figures = DiscoverPageFigures(page, pageNumber, words);
         if (words.Count == 0)
             return string.Empty;
 

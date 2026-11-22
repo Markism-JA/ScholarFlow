@@ -105,6 +105,10 @@ public sealed partial class QuizLlmService
         }
         sb.AppendLine();
         sb.AppendLine(
+            "VISUAL FIGURE CROPPING (OPTIONAL): If a question relies on a specific plot, circuit, geometry illustration, or complex figure visible on an uploaded PDF page where the actual image is better than a Mermaid diagram, include \"region\": {\"x\": 0.0-1.0, \"y\": 0.0-1.0, \"w\": 0.0-1.0, \"h\": 0.0-1.0} inside that question's \"evidence\" object (normalized from top-left of that page) so the app automatically crops and attaches the figure! When attaching a figure crop, test interpretation/analysis rather than asking for a label already printed in the figure."
+        );
+        sb.AppendLine();
+        sb.AppendLine(
             $"Generate {count} grounded questions from the attached PDF strictly following the JSON schema above."
         );
         return sb.ToString();
@@ -323,6 +327,12 @@ public sealed partial class QuizLlmService
                 ) ?? request.SourceFilePaths[0]
             : request.SourcePdfPath;
         var groundItems = new List<(QuizQuestionRecord, EvidenceAnchorDto?)>();
+        var pdfFigureItems =
+            new List<(
+                QuizQuestionRecord Question,
+                string? SourceFigureId,
+                EvidenceAnchorDto? Evidence
+            )>();
 
         var session = new QuizSessionRecord
         {
@@ -446,6 +456,7 @@ public sealed partial class QuizLlmService
 
             session.Questions.Add(qRecord);
             groundItems.Add((qRecord, qDto.Evidence));
+            pdfFigureItems.Add((qRecord, qDto.SourceFigureId, qDto.Evidence));
         }
 
         if (session.Questions.Count == 0)
@@ -458,8 +469,15 @@ public sealed partial class QuizLlmService
         {
             var fileItems = new List<(QuizQuestionRecord Question, EvidenceAnchorDto? Evidence)>();
             var pdfQuestions = new List<QuizQuestionRecord>();
-            foreach (var item in groundItems)
+            var mixedPdfFigItems =
+                new List<(
+                    QuizQuestionRecord Question,
+                    string? SourceFigureId,
+                    EvidenceAnchorDto? Evidence
+                )>();
+            for (int idx = 0; idx < groundItems.Count; idx++)
             {
+                var item = groundItems[idx];
                 bool matchesFile =
                     FileSourceQuizSupport.TryMatchSourceFile(
                         request.SourceFilePaths,
@@ -474,6 +492,7 @@ public sealed partial class QuizLlmService
                 else
                 {
                     pdfQuestions.Add(item.Item1);
+                    mixedPdfFigItems.Add(pdfFigureItems[idx]);
                 }
             }
 
@@ -486,7 +505,19 @@ public sealed partial class QuizLlmService
                             fileItems
                         );
                     if (pdfQuestions.Count > 0)
+                    {
                         PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, pdfQuestions);
+                        if (request.ModalityMode != QuizContentModalityMode.StandardProseOnly)
+                        {
+                            PdfQuizGrounder.MaterializeQuestionSourceFigures(
+                                request.SourcePdfPath,
+                                request.BasinRoot,
+                                session.Id,
+                                pages,
+                                mixedPdfFigItems
+                            );
+                        }
+                    }
                 },
                 ct
             );
@@ -506,7 +537,19 @@ public sealed partial class QuizLlmService
         {
             await Task.Run(
                 () =>
-                    PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, session.Questions),
+                {
+                    PdfQuizGrounder.GroundQuestionsToPdf(request.SourcePdfPath, session.Questions);
+                    if (request.ModalityMode != QuizContentModalityMode.StandardProseOnly)
+                    {
+                        PdfQuizGrounder.MaterializeQuestionSourceFigures(
+                            request.SourcePdfPath,
+                            request.BasinRoot,
+                            session.Id,
+                            pages,
+                            pdfFigureItems
+                        );
+                    }
+                },
                 ct
             );
         }

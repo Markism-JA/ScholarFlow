@@ -56,6 +56,27 @@ public sealed class PdfOutlineTreeNode
 
 public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
 {
+    static QuizStudioViewModel()
+    {
+        PdfQuizGrounder.CustomPageRegionRasterizer = (
+            pdfPath,
+            oneBasedPage,
+            region,
+            outputPngPath,
+            dpi
+        ) =>
+        {
+            var bytes = File.ReadAllBytes(pdfPath);
+            Services.PdfBitmapRenderer.CropAndSavePageRegion(
+                bytes,
+                Math.Max(0, oneBasedPage - 1),
+                region,
+                outputPngPath,
+                dpi
+            );
+        };
+    }
+
     private readonly MainWindowViewModel _mainVm = mainVm;
     private readonly QuizLlmService _llmService = new();
     private readonly Dictionary<

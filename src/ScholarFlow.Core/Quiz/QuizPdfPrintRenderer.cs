@@ -473,18 +473,40 @@ public static partial class QuizPdfPrintRenderer
             }
         }
 
+        static string? ResolveQuestionImagePath(QuizQuestionRecord q)
+        {
+            if (!string.IsNullOrWhiteSpace(q.ImagePath))
+            {
+                if (File.Exists(q.ImagePath))
+                    return q.ImagePath;
+
+                if (!Path.IsPathRooted(q.ImagePath) && !string.IsNullOrWhiteSpace(q.SourcePdfPath))
+                {
+                    var dir = Path.GetDirectoryName(q.SourcePdfPath);
+                    for (int depth = 0; depth < 5 && !string.IsNullOrWhiteSpace(dir); depth++)
+                    {
+                        var candidate = Path.Combine(dir, q.ImagePath);
+                        if (File.Exists(candidate))
+                            return candidate;
+                        dir = Path.GetDirectoryName(dir);
+                    }
+                }
+            }
+
+            if (
+                StudySourceClassifier.Classify(q.SourcePdfPath).Kind == StudySourceKind.Image
+                && File.Exists(q.SourcePdfPath)
+            )
+            {
+                return q.SourcePdfPath;
+            }
+
+            return null;
+        }
+
         void DrawImageFigure(QuizQuestionRecord q, int questionNumber)
         {
-            var imgPath =
-                !string.IsNullOrWhiteSpace(q.ImagePath) && File.Exists(q.ImagePath)
-                    ? q.ImagePath
-                    : (
-                        StudySourceClassifier.Classify(q.SourcePdfPath).Kind
-                            == StudySourceKind.Image
-                        && File.Exists(q.SourcePdfPath)
-                            ? q.SourcePdfPath
-                            : null
-                    );
+            var imgPath = ResolveQuestionImagePath(q);
 
             if (string.IsNullOrWhiteSpace(imgPath))
                 return;

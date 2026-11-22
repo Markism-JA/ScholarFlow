@@ -768,4 +768,201 @@ public sealed class QuizSuperEngineTests
         Assert.Contains(report.Issues, i => i.Code == "LAZY_META_HINT");
         Assert.Contains(report.Issues, i => i.Code == "DANGLING_SOURCE_REF");
     }
+
+    [Fact]
+    public async Task SourceFigureAutoExtraction_DiscoversFiguresFormatsPromptAndMaterializesCroppedImagePath()
+    {
+        var tempDir = Path.Combine(
+            Path.GetTempPath(),
+            "ScholarFlow_FigExtractTest_" + Guid.NewGuid().ToString("N")[..8]
+        );
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // Register PDFtoImage / SkiaSharp region rasterizer (same as Desktop host)
+            PdfQuizGrounder.CustomPageRegionRasterizer = (
+                pdfFile,
+                oneBasedPage,
+                region,
+                outPng,
+                dpi
+            ) =>
+            {
+                var pdfBytes = File.ReadAllBytes(pdfFile);
+#pragma warning disable CA1416
+                using var pageBmp = PDFtoImage.Conversion.ToImage(
+                    pdfBytes,
+                    page: (Index)Math.Max(0, oneBasedPage - 1),
+                    options: new PDFtoImage.RenderOptions(
+                        Dpi: dpi,
+                        BackgroundColor: SkiaSharp.SKColors.White
+                    )
+                );
+#pragma warning restore CA1416
+                int x = Math.Clamp(
+                    (int)Math.Floor(region.X * pageBmp.Width),
+                    0,
+                    Math.Max(0, pageBmp.Width - 2)
+                );
+                int y = Math.Clamp(
+                    (int)Math.Floor(region.Y * pageBmp.Height),
+                    0,
+                    Math.Max(0, pageBmp.Height - 2)
+                );
+                int w = Math.Clamp(
+                    (int)Math.Ceiling(region.Width * pageBmp.Width),
+                    2,
+                    pageBmp.Width - x
+                );
+                int h = Math.Clamp(
+                    (int)Math.Ceiling(region.Height * pageBmp.Height),
+                    2,
+                    pageBmp.Height - y
+                );
+                using var subset = new SkiaSharp.SKBitmap(w, h);
+                using (var canvas = new SkiaSharp.SKCanvas(subset))
+                {
+                    canvas.DrawBitmap(
+                        pageBmp,
+                        new SkiaSharp.SKRectI(x, y, x + w, y + h),
+                        new SkiaSharp.SKRect(0, 0, w, h)
+                    );
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(outPng)!);
+                using var img = SkiaSharp.SKImage.FromBitmap(subset);
+                using var enc = img.Encode(SkiaSharp.SKEncodedImageFormat.Png, 90);
+                using var fs = File.Create(outPng);
+                enc.SaveTo(fs);
+            };
+
+            // 1. Build a test PDF page containing a vector plot/diagram region and a "Figure 3.2: ..." caption
+            var pdfPath = Path.Combine(tempDir, "Computer_Arch_Plots.pdf");
+            ScholarFlow.Core.Pdf.MasterPdfService.EnsureFontResolver();
+            using (var doc = new PdfSharpCore.Pdf.PdfDocument())
+            {
+                var page = doc.AddPage();
+                page.Width = 612;
+                page.Height = 792;
+                using var gfx = PdfSharpCore.Drawing.XGraphics.FromPdfPage(page);
+                var font = new PdfSharpCore.Drawing.XFont("Sans", 11);
+
+                gfx.DrawString(
+                    "In modern superscalar processors, cache hierarchy latency scales non-linearly across L1, L2, and L3.",
+                    font,
+                    PdfSharpCore.Drawing.XBrushes.Black,
+                    new PdfSharpCore.Drawing.XPoint(54, 90)
+                );
+                gfx.DrawString(
+                    "When working set size exceeds the L2 capacity boundary, miss penalties dominate execution cycles.",
+                    font,
+                    PdfSharpCore.Drawing.XBrushes.Black,
+                    new PdfSharpCore.Drawing.XPoint(54, 110)
+                );
+
+                // Vector plot drawing between Y=140 and Y=310
+                gfx.DrawRectangle(
+                    PdfSharpCore.Drawing.XPens.DarkBlue,
+                    PdfSharpCore.Drawing.XBrushes.AliceBlue,
+                    72,
+                    145,
+                    440,
+                    155
+                );
+                gfx.DrawLine(PdfSharpCore.Drawing.XPens.Red, 90, 280, 480, 165);
+
+                // Caption right below the vector plot
+                gfx.DrawString(
+                    "Figure 3.2: Working Set Size vs. Memory Hierarchy Access Latency Curve",
+                    font,
+                    PdfSharpCore.Drawing.XBrushes.Black,
+                    new PdfSharpCore.Drawing.XPoint(72, 325)
+                );
+
+                gfx.DrawString(
+                    "As a consequence, spatial locality optimizations such as stride prefetching reduce compulsory misses.",
+                    font,
+                    PdfSharpCore.Drawing.XBrushes.Black,
+                    new PdfSharpCore.Drawing.XPoint(54, 370)
+                );
+
+                doc.Save(pdfPath);
+            }
+
+            // 2. Verify ExtractGroundedPages discovers p1_fig1 and FormatPagesForPrompt lists it
+            var pages = PdfQuizGrounder.ExtractGroundedPages(pdfPath);
+            Assert.Single(pages);
+            Assert.NotNull(pages[0].Figures);
+            Assert.NotEmpty(pages[0].Figures!);
+            var fig = pages[0].Figures![0];
+            Assert.Equal("p1_fig1", fig.FigureId);
+            Assert.Contains("Figure 3.2", fig.Caption);
+
+            var formatted = PdfQuizGrounder.FormatPagesForPrompt(pages);
+            Assert.Contains("[EXTRACTABLE SOURCE FIGURES ON PAGE 1:", formatted);
+            Assert.Contains("id=\"p1_fig1\"", formatted);
+
+            // 3. Verify ImportQuizFromJsonAsync materializes q.ImagePath when sourceFigureId is returned
+            var svc = new QuizLlmService();
+            var req = new QuizGenerationRequest
+            {
+                BasinRoot = tempDir,
+                CourseFolder = "Arch",
+                CourseTitle = "Computer Architecture",
+                SourcePdfPath = pdfPath,
+            };
+
+            var sampleJson = """
+                {
+                  "quizTitle": "Cache Hierarchy Assessment",
+                  "courseTerm": null,
+                  "keyConceptsCovered": ["Cache Latency"],
+                  "questions": [
+                    {
+                      "kind": "MultipleChoice",
+                      "cognitiveLevel": "Analysis",
+                      "archetype": "DualCoding",
+                      "difficulty": 4,
+                      "topicTag": "cache-latency",
+                      "prompt": "Based on the working-set latency curve, what happens when the working set exceeds the L2 capacity boundary?",
+                      "options": [
+                        "Miss penalties dominate total execution cycles",
+                        "Latency remains constant regardless of working set size",
+                        "L1 cache automatically expands its associativity",
+                        "TLB translations bypass main memory completely"
+                      ],
+                      "correctAnswer": "Miss penalties dominate total execution cycles",
+                      "hint": "Consider the transition from on-chip SRAM to off-chip DRAM access latency.",
+                      "explanation": "Why correct: Crossing L2 capacity triggers steep L3/DRAM miss penalties. Why distractors fail: Hardware cache capacity is fixed. Core principle: Memory wall hierarchy.",
+                      "sourceFigureId": "p1_fig1",
+                      "evidence": {
+                        "pageNumber": 1,
+                        "sectionTitle": "Cache Hierarchy",
+                        "verbatimQuote": "When working set size exceeds the L2 capacity boundary, miss penalties dominate execution cycles."
+                      }
+                    }
+                  ]
+                }
+                """;
+
+            var session = await svc.ImportQuizFromJsonAsync(req, sampleJson);
+            Assert.Single(session.Questions);
+            var q = session.Questions[0];
+            Assert.False(string.IsNullOrWhiteSpace(q.ImagePath));
+            var fullCroppedPath = Path.Combine(tempDir, q.ImagePath!);
+            Assert.True(File.Exists(fullCroppedPath));
+            Assert.True(new FileInfo(fullCroppedPath).Length > 200);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+            catch
+            {
+                // Ignore cleanup lock
+            }
+        }
+    }
 }

@@ -1467,7 +1467,7 @@ public sealed partial class MasterPdfService
         File.Move(temp, statePath, overwrite: true);
     }
 
-    internal static void EnsureFontResolver()
+    public static void EnsureFontResolver()
     {
         if (Interlocked.Exchange(ref _fontResolverInitialized, 1) == 0)
         {
