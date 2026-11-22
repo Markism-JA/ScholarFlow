@@ -179,13 +179,8 @@ public static partial class QuizStudioViewBuilder
 
         var rootGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*"), RowSpacing = 8 };
 
-        // 1. Compact Header + Collapsible Filter Strip
+        // 1. Responsive Header + Quick Jump to Card # + Collapsible Filter Strip
         var metaCard = new StackPanel { Spacing = 8 };
-        var topRow = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto,Auto,Auto,Auto"),
-            ColumnSpacing = 6,
-        };
 
         var titleBox = new TextBox
         {
@@ -207,9 +202,13 @@ public static partial class QuizStudioViewBuilder
                 studio.MarkOrganizerDirty();
             }
         };
-        topRow.Children.Add(titleBox);
 
-        int col = 1;
+        var actionsWrap = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
         if (studio.IsOrganizerDirty)
         {
             var dirtyPill = UiBuilder.Pill(
@@ -219,10 +218,92 @@ public static partial class QuizStudioViewBuilder
                 fontSize: 11
             );
             dirtyPill.VerticalAlignment = VerticalAlignment.Center;
-            Grid.SetColumn(dirtyPill, col);
-            topRow.Children.Add(dirtyPill);
+            dirtyPill.Margin = new Thickness(0, 0, 6, 3);
+            actionsWrap.Children.Add(dirtyPill);
         }
-        col++;
+
+        // Quick Jump to Card # input (# [ 1 ] / N)
+        int initialSelectedIdx = Math.Max(
+            0,
+            deck.Questions.FindIndex(q =>
+                string.Equals(
+                    q.Id,
+                    studio.SelectedOrganizerQuestionId,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+        );
+        var cardJumpBox = new TextBox
+        {
+            Text = deck.Questions.Count > 0 ? (initialSelectedIdx + 1).ToString() : "0",
+            Width = 46,
+            FontSize = 11.5,
+            FontWeight = FontWeight.SemiBold,
+            Padding = new Thickness(4, 2),
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        ToolTip.SetTip(
+            cardJumpBox,
+            $"Jump to card number (1–{Math.Max(1, deck.Questions.Count)}) and press Enter"
+        );
+        cardJumpBox.KeyDown += (_, e) =>
+        {
+            if (
+                e.Key == Avalonia.Input.Key.Enter
+                && deck.Questions.Count > 0
+                && int.TryParse(cardJumpBox.Text?.Trim(), out int num)
+            )
+            {
+                e.Handled = true;
+                int clampedIdx = Math.Clamp(num - 1, 0, deck.Questions.Count - 1);
+                var target = deck.Questions[clampedIdx];
+                cardJumpBox.Text = (clampedIdx + 1).ToString();
+                studio.SelectOrganizerQuestion(
+                    target.Id,
+                    notify: false,
+                    scrollCardIntoView: true,
+                    scrollTocIntoView: true
+                );
+            }
+        };
+
+        var jumpPill = new Border
+        {
+            Background = ThemeService.Brush(ThemeService.BgBase),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(5),
+            Padding = new Thickness(6, 2),
+            Margin = new Thickness(0, 0, 6, 3),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "#",
+                        FontSize = 11.5,
+                        FontWeight = FontWeight.SemiBold,
+                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                    cardJumpBox,
+                    new TextBlock
+                    {
+                        Text = $"/ {deck.Questions.Count}",
+                        FontSize = 11.5,
+                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    },
+                },
+            },
+        };
+        actionsWrap.Children.Add(jumpPill);
 
         var tocToggleBtn = UiBuilder.GhostButton(
             "TOC",
@@ -230,8 +311,9 @@ public static partial class QuizStudioViewBuilder
             studio.ToggleOrganizerToc,
             isActive: studio.IsOrganizerTocOpen
         );
-        Grid.SetColumn(tocToggleBtn, col++);
-        topRow.Children.Add(tocToggleBtn);
+        ToolTip.SetTip(tocToggleBtn, "Toggle question table of contents");
+        tocToggleBtn.Margin = new Thickness(0, 0, 5, 3);
+        actionsWrap.Children.Add(tocToggleBtn);
 
         bool hasActiveFilters =
             studio.OrganizerKindFilter.HasValue
@@ -245,8 +327,9 @@ public static partial class QuizStudioViewBuilder
             studio.ToggleOrganizerFilters,
             isActive: studio.IsOrganizerFiltersOpen || hasActiveFilters
         );
-        Grid.SetColumn(filterToggleBtn, col++);
-        topRow.Children.Add(filterToggleBtn);
+        ToolTip.SetTip(filterToggleBtn, "Filter questions by kind, topic tag, or quality health");
+        filterToggleBtn.Margin = new Thickness(0, 0, 5, 3);
+        actionsWrap.Children.Add(filterToggleBtn);
 
         var shufflePlayBtn = UiBuilder.GhostButton(
             "Play",
@@ -258,8 +341,9 @@ public static partial class QuizStudioViewBuilder
                     shuffleOptionsOverride: true
                 )
         );
-        Grid.SetColumn(shufflePlayBtn, col++);
-        topRow.Children.Add(shufflePlayBtn);
+        ToolTip.SetTip(shufflePlayBtn, "Launch a shuffled practice run of this deck");
+        shufflePlayBtn.Margin = new Thickness(0, 0, 5, 3);
+        actionsWrap.Children.Add(shufflePlayBtn);
 
         // Properly Styled More ▾ Button
         var moreNormalBg = ThemeService.Brush(ThemeService.BgElevated);
@@ -518,8 +602,9 @@ public static partial class QuizStudioViewBuilder
         }
 
         moreBtn.Flyout = moreFlyout;
-        Grid.SetColumn(moreBtn, col++);
-        topRow.Children.Add(moreBtn);
+        moreBtn.Margin = new Thickness(0, 0, 5, 3);
+        ToolTip.SetTip(moreBtn, "AI deck fix, PDF export, shuffle, sort, and term options");
+        actionsWrap.Children.Add(moreBtn);
 
         var saveBtn = UiBuilder.PrimaryButton(
             studio.IsOrganizerDirty
@@ -528,9 +613,44 @@ public static partial class QuizStudioViewBuilder
             MaterialIconKind.ContentSaveOutline,
             async () => await studio.SaveOrganizerDeckAsync()
         );
-        Grid.SetColumn(saveBtn, col);
-        topRow.Children.Add(saveBtn);
-        metaCard.Children.Add(topRow);
+        saveBtn.Margin = new Thickness(0, 0, 0, 3);
+        actionsWrap.Children.Add(saveBtn);
+
+        var headerHost = new Border();
+        bool? lastCompactOrgHeader = null;
+        void ApplyOrgHeaderLayout(bool compact)
+        {
+            if (lastCompactOrgHeader == compact && headerHost.Child is not null)
+                return;
+            lastCompactOrgHeader = compact;
+
+            if (titleBox.Parent is Panel tp)
+                tp.Children.Remove(titleBox);
+            if (actionsWrap.Parent is Panel ap)
+                ap.Children.Remove(actionsWrap);
+
+            if (compact)
+            {
+                var stack = new StackPanel { Spacing = 6 };
+                stack.Children.Add(titleBox);
+                stack.Children.Add(actionsWrap);
+                headerHost.Child = stack;
+            }
+            else
+            {
+                var row = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+                    ColumnSpacing = 8,
+                };
+                row.Children.Add(titleBox);
+                Grid.SetColumn(actionsWrap, 1);
+                row.Children.Add(actionsWrap);
+                headerHost.Child = row;
+            }
+        }
+        ApplyOrgHeaderLayout(false);
+        metaCard.Children.Add(headerHost);
 
         // Collapsible Multi-Facet Filter Bar (Kind + @TopicTag + Health)
         if (studio.IsOrganizerFiltersOpen)
@@ -652,6 +772,8 @@ public static partial class QuizStudioViewBuilder
         ListBox? tocListBox = null;
         Action<QuizQuestionRecord>? scrollTocToItem = null;
 
+        Border? tocCardContainer = null;
+        Border? tocFloatingScrim = null;
         if (studio.IsOrganizerTocOpen)
         {
             var tocPanel = new Grid
@@ -659,6 +781,7 @@ public static partial class QuizStudioViewBuilder
                 RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
                 RowSpacing = 6,
             };
+            var tocHeaderRow = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
             var tocHeaderText = new TextBlock
             {
                 Text = $"QUESTIONS ({visibleQuestions.Count})",
@@ -666,9 +789,20 @@ public static partial class QuizStudioViewBuilder
                 FontWeight = FontWeight.SemiBold,
                 LetterSpacing = 0.6,
                 Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(2, 0, 0, 2),
             };
-            tocPanel.Children.Add(tocHeaderText);
+            tocHeaderRow.Children.Add(tocHeaderText);
+            var closeTocBtn = UiBuilder.IconButton(
+                MaterialIconKind.ChevronDoubleLeft,
+                studio.ToggleOrganizerToc,
+                14,
+                ThemeService.Brush(ThemeService.TextSecondary)
+            );
+            ToolTip.SetTip(closeTocBtn, "Close TOC");
+            Grid.SetColumn(closeTocBtn, 1);
+            tocHeaderRow.Children.Add(closeTocBtn);
+            tocPanel.Children.Add(tocHeaderRow);
 
             var searchBox = new TextBox
             {
@@ -806,8 +940,17 @@ public static partial class QuizStudioViewBuilder
             Grid.SetRow(tocListBox, 2);
             tocPanel.Children.Add(tocListBox);
 
-            splitBody.Children.Add(UiBuilder.Card(tocPanel, padding: new Thickness(8, 8)));
+            tocCardContainer = UiBuilder.Card(tocPanel, padding: new Thickness(8, 8));
+            splitBody.Children.Add(tocCardContainer);
             Grid.SetColumn(cardListBox, 2);
+
+            tocFloatingScrim = new Border
+            {
+                Background = new SolidColorBrush(Color.Parse("#66000000")),
+                IsVisible = false,
+                Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+            };
+            tocFloatingScrim.PointerPressed += (_, _) => studio.ToggleOrganizerToc();
         }
 
         // Hook lightweight in-place selection sync between TOC, Question Cards, and Keyboard Nav (zero rebuilds)
@@ -825,9 +968,9 @@ public static partial class QuizStudioViewBuilder
                 {
                     bool sel = string.Equals(t, cardTag, StringComparison.OrdinalIgnoreCase);
                     b.BorderBrush = sel
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
+                        ? ThemeService.Brush(ThemeService.BorderStrong)
                         : ThemeService.Brush(ThemeService.BorderSubtle);
-                    b.BorderThickness = new Thickness(sel ? 2 : 1);
+                    b.BorderThickness = new Thickness(sel ? 1.6 : 1);
                 }
             }
 
@@ -839,14 +982,23 @@ public static partial class QuizStudioViewBuilder
                     {
                         bool sel = string.Equals(t, tocTag, StringComparison.OrdinalIgnoreCase);
                         btn.Background = sel
-                            ? ThemeService.Brush(ThemeService.AccentSoftBg)
+                            ? ThemeService.Brush(ThemeService.BgElevated)
                             : Brushes.Transparent;
                         btn.BorderBrush = sel
-                            ? ThemeService.Brush(ThemeService.AccentPrimary)
+                            ? ThemeService.Brush(ThemeService.BorderStrong)
                             : Brushes.Transparent;
-                        btn.BorderThickness = new Thickness(sel ? 1.5 : 1);
+                        btn.BorderThickness = new Thickness(sel ? 1 : 0);
                     }
                 }
+            }
+
+            if (!cardJumpBox.IsFocused && selectedId is not null)
+            {
+                int deckIdx = deck.Questions.FindIndex(q =>
+                    string.Equals(q.Id, selectedId, StringComparison.OrdinalIgnoreCase)
+                );
+                if (deckIdx >= 0)
+                    cardJumpBox.Text = (deckIdx + 1).ToString();
             }
         }
 
@@ -982,6 +1134,56 @@ public static partial class QuizStudioViewBuilder
         fabBtn.Margin = new Thickness(0);
         Grid.SetRow(fabHost, 1);
         rootGrid.Children.Add(fabHost);
+
+        if (tocFloatingScrim is not null && tocCardContainer is not null)
+        {
+            Grid.SetRow(tocFloatingScrim, 1);
+            rootGrid.Children.Insert(rootGrid.Children.IndexOf(fabHost), tocFloatingScrim);
+        }
+
+        rootGrid.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width <= 0)
+                return;
+
+            ApplyOrgHeaderLayout(e.NewSize.Width < 960);
+
+            if (tocCardContainer is not null && tocFloatingScrim is not null)
+            {
+                bool floatToc = e.NewSize.Width < 900;
+                tocFloatingScrim.IsVisible = floatToc;
+                if (floatToc)
+                {
+                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse("0,0,*");
+                    Grid.SetColumn(cardListBox, 2);
+                    if (tocCardContainer.Parent == splitBody)
+                    {
+                        splitBody.Children.Remove(tocCardContainer);
+                        tocCardContainer.Width = 250;
+                        tocCardContainer.HorizontalAlignment = HorizontalAlignment.Left;
+                        tocCardContainer.BoxShadow = BoxShadows.Parse("8 0 28 0 #70000000");
+                        Grid.SetRow(tocCardContainer, 1);
+                        Grid.SetColumn(tocCardContainer, 0);
+                        rootGrid.Children.Insert(rootGrid.Children.IndexOf(fabHost), tocCardContainer);
+                    }
+                }
+                else
+                {
+                    if (tocCardContainer.Parent == rootGrid)
+                    {
+                        rootGrid.Children.Remove(tocCardContainer);
+                        tocCardContainer.Width = double.NaN;
+                        tocCardContainer.HorizontalAlignment = HorizontalAlignment.Stretch;
+                        tocCardContainer.BoxShadow = default;
+                        Grid.SetRow(tocCardContainer, 0);
+                        Grid.SetColumn(tocCardContainer, 0);
+                        splitBody.Children.Insert(0, tocCardContainer);
+                    }
+                    splitBody.ColumnDefinitions = ColumnDefinitions.Parse("235,10,*");
+                    Grid.SetColumn(cardListBox, 2);
+                }
+            }
+        };
 
         return rootGrid;
     }
