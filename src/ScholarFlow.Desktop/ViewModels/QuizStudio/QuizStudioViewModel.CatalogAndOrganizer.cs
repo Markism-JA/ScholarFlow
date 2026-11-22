@@ -1023,6 +1023,22 @@ public sealed partial class QuizStudioViewModel
         _mainVm.RequestUiRefresh();
     }
 
+    public void SetSnipOutlineOpenQuiet(bool open)
+    {
+        IsSnipOutlineOpen = open;
+    }
+
+    public void SetSnipAnchorsOpenQuiet(bool open)
+    {
+        IsSnipAnchorsOpen = open;
+    }
+
+    public void SetSnipZoomPercentQuiet(int percent)
+    {
+        SnipFitToWidth = percent == 100;
+        SnipZoomPercent = Math.Clamp(percent, 40, 350);
+    }
+
     public void ToggleSnipOutlineNodeExpanded(PdfBookmarkNode node)
     {
         node.IsExpanded = !node.IsExpanded;

@@ -1886,6 +1886,8 @@ public static partial class QuizStudioViewBuilder
         return cardBorder;
     }
 
+    private static double _lastSnipperViewportWidth;
+
     private static Grid BuildDedicatedPdfSnipperView(
         MainWindowViewModel vm,
         QuizStudioViewModel studio
@@ -1898,14 +1900,312 @@ public static partial class QuizStudioViewBuilder
                 : Math.Max(1, draft.SourcePage);
         int totalPages = Math.Max(1, studio.EditingSnipTotalPages);
         var activeNode = studio.FindActiveSnipBookmarkNode(curPage);
+        bool hasOutline = studio.SnipOutlineRoots.Count > 0;
 
         var root = new Grid
         {
-            RowDefinitions = RowDefinitions.Parse("Auto,*"),
+            RowDefinitions = RowDefinitions.Parse("Auto,Auto,*"),
             Margin = new Thickness(12, 8),
+            ClipToBounds = true,
         };
 
-        // 1. Standard PDF-Reader-Style Responsive Top Toolbar
+        // 1. Clean Responsive 2-Zone Toolbar
+        Action<bool>? setOutlineOpenAction = null;
+        Action<bool>? setAnchorsOpenAction = null;
+
+        var leftGroup = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 5,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var backBtn = UiBuilder.GhostButton(
+            "Back",
+            MaterialIconKind.ArrowLeft,
+            studio.CloseDedicatedSnipper
+        );
+        ToolTip.SetTip(backBtn, "Return to Question Editor (Esc)");
+        leftGroup.Children.Add(backBtn);
+
+        Button? outlineToggleBtn = null;
+        if (hasOutline)
+        {
+            outlineToggleBtn = UiBuilder.GhostButton(
+                "Outline",
+                MaterialIconKind.FileTreeOutline,
+                () => setOutlineOpenAction?.Invoke(!studio.IsSnipOutlineOpen),
+                isActive: studio.IsSnipOutlineOpen
+            );
+            ToolTip.SetTip(outlineToggleBtn, "Toggle Document Outline drawer");
+            leftGroup.Children.Add(outlineToggleBtn);
+        }
+
+        var anchorsToggleBtn = UiBuilder.GhostButton(
+            $"Anchors ({draft.EvidenceAnchors.Count})",
+            MaterialIconKind.Marker,
+            () => setAnchorsOpenAction?.Invoke(!studio.IsSnipAnchorsOpen),
+            isActive: studio.IsSnipAnchorsOpen
+        );
+        ToolTip.SetTip(anchorsToggleBtn, "Toggle Evidence Anchors & Figures drawer");
+        leftGroup.Children.Add(anchorsToggleBtn);
+
+        // Segmented Tool Mode Pill (Pin Highlight | Capture Image)
+        var modePill = new Border
+        {
+            Background = ThemeService.Brush(ThemeService.BgBase),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(2),
+            VerticalAlignment = VerticalAlignment.Center,
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 2,
+                Children =
+                {
+                    UiBuilder.GhostButton(
+                        "Pin Highlight",
+                        MaterialIconKind.Marker,
+                        () => studio.SetSnipMode(SnipCaptureMode.PinHighlight),
+                        isActive: studio.SnipMode == SnipCaptureMode.PinHighlight
+                    ),
+                    UiBuilder.GhostButton(
+                        "Capture Image",
+                        MaterialIconKind.Crop,
+                        () => studio.SetSnipMode(SnipCaptureMode.CaptureImage),
+                        isActive: studio.SnipMode == SnipCaptureMode.CaptureImage
+                    ),
+                },
+            },
+        };
+
+        // Centered Page Jump Pill + Secondary Tools
+        var rightToolsWrap = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+
+        var pageJumpBox = new TextBox
+        {
+            Text = curPage.ToString(),
+            Width = 34,
+            Height = 22,
+            MinHeight = 22,
+            FontSize = 11.5,
+            FontWeight = FontWeight.SemiBold,
+            Padding = new Thickness(1, 0),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+            TextAlignment = TextAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        ToolTip.SetTip(pageJumpBox, $"Jump to page (1–{totalPages}) · Enter, ↑/↓, or scroll");
+        pageJumpBox.KeyDown += async (_, e) =>
+        {
+            if (
+                e.Key == Avalonia.Input.Key.Enter
+                && int.TryParse(pageJumpBox.Text?.Trim(), out int target)
+            )
+            {
+                e.Handled = true;
+                await studio.LoadEditorSnipPageAsync(Math.Clamp(target, 1, totalPages));
+            }
+            else if (e.Key == Avalonia.Input.Key.Up && curPage > 1)
+            {
+                e.Handled = true;
+                await studio.LoadEditorSnipPageAsync(curPage - 1);
+            }
+            else if (e.Key == Avalonia.Input.Key.Down && curPage < totalPages)
+            {
+                e.Handled = true;
+                await studio.LoadEditorSnipPageAsync(curPage + 1);
+            }
+        };
+
+        var prevPageBtn = UiBuilder.IconButton(
+            MaterialIconKind.ChevronLeft,
+            async () => await studio.LoadEditorSnipPageAsync(Math.Max(1, curPage - 1)),
+            14
+        );
+        ToolTip.SetTip(prevPageBtn, "Previous page");
+        var nextPageBtn = UiBuilder.IconButton(
+            MaterialIconKind.ChevronRight,
+            async () => await studio.LoadEditorSnipPageAsync(Math.Min(totalPages, curPage + 1)),
+            14
+        );
+        ToolTip.SetTip(nextPageBtn, "Next page");
+
+        var pageJumpPill = new Border
+        {
+            Height = 28,
+            Background = ThemeService.Brush(ThemeService.BgBase),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(3, 0),
+            Margin = new Thickness(0, 0, 6, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 2,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children =
+                {
+                    prevPageBtn,
+                    pageJumpBox,
+                    new TextBlock
+                    {
+                        Text = $"/ {totalPages}",
+                        FontSize = 11.5,
+                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Margin = new Thickness(1, 0, 2, 0),
+                    },
+                    nextPageBtn,
+                },
+            },
+        };
+        pageJumpBox.GotFocus += (_, _) =>
+        {
+            pageJumpBox.SelectAll();
+            pageJumpPill.BorderBrush = ThemeService.Brush(ThemeService.BorderStrong);
+        };
+        pageJumpBox.LostFocus += (_, _) =>
+            pageJumpPill.BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle);
+        pageJumpPill.PointerWheelChanged += async (_, e) =>
+        {
+            e.Handled = true;
+            int next = Math.Clamp(curPage + (e.Delta.Y > 0 ? -1 : 1), 1, totalPages);
+            if (next != curPage)
+                await studio.LoadEditorSnipPageAsync(next);
+        };
+        rightToolsWrap.Children.Add(pageJumpPill);
+
+        var zoomOutBtn = UiBuilder.IconButton(
+            MaterialIconKind.MagnifyMinusOutline,
+            async () => await studio.ZoomSnipAsync(-25),
+            15
+        );
+        ToolTip.SetTip(zoomOutBtn, "Zoom out (-25%)");
+        zoomOutBtn.Margin = new Thickness(0, 0, 2, 2);
+        rightToolsWrap.Children.Add(zoomOutBtn);
+
+        var zoomLabelBtn = UiBuilder.GhostButton(
+            studio.SnipFitToWidth ? "Fit" : $"{studio.SnipZoomPercent}%",
+            null,
+            async () => await studio.ToggleSnipFitToWidthAsync(),
+            isActive: studio.SnipFitToWidth
+        );
+        ToolTip.SetTip(zoomLabelBtn, "Toggle Fit Width / 100%");
+        zoomLabelBtn.Margin = new Thickness(0, 0, 2, 2);
+        rightToolsWrap.Children.Add(zoomLabelBtn);
+
+        var zoomInBtn = UiBuilder.IconButton(
+            MaterialIconKind.MagnifyPlusOutline,
+            async () => await studio.ZoomSnipAsync(+25),
+            15
+        );
+        ToolTip.SetTip(zoomInBtn, "Zoom in (+25%)");
+        zoomInBtn.Margin = new Thickness(0, 0, 4, 2);
+        rightToolsWrap.Children.Add(zoomInBtn);
+
+        var snipRotL = UiBuilder.IconButton(
+            MaterialIconKind.RotateLeft,
+            async () => await studio.RotateSnipAsync(-90),
+            15
+        );
+        ToolTip.SetTip(snipRotL, "Rotate 90° counter-clockwise");
+        snipRotL.Margin = new Thickness(0, 0, 2, 2);
+        rightToolsWrap.Children.Add(snipRotL);
+
+        var snipRotR = UiBuilder.IconButton(
+            MaterialIconKind.RotateRight,
+            async () => await studio.RotateSnipAsync(+90),
+            15
+        );
+        ToolTip.SetTip(snipRotR, "Rotate 90° clockwise");
+        snipRotR.Margin = new Thickness(0, 0, 6, 2);
+        rightToolsWrap.Children.Add(snipRotR);
+
+        var extractFigsBtn = UiBuilder.GhostButton(
+            "Figures",
+            MaterialIconKind.ImageMultipleOutline,
+            async () => await studio.ExtractEmbeddedFiguresOnSnipPageAsync()
+        );
+        ToolTip.SetTip(extractFigsBtn, "Extract embedded diagrams/figures from this page");
+        extractFigsBtn.Margin = new Thickness(0, 0, 4, 2);
+        rightToolsWrap.Children.Add(extractFigsBtn);
+
+        var clearAnchorsBtn = UiBuilder.GhostButton(
+            "Clear",
+            MaterialIconKind.Eraser,
+            studio.ClearVisualSnipHighlights
+        );
+        ToolTip.SetTip(clearAnchorsBtn, $"Clear all {draft.EvidenceAnchors.Count} pinned highlight(s)");
+        clearAnchorsBtn.Margin = new Thickness(0, 0, 0, 2);
+        rightToolsWrap.Children.Add(clearAnchorsBtn);
+
+        var toolbarHost = new Border();
+        bool? lastCompactSnipToolbar = null;
+        void ApplySnipperToolbarLayout(bool compactToolbar)
+        {
+            if (lastCompactSnipToolbar == compactToolbar && toolbarHost.Child is not null)
+                return;
+            lastCompactSnipToolbar = compactToolbar;
+
+            static void Detach(Control c)
+            {
+                if (c.Parent is Panel p)
+                    p.Children.Remove(c);
+                else if (c.Parent is Decorator d && ReferenceEquals(d.Child, c))
+                    d.Child = null;
+            }
+
+            Detach(leftGroup);
+            Detach(modePill);
+            Detach(rightToolsWrap);
+
+            if (compactToolbar)
+            {
+                var row1 = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+                    ColumnSpacing = 8,
+                };
+                row1.Children.Add(leftGroup);
+                Grid.SetColumn(modePill, 1);
+                row1.Children.Add(modePill);
+
+                toolbarHost.Child = new StackPanel
+                {
+                    Spacing = 6,
+                    Children = { row1, rightToolsWrap },
+                };
+            }
+            else
+            {
+                var row = new Grid
+                {
+                    ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
+                    ColumnSpacing = 10,
+                };
+                row.Children.Add(leftGroup);
+                Grid.SetColumn(modePill, 1);
+                row.Children.Add(modePill);
+                Grid.SetColumn(rightToolsWrap, 2);
+                row.Children.Add(rightToolsWrap);
+                toolbarHost.Child = row;
+            }
+        }
+        ApplySnipperToolbarLayout(false);
+
         var toolbarBorder = new Border
         {
             Background = ThemeService.Brush(ThemeService.BgSurface),
@@ -1913,234 +2213,83 @@ public static partial class QuizStudioViewBuilder
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(8),
             Padding = new Thickness(10, 6),
-            Margin = new Thickness(0, 0, 0, 8),
+            Margin = new Thickness(0, 0, 0, 6),
+            Child = toolbarHost,
         };
-
-        var toolbarGrid = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto") };
-
-        var leftGroup = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        leftGroup.Children.Add(
-            UiBuilder.GhostButton(
-                "Back to Editor",
-                MaterialIconKind.ArrowLeft,
-                studio.CloseDedicatedSnipper
-            )
-        );
-        if (studio.SnipOutlineRoots.Count > 0)
-        {
-            leftGroup.Children.Add(
-                UiBuilder.GhostButton(
-                    "Outline",
-                    MaterialIconKind.FileTreeOutline,
-                    studio.ToggleSnipOutline,
-                    isActive: studio.IsSnipOutlineOpen
-                )
-            );
-        }
-        toolbarGrid.Children.Add(leftGroup);
-
-        var titleText = new TextBlock
-        {
-            Text = $"Snip Evidence · {draft.Prompt}",
-            FontSize = 13,
-            FontWeight = FontWeight.SemiBold,
-            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(12, 0),
-            TextTrimming = TextTrimming.CharacterEllipsis,
-        };
-        Grid.SetColumn(titleText, 1);
-        toolbarGrid.Children.Add(titleText);
-
-        var rightControls = new WrapPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-
-        var navRow = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 10, 0),
-        };
-        navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.PageFirst,
-                async () => await studio.LoadEditorSnipPageAsync(1)
-            )
-        );
-        navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.ChevronLeft,
-                async () => await studio.LoadEditorSnipPageAsync(Math.Max(1, curPage - 1))
-            )
-        );
-        var pageJumpBox = new TextBox
-        {
-            Text = curPage.ToString(),
-            Width = 50,
-            FontSize = 12,
-            FontWeight = FontWeight.SemiBold,
-            VerticalAlignment = VerticalAlignment.Center,
-            HorizontalContentAlignment = HorizontalAlignment.Center,
-            Padding = new Thickness(5, 3),
-        };
-        ToolTip.SetTip(pageJumpBox, "Type a page number and press Enter to jump");
-        pageJumpBox.KeyDown += async (_, e) =>
-        {
-            if (e.Key == Avalonia.Input.Key.Enter && int.TryParse(pageJumpBox.Text?.Trim(), out int target))
-            {
-                e.Handled = true;
-                await studio.LoadEditorSnipPageAsync(target);
-            }
-        };
-        navRow.Children.Add(pageJumpBox);
-        navRow.Children.Add(
-            new TextBlock
-            {
-                Text = $"/ {totalPages}",
-                FontSize = 12,
-                FontWeight = FontWeight.SemiBold,
-                Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(2, 0, 2, 0),
-            }
-        );
-        navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.ChevronRight,
-                async () => await studio.LoadEditorSnipPageAsync(Math.Min(totalPages, curPage + 1))
-            )
-        );
-        navRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.PageLast,
-                async () => await studio.LoadEditorSnipPageAsync(totalPages)
-            )
-        );
-        rightControls.Children.Add(navRow);
-
-        var zoomRow = new WrapPanel
-        {
-            Orientation = Orientation.Horizontal,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        zoomRow.Children.Add(
-            UiBuilder.GhostButton(
-                "Fit Width",
-                MaterialIconKind.ArrowExpandHorizontal,
-                async () => await studio.ToggleSnipFitToWidthAsync(),
-                isActive: studio.SnipFitToWidth
-            )
-        );
-        zoomRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.MagnifyMinusOutline,
-                async () => await studio.ZoomSnipAsync(-25)
-            )
-        );
-        zoomRow.Children.Add(
-            UiBuilder.GhostButton(
-                studio.SnipFitToWidth ? "Auto" : $"{studio.SnipZoomPercent}%",
-                null,
-                async () => await studio.ToggleSnipFitToWidthAsync()
-            )
-        );
-        zoomRow.Children.Add(
-            UiBuilder.IconButton(
-                MaterialIconKind.MagnifyPlusOutline,
-                async () => await studio.ZoomSnipAsync(+25)
-            )
-        );
-        var snipRotL = UiBuilder.IconButton(
-            MaterialIconKind.RotateLeft,
-            async () => await studio.RotateSnipAsync(-90)
-        );
-        ToolTip.SetTip(snipRotL, "Rotate page 90° counter-clockwise");
-        zoomRow.Children.Add(snipRotL);
-
-        var snipRotR = UiBuilder.IconButton(
-            MaterialIconKind.RotateRight,
-            async () => await studio.RotateSnipAsync(+90)
-        );
-        ToolTip.SetTip(snipRotR, "Rotate page 90° clockwise");
-        zoomRow.Children.Add(snipRotR);
-        zoomRow.Children.Add(
-            UiBuilder.GhostButton(
-                "Pin Highlight",
-                MaterialIconKind.Marker,
-                () => studio.SetSnipMode(SnipCaptureMode.PinHighlight),
-                isActive: studio.SnipMode == SnipCaptureMode.PinHighlight
-            )
-        );
-        zoomRow.Children.Add(
-            UiBuilder.GhostButton(
-                "Capture Image",
-                MaterialIconKind.Crop,
-                () => studio.SetSnipMode(SnipCaptureMode.CaptureImage),
-                isActive: studio.SnipMode == SnipCaptureMode.CaptureImage
-            )
-        );
-        zoomRow.Children.Add(
-            UiBuilder.GhostButton(
-                "Extract Figures",
-                MaterialIconKind.ImageMultipleOutline,
-                async () => await studio.ExtractEmbeddedFiguresOnSnipPageAsync()
-            )
-        );
-        zoomRow.Children.Add(
-            UiBuilder.GhostButton(
-                $"Clear ({draft.EvidenceAnchors.Count})",
-                MaterialIconKind.Eraser,
-                studio.ClearVisualSnipHighlights
-            )
-        );
-        rightControls.Children.Add(zoomRow);
-
-        Grid.SetColumn(rightControls, 2);
-        toolbarGrid.Children.Add(rightControls);
-        toolbarBorder.Child = toolbarGrid;
         root.Children.Add(toolbarBorder);
 
-        // 2. 3-Pane Dedicated Body: Left Outline (240px) + Center Legible PDF (*) + Right Anchors Rail (250px)
-        bool showOutline = studio.IsSnipOutlineOpen && studio.SnipOutlineRoots.Count > 0;
+        // Slim 1-line Question Context Strip
+        var contextStrip = new TextBlock
+        {
+            Text = $"Snipping for: {draft.Prompt}",
+            FontSize = 11.5,
+            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            Margin = new Thickness(4, 0, 4, 6),
+        };
+        Grid.SetRow(contextStrip, 1);
+        root.Children.Add(contextStrip);
+
+        // 2. Animated 3-Pane Body: [Animated Outline Slot] | [PDF Canvas (*)] | [Animated Anchors Slot]
         var body = new Grid
         {
-            ColumnDefinitions = showOutline
-                ? ColumnDefinitions.Parse("240,10,*,10,250")
-                : ColumnDefinitions.Parse("*,10,250"),
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
         };
 
-        int canvasCol = 0;
-        if (showOutline)
+        // Left Document Outline Panel
+        Border? outlineCard = null;
+        if (hasOutline)
         {
-            var outlineStack = new StackPanel { Spacing = 2, Margin = new Thickness(4) };
-            outlineStack.Children.Add(UiBuilder.SectionHeader("Document Outline"));
+            var outlineHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+            outlineHeader.Children.Add(UiBuilder.SectionHeader("Document Outline"));
+            var closeOutlineBtn = UiBuilder.IconButton(
+                MaterialIconKind.ChevronDoubleLeft,
+                () => setOutlineOpenAction?.Invoke(false),
+                14,
+                ThemeService.Brush(ThemeService.TextSecondary)
+            );
+            ToolTip.SetTip(closeOutlineBtn, "Collapse Outline");
+            Grid.SetColumn(closeOutlineBtn, 1);
+            outlineHeader.Children.Add(closeOutlineBtn);
+
+            var outlineStack = new StackPanel { Spacing = 2, Margin = new Thickness(2) };
             foreach (var rootNode in studio.SnipOutlineRoots)
                 outlineStack.Children.Add(BuildSnipBookmarkTreeNode(studio, rootNode, activeNode));
 
-            body.Children.Add(
-                new Border
-                {
-                    Background = ThemeService.Brush(ThemeService.BgSurface),
-                    BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(8),
-                    Padding = new Thickness(6),
-                    Child = UiBuilder.PersistentScrollViewer("quiz-snip-outline", outlineStack),
-                }
-            );
-            canvasCol = 2;
+            var outlineGrid = new Grid
+            {
+                RowDefinitions = RowDefinitions.Parse("Auto,*"),
+                RowSpacing = 6,
+            };
+            outlineGrid.Children.Add(outlineHeader);
+            var outlineScroll = UiBuilder.PersistentScrollViewer("quiz-snip-outline", outlineStack);
+            Grid.SetRow(outlineScroll, 1);
+            outlineGrid.Children.Add(outlineScroll);
+
+            outlineCard = new Border
+            {
+                Background = ThemeService.Brush(ThemeService.BgSurface),
+                BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(8),
+                Child = outlineGrid,
+            };
         }
 
-        // Center Legible PDF Canvas
+        var dockedOutlineSlot = new Border
+        {
+            ClipToBounds = true,
+            Padding = new Thickness(0, 0, 10, 0),
+            Width = 0,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Child = outlineCard,
+        };
+        Grid.SetColumn(dockedOutlineSlot, 0);
+        body.Children.Add(dockedOutlineSlot);
+
+        // Center Legible PDF Canvas with viewport-relative Ctrl+Scroll zoom (40%–350%)
         Control canvasContent;
         if (studio.IsLoadingSnipPage)
         {
@@ -2167,8 +2316,6 @@ public static partial class QuizStudioViewBuilder
                 HorizontalAlignment = HorizontalAlignment.Stretch,
                 VerticalAlignment = VerticalAlignment.Top,
             };
-            if (!studio.SnipFitToWidth)
-                img.Width = 760 * (studio.SnipZoomPercent / 100.0);
 
             var pageLayer = new Grid
             {
@@ -2205,7 +2352,6 @@ public static partial class QuizStudioViewBuilder
                     ? HorizontalAlignment.Stretch
                     : HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Top,
-                MaxWidth = studio.SnipFitToWidth ? 920 : double.PositiveInfinity,
                 Child = pageLayer,
             };
 
@@ -2216,22 +2362,50 @@ public static partial class QuizStudioViewBuilder
                     ? ScrollBarVisibility.Disabled
                     : ScrollBarVisibility.Auto
             );
-            int snipLocalZoom = studio.SnipZoomPercent;
+
+            int snipLocalZoom = studio.SnipFitToWidth
+                ? 100
+                : Math.Clamp(studio.SnipZoomPercent, 40, 350);
+
+            void ApplySnipCanvasZoom(int zoomPercent)
+            {
+                if (zoomPercent == 100 && studio.SnipFitToWidth)
+                {
+                    img.Width = double.NaN;
+                    sheet.HorizontalAlignment = HorizontalAlignment.Stretch;
+                    snipScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+                }
+                else
+                {
+                    double viewportBase = Math.Max(360, snipScroll.Bounds.Width - 36);
+                    img.Width = Math.Max(160, viewportBase * (zoomPercent / 100.0));
+                    sheet.HorizontalAlignment = HorizontalAlignment.Center;
+                    snipScroll.HorizontalScrollBarVisibility =
+                        zoomPercent > 100
+                            ? ScrollBarVisibility.Auto
+                            : ScrollBarVisibility.Disabled;
+                }
+            }
+
+            snipScroll.SizeChanged += (_, e) =>
+            {
+                if (e.NewSize.Width > 0 && !studio.SnipFitToWidth)
+                    ApplySnipCanvasZoom(snipLocalZoom);
+            };
+
             UiBuilder.AttachPdfWheelAndPan(
                 snipScroll,
                 delta =>
                 {
                     int oldZ = snipLocalZoom;
-                    snipLocalZoom = Math.Clamp(snipLocalZoom + delta, 50, 300);
+                    snipLocalZoom = Math.Clamp(snipLocalZoom + delta, 40, 350);
                     if (snipLocalZoom == oldZ)
                         return;
+                    studio.SetSnipZoomPercentQuiet(snipLocalZoom);
                     double ratio = snipLocalZoom / (double)oldZ;
-                    img.Width = 760 * (snipLocalZoom / 100.0);
-                    sheet.MaxWidth = double.PositiveInfinity;
-                    sheet.HorizontalAlignment = HorizontalAlignment.Center;
-                    snipScroll.HorizontalScrollBarVisibility = ScrollBarVisibility.Auto;
+                    ApplySnipCanvasZoom(snipLocalZoom);
                     snipScroll.Offset = new Vector(
-                        snipScroll.Offset.X,
+                        Math.Max(0, snipScroll.Offset.X * ratio),
                         Math.Max(0, snipScroll.Offset.Y * ratio)
                     );
                 },
@@ -2264,21 +2438,32 @@ public static partial class QuizStudioViewBuilder
             CornerRadius = new CornerRadius(8),
             Child = canvasContent,
         };
-        Grid.SetColumn(canvasFrame, canvasCol);
+        Grid.SetColumn(canvasFrame, 1);
         body.Children.Add(canvasFrame);
 
-        // Right Pinned Evidence Anchors & Captured Image Rail
-        var railStack = new StackPanel { Spacing = 8 };
-        railStack.Children.Add(
+        // Right Evidence Anchors & Captured Image Rail
+        var railHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
+        railHeader.Children.Add(
             UiBuilder.SectionHeader($"Evidence Anchors ({draft.EvidenceAnchors.Count})")
         );
+        var closeAnchorsBtn = UiBuilder.IconButton(
+            MaterialIconKind.ChevronDoubleRight,
+            () => setAnchorsOpenAction?.Invoke(false),
+            14,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(closeAnchorsBtn, "Collapse Anchors drawer");
+        Grid.SetColumn(closeAnchorsBtn, 1);
+        railHeader.Children.Add(closeAnchorsBtn);
+
+        var railStack = new StackPanel { Spacing = 8 };
         railStack.Children.Add(
             new TextBlock
             {
                 Text =
                     studio.SnipMode == SnipCaptureMode.CaptureImage
-                        ? "Mode: Capture Image — drag a box around any diagram/figure to attach it as the question's image."
-                        : "Mode: Pin Highlight — drag on the PDF to pin an anchor (Shift+Drag adds boxes to this page).",
+                        ? "Drag a box around any diagram/figure to attach it as the question's image."
+                        : "Drag on the PDF to pin an anchor (Shift+Drag adds boxes to this page).",
                 FontSize = 11,
                 Foreground = ThemeService.Brush(ThemeService.TextMuted),
                 TextWrapping = TextWrapping.Wrap,
@@ -2318,6 +2503,7 @@ public static partial class QuizStudioViewBuilder
         {
             int capturedAi = ai;
             var anchor = draft.EvidenceAnchors[ai];
+            bool isCurPageAnchor = anchor.PageNumber == curPage;
             var anchorCard = new StackPanel { Spacing = 4 };
             var aHead = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
             aHead.Children.Add(
@@ -2325,15 +2511,16 @@ public static partial class QuizStudioViewBuilder
                     $"Page {anchor.PageNumber} ({anchor.HighlightRects.Count} box)",
                     MaterialIconKind.Marker,
                     async () => await studio.LoadEditorSnipPageAsync(anchor.PageNumber),
-                    isActive: anchor.PageNumber == curPage
+                    isActive: isCurPageAnchor
                 )
             );
             var delBtn = UiBuilder.IconButton(
                 MaterialIconKind.Close,
                 () => studio.RemoveEvidenceAnchor(capturedAi),
                 13,
-                ThemeService.Brush(ThemeService.PriorityP1Fg)
+                ThemeService.Brush(ThemeService.TextMuted)
             );
+            ToolTip.SetTip(delBtn, "Remove anchor");
             Grid.SetColumn(delBtn, 1);
             aHead.Children.Add(delBtn);
             anchorCard.Children.Add(aHead);
@@ -2355,11 +2542,12 @@ public static partial class QuizStudioViewBuilder
             railStack.Children.Add(
                 new Border
                 {
-                    Background = ThemeService.Brush(ThemeService.BgBase),
-                    BorderBrush =
-                        anchor.PageNumber == curPage
-                            ? ThemeService.Brush(ThemeService.AccentPrimary)
-                            : ThemeService.Brush(ThemeService.BorderSubtle),
+                    Background = isCurPageAnchor
+                        ? ThemeService.Brush(ThemeService.BgElevated)
+                        : ThemeService.Brush(ThemeService.BgBase),
+                    BorderBrush = isCurPageAnchor
+                        ? ThemeService.Brush(ThemeService.BorderStrong)
+                        : ThemeService.Brush(ThemeService.BorderSubtle),
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(6),
                     Padding = new Thickness(8, 6),
@@ -2368,42 +2556,299 @@ public static partial class QuizStudioViewBuilder
             );
         }
 
-        var railCard = UiBuilder.Card(
-            UiBuilder.PersistentScrollViewer("quiz-snip-anchors", railStack),
-            padding: new Thickness(10, 8)
-        );
-        Grid.SetColumn(railCard, canvasCol + 2);
-        body.Children.Add(railCard);
-
-        Grid.SetRow(body, 1);
-        root.Children.Add(body);
-
-        root.SizeChanged += (_, e) =>
+        var railGrid = new Grid
         {
-            if (e.NewSize.Width <= 0)
-                return;
+            RowDefinitions = RowDefinitions.Parse("Auto,*"),
+            RowSpacing = 6,
+        };
+        railGrid.Children.Add(railHeader);
+        var railScroll = UiBuilder.PersistentScrollViewer("quiz-snip-anchors", railStack);
+        Grid.SetRow(railScroll, 1);
+        railGrid.Children.Add(railScroll);
 
-            bool compactSnip = e.NewSize.Width < 1040;
-            bool veryNarrow = e.NewSize.Width < 860;
-            if (showOutline && body.Children.Count >= 3)
+        var railCard = UiBuilder.Card(railGrid, padding: new Thickness(10, 8));
+
+        var dockedAnchorsSlot = new Border
+        {
+            ClipToBounds = true,
+            Padding = new Thickness(10, 0, 0, 0),
+            Width = 0,
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Child = railCard,
+        };
+        Grid.SetColumn(dockedAnchorsSlot, 2);
+        body.Children.Add(dockedAnchorsSlot);
+
+        // Floating Scrim + Left Outline Drawer + Right Anchors Drawer (for narrow/mid viewports)
+        var floatingScrim = new Border
+        {
+            Background = new SolidColorBrush(Color.Parse("#66000000")),
+            Opacity = 0,
+            IsHitTestVisible = false,
+            Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
+        };
+        floatingScrim.PointerPressed += (_, _) =>
+        {
+            if (hasOutline && studio.IsSnipOutlineOpen)
+                setOutlineOpenAction?.Invoke(false);
+            if (studio.IsSnipAnchorsOpen)
+                setAnchorsOpenAction?.Invoke(false);
+        };
+
+        var outlineDrawerTransform = new TranslateTransform(-264, 0);
+        var floatingOutlineDrawer = new Border
+        {
+            Width = 252,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            BoxShadow = BoxShadows.Parse("8 0 28 0 #70000000"),
+            RenderTransform = outlineDrawerTransform,
+            Opacity = 0,
+            IsHitTestVisible = false,
+        };
+
+        var anchorsDrawerTransform = new TranslateTransform(274, 0);
+        var floatingAnchorsDrawer = new Border
+        {
+            Width = 262,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            BoxShadow = BoxShadows.Parse("-8 0 28 0 #70000000"),
+            RenderTransform = anchorsDrawerTransform,
+            Opacity = 0,
+            IsHitTestVisible = false,
+        };
+
+        void SetSnipTransitions(bool enabled)
+        {
+            if (enabled)
             {
-                var outlineCtrl = body.Children[0];
-                outlineCtrl.IsVisible = !compactSnip;
-                railCard.IsVisible = !veryNarrow;
-                body.ColumnDefinitions = veryNarrow
-                    ? ColumnDefinitions.Parse("0,0,*,0,0")
-                    : compactSnip
-                        ? ColumnDefinitions.Parse("0,0,*,10,220")
-                        : ColumnDefinitions.Parse("230,10,*,10,240");
+                dockedOutlineSlot.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Layoutable.WidthProperty,
+                        Duration = TimeSpan.FromMilliseconds(185),
+                        Easing = new CubicEaseOut(),
+                    },
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(150),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                dockedAnchorsSlot.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Layoutable.WidthProperty,
+                        Duration = TimeSpan.FromMilliseconds(185),
+                        Easing = new CubicEaseOut(),
+                    },
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(150),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                floatingScrim.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(160),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                outlineDrawerTransform.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = TranslateTransform.XProperty,
+                        Duration = TimeSpan.FromMilliseconds(190),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                floatingOutlineDrawer.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(160),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                anchorsDrawerTransform.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = TranslateTransform.XProperty,
+                        Duration = TimeSpan.FromMilliseconds(190),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
+                floatingAnchorsDrawer.Transitions =
+                [
+                    new DoubleTransition
+                    {
+                        Property = Visual.OpacityProperty,
+                        Duration = TimeSpan.FromMilliseconds(160),
+                        Easing = new CubicEaseOut(),
+                    },
+                ];
             }
             else
             {
-                railCard.IsVisible = !veryNarrow;
-                body.ColumnDefinitions = veryNarrow
-                    ? ColumnDefinitions.Parse("*,0,0")
-                    : ColumnDefinitions.Parse("*,10,230");
+                dockedOutlineSlot.Transitions = null;
+                dockedAnchorsSlot.Transitions = null;
+                floatingScrim.Transitions = null;
+                outlineDrawerTransform.Transitions = null;
+                floatingOutlineDrawer.Transitions = null;
+                anchorsDrawerTransform.Transitions = null;
+                floatingAnchorsDrawer.Transitions = null;
             }
+        }
+
+        void ApplySnipperLayout(double width, bool animate)
+        {
+            if (width <= 0)
+                return;
+
+            _lastSnipperViewportWidth = width;
+            SetSnipTransitions(animate);
+            ApplySnipperToolbarLayout(width < 1120);
+
+            bool outlineOpen = hasOutline && studio.IsSnipOutlineOpen;
+            bool anchorsOpen = studio.IsSnipAnchorsOpen;
+            bool dockOutline = width >= 1160;
+            bool dockAnchors = width >= 940;
+
+            if (outlineToggleBtn is not null)
+            {
+                outlineToggleBtn.Background = outlineOpen
+                    ? ThemeService.Brush(ThemeService.BgElevated)
+                    : Brushes.Transparent;
+                outlineToggleBtn.BorderBrush = outlineOpen
+                    ? ThemeService.Brush(ThemeService.BorderStrong)
+                    : Brushes.Transparent;
+                outlineToggleBtn.BorderThickness = new Thickness(outlineOpen ? 1 : 0);
+            }
+
+            anchorsToggleBtn.Background = anchorsOpen
+                ? ThemeService.Brush(ThemeService.BgElevated)
+                : Brushes.Transparent;
+            anchorsToggleBtn.BorderBrush = anchorsOpen
+                ? ThemeService.Brush(ThemeService.BorderStrong)
+                : Brushes.Transparent;
+            anchorsToggleBtn.BorderThickness = new Thickness(anchorsOpen ? 1 : 0);
+
+            bool anyFloatingOpen = false;
+
+            // Left Outline
+            if (outlineCard is not null)
+            {
+                if (dockOutline)
+                {
+                    outlineDrawerTransform.X = -264;
+                    floatingOutlineDrawer.Opacity = 0;
+                    floatingOutlineDrawer.IsHitTestVisible = false;
+                    if (outlineCard.Parent == floatingOutlineDrawer)
+                    {
+                        floatingOutlineDrawer.Child = null;
+                        dockedOutlineSlot.Child = outlineCard;
+                    }
+                    dockedOutlineSlot.Width = outlineOpen ? 242 : 0;
+                    dockedOutlineSlot.Opacity = outlineOpen ? 1.0 : 0.0;
+                    dockedOutlineSlot.IsHitTestVisible = outlineOpen;
+                }
+                else
+                {
+                    dockedOutlineSlot.Width = 0;
+                    dockedOutlineSlot.Opacity = 0;
+                    dockedOutlineSlot.IsHitTestVisible = false;
+                    if (outlineCard.Parent == dockedOutlineSlot)
+                    {
+                        dockedOutlineSlot.Child = null;
+                        floatingOutlineDrawer.Child = outlineCard;
+                    }
+                    outlineDrawerTransform.X = outlineOpen ? 0 : -264;
+                    floatingOutlineDrawer.Opacity = outlineOpen ? 1.0 : 0.0;
+                    floatingOutlineDrawer.IsHitTestVisible = outlineOpen;
+                    if (outlineOpen)
+                        anyFloatingOpen = true;
+                }
+            }
+
+            // Right Anchors Rail
+            if (dockAnchors)
+            {
+                anchorsDrawerTransform.X = 274;
+                floatingAnchorsDrawer.Opacity = 0;
+                floatingAnchorsDrawer.IsHitTestVisible = false;
+                if (railCard.Parent == floatingAnchorsDrawer)
+                {
+                    floatingAnchorsDrawer.Child = null;
+                    dockedAnchorsSlot.Child = railCard;
+                }
+                dockedAnchorsSlot.Width = anchorsOpen ? 262 : 0;
+                dockedAnchorsSlot.Opacity = anchorsOpen ? 1.0 : 0.0;
+                dockedAnchorsSlot.IsHitTestVisible = anchorsOpen;
+            }
+            else
+            {
+                dockedAnchorsSlot.Width = 0;
+                dockedAnchorsSlot.Opacity = 0;
+                dockedAnchorsSlot.IsHitTestVisible = false;
+                if (railCard.Parent == dockedAnchorsSlot)
+                {
+                    dockedAnchorsSlot.Child = null;
+                    floatingAnchorsDrawer.Child = railCard;
+                }
+                anchorsDrawerTransform.X = anchorsOpen ? 0 : 274;
+                floatingAnchorsDrawer.Opacity = anchorsOpen ? 1.0 : 0.0;
+                floatingAnchorsDrawer.IsHitTestVisible = anchorsOpen;
+                if (anchorsOpen)
+                    anyFloatingOpen = true;
+            }
+
+            floatingScrim.Opacity = anyFloatingOpen ? 1.0 : 0.0;
+            floatingScrim.IsHitTestVisible = anyFloatingOpen;
+        }
+
+        setOutlineOpenAction = open =>
+        {
+            studio.SetSnipOutlineOpenQuiet(open);
+            // When opening floating Outline on narrow screens, close floating Anchors so they don't overlap
+            double w = root.Bounds.Width > 0 ? root.Bounds.Width : _lastSnipperViewportWidth;
+            if (open && w > 0 && w < 940 && studio.IsSnipAnchorsOpen)
+                studio.SetSnipAnchorsOpenQuiet(false);
+            ApplySnipperLayout(w, animate: true);
         };
+
+        setAnchorsOpenAction = open =>
+        {
+            studio.SetSnipAnchorsOpenQuiet(open);
+            double w = root.Bounds.Width > 0 ? root.Bounds.Width : _lastSnipperViewportWidth;
+            if (open && w > 0 && w < 1160 && studio.IsSnipOutlineOpen)
+                studio.SetSnipOutlineOpenQuiet(false);
+            ApplySnipperLayout(w, animate: true);
+        };
+
+        Grid.SetRow(body, 2);
+        root.Children.Add(body);
+
+        Grid.SetRow(floatingScrim, 2);
+        root.Children.Add(floatingScrim);
+        Grid.SetRow(floatingOutlineDrawer, 2);
+        root.Children.Add(floatingOutlineDrawer);
+        Grid.SetRow(floatingAnchorsDrawer, 2);
+        root.Children.Add(floatingAnchorsDrawer);
+
+        if (_lastSnipperViewportWidth > 0)
+            ApplySnipperLayout(_lastSnipperViewportWidth, animate: false);
+
+        root.SizeChanged += (_, e) => ApplySnipperLayout(e.NewSize.Width, animate: false);
 
         return root;
     }

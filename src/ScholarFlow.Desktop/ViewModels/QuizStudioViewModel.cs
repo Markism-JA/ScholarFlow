@@ -282,6 +282,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public int SnipRotationDegrees { get; private set; }
     public int PreviewZoomPercent { get; private set; } = 100;
     public bool IsSnipOutlineOpen { get; private set; } = true;
+    public bool IsSnipAnchorsOpen { get; private set; } = true;
     public SnipCaptureMode SnipMode { get; private set; } = SnipCaptureMode.PinHighlight;
     public IReadOnlyList<string> SnipExtractedFigures { get; private set; } = [];
     public string? ZoomedImagePath { get; private set; }
