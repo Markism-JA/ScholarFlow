@@ -17,14 +17,11 @@ public sealed class TaskLifecycleService
         CancellationToken ct = default
     )
     {
-        var sourcePath =
-            !string.IsNullOrWhiteSpace(task.SourceMarkdownPath) ? task.SourceMarkdownPath
-            : string.IsNullOrWhiteSpace(task.CourseFolder) ? BasinService.GetInboxPath(basinRoot)
-            : BasinService.GetCourseTasksPath(basinRoot, task.CourseFolder);
-
-        var tasks = (
-            await MarkdownTaskCodec.LoadFileAsync(sourcePath, task.CourseFolder, ct)
-        ).ToList();
+        var tasks = await Database.ScholarFlowDatabase.LoadScopeTasksAsync(
+            basinRoot,
+            task.CourseFolder,
+            ct
+        );
         var target = FindMatchingTask(tasks, task);
         if (target is null)
             return;
@@ -74,10 +71,12 @@ public sealed class TaskLifecycleService
         foreach (var root in tasks)
             root.EnsureChildTasksSynced();
 
-        var header = string.IsNullOrWhiteSpace(task.CourseFolder)
-            ? "Inbox"
-            : task.CourseFolder.Replace('_', ' ');
-        await MarkdownTaskCodec.SaveDocumentAsync(sourcePath, tasks, header, ct: ct);
+        await Database.ScholarFlowDatabase.SaveScopeTasksAsync(
+            basinRoot,
+            task.CourseFolder,
+            tasks,
+            ct
+        );
     }
 
     public async Task<TaskItem> RegisterOngoingFileAsync(
@@ -89,11 +88,6 @@ public sealed class TaskLifecycleService
         CancellationToken ct = default
     )
     {
-        var tasksPath = BasinService.GetCourseTasksPath(basinRoot, file.CourseFolder);
-        var tasks = (
-            await MarkdownTaskCodec.LoadFileAsync(tasksPath, file.CourseFolder, ct)
-        ).ToList();
-
         var title = Path.GetFileNameWithoutExtension(file.FileName).Replace('_', ' ').Trim();
         var newTask = new TaskItem
         {
@@ -103,11 +97,12 @@ public sealed class TaskLifecycleService
             Difficulty = Math.Clamp(difficulty, 1, 5),
             CourseFolder = file.CourseFolder,
             LinkedFiles = [file.RelativePath],
-            SourceMarkdownPath = tasksPath,
+            SourceMarkdownPath = Database.ScholarFlowDatabase.GetLogicalTaskScopeKey(
+                file.CourseFolder
+            ),
         };
 
-        tasks.Add(newTask);
-        await MarkdownTaskCodec.SaveDocumentAsync(tasksPath, tasks, file.CourseTitle, ct: ct);
+        await Database.ScholarFlowDatabase.UpsertTaskAsync(basinRoot, newTask, ct);
         return newTask;
     }
 

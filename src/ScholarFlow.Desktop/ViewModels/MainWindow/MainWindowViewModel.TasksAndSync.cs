@@ -37,7 +37,7 @@ public sealed partial class MainWindowViewModel
         task.Priority = newPriority;
         task.Difficulty = Math.Clamp(newDifficulty, 1, 5);
 
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
         StatusText = $"Saved changes to '{task.Title}'";
         await ReloadBasinDataAsync();
     }
@@ -73,7 +73,7 @@ public sealed partial class MainWindowViewModel
         parentTask.ChildTasks.Add(child);
         parentTask.EnsureChildTasksSynced();
 
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, parentTask);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, parentTask);
         StatusText = $"Added subtask '{child.Title}' under '{parentTask.Title}'";
         await ReloadBasinDataAsync();
     }
@@ -89,7 +89,7 @@ public sealed partial class MainWindowViewModel
         child.CompletedDate = child.IsCompleted ? DateOnly.FromDateTime(DateTime.Today) : null;
         parentTask.EnsureChildTasksSynced();
 
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, parentTask);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, parentTask);
         StatusText = child.IsCompleted
             ? $"Completed subtask: {child.Title}"
             : $"Reopened subtask: {child.Title}";
@@ -116,7 +116,7 @@ public sealed partial class MainWindowViewModel
     public async Task DeleteTaskAsync(TaskItem task)
     {
         var parent = GetParentTask(task);
-        await MarkdownTaskCodec.DeleteTaskFromFileAsync(BasinRoot, task);
+        await Core.Database.ScholarFlowDatabase.DeleteTaskAsync(BasinRoot, task);
         if (SelectedTask?.Id == task.Id)
             SelectedTask = parent;
         StatusText = $"Deleted task '{task.Title}'";
@@ -142,7 +142,7 @@ public sealed partial class MainWindowViewModel
         else if (!task.DueTime.HasValue)
             task.DueTime = new TimeOnly(0, 0);
 
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
         StatusText = dueDate.HasValue
             ? $"Due date set to {dueDate.Value:MMM d, yyyy} ({task.DueTime:h:mm tt}) for '{task.Title}'"
             : $"Cleared due date for '{task.Title}'";
@@ -158,7 +158,7 @@ public sealed partial class MainWindowViewModel
         if (dueTime.HasValue && !task.DueDate.HasValue)
             task.DueDate = DateOnly.FromDateTime(DateTime.Today);
 
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
         StatusText = dueTime.HasValue
             ? $"Due time set to {dueTime.Value:h:mm tt} for '{task.Title}'"
             : $"Cleared due time for '{task.Title}'";
@@ -175,7 +175,7 @@ public sealed partial class MainWindowViewModel
         if (normalized is not null)
             task.Labels.Insert(0, normalized.ToLowerInvariant());
 
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
         StatusText = normalized is not null
             ? $"Assigned '{task.Title}' to {normalized}"
             : $"Cleared term for '{task.Title}'";
@@ -185,7 +185,7 @@ public sealed partial class MainWindowViewModel
     public async Task SetTaskSectionAsync(TaskItem task, string? section)
     {
         task.Section = string.IsNullOrWhiteSpace(section) ? null : section.Trim();
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
         StatusText = $"Updated section for '{task.Title}'";
         await ReloadBasinDataAsync();
     }
@@ -203,7 +203,7 @@ public sealed partial class MainWindowViewModel
             if (maybeTerm is not null)
                 task.Term = maybeTerm;
 
-            await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+            await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
             StatusText = $"Added @{clean} to '{task.Title}'";
             await ReloadBasinDataAsync();
         }
@@ -213,7 +213,7 @@ public sealed partial class MainWindowViewModel
     {
         if (task.Labels.RemoveAll(l => l.Equals(label, StringComparison.OrdinalIgnoreCase)) > 0)
         {
-            await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+            await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
             StatusText = $"Removed @{label} from '{task.Title}'";
             await ReloadBasinDataAsync();
         }
@@ -259,7 +259,7 @@ public sealed partial class MainWindowViewModel
         if (!task.LinkedFiles.Contains(relPath, StringComparer.OrdinalIgnoreCase))
             task.LinkedFiles.Add(relPath);
 
-        await MarkdownTaskCodec.UpdateTaskInFileAsync(BasinRoot, task);
+        await Core.Database.ScholarFlowDatabase.UpsertTaskAsync(BasinRoot, task);
         StatusText = $"Linked '{Path.GetFileName(relPath)}' to '{task.Title}'";
         await ReloadBasinDataAsync();
     }

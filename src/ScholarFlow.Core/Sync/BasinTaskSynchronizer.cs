@@ -54,8 +54,12 @@ public static class BasinTaskSynchronizer
         IReadOnlyList<SyncedLessonInfo>? lessons = null
     )
     {
-        var tasksPath = BasinService.GetCourseTasksPath(basinRoot, course.FolderName);
-        var existingTasks = await MarkdownTaskCodec.LoadFileAsync(tasksPath, course.FolderName, ct);
+        var scopeKey = Database.ScholarFlowDatabase.GetLogicalTaskScopeKey(course.FolderName);
+        var existingTasks = await Database.ScholarFlowDatabase.LoadScopeTasksAsync(
+            basinRoot,
+            course.FolderName,
+            ct
+        );
         var basinConfig = await new BasinService().InitializeOrOpenAsync(basinRoot, ct: ct);
         bool isStiProvider = string.Equals(
             basinConfig.ProviderId,
@@ -171,7 +175,7 @@ public static class BasinTaskSynchronizer
                 LmsStatus = a.Status.ToString(),
                 LmsScore = a.Score,
                 LmsUrl = a.Url,
-                SourceMarkdownPath = tasksPath,
+                SourceMarkdownPath = scopeKey,
             };
             incomingTasks.Add(task);
 
@@ -183,7 +187,12 @@ public static class BasinTaskSynchronizer
         {
             BasinService.EnrichTaskMetadataAndFiles(basinRoot, course, t, courseTermMap);
         }
-        await MarkdownTaskCodec.SaveDocumentAsync(tasksPath, merged, course.Title, ct: ct);
+        await Database.ScholarFlowDatabase.SaveScopeTasksAsync(
+            basinRoot,
+            course.FolderName,
+            merged,
+            ct
+        );
         return incomingTasks.Count;
     }
 

@@ -8,6 +8,9 @@ namespace ScholarFlow.Core.Database;
 
 public static partial class ScholarFlowDatabase
 {
+    public static string GetLogicalTaskScopeKey(string? courseFolder) =>
+        string.IsNullOrWhiteSpace(courseFolder) ? "db:inbox" : $"db:course:{courseFolder.Trim()}";
+
     public static async Task<IReadOnlyList<TaskItem>> SyncAndLoadAllTasksAsync(
         string basinRoot,
         IReadOnlyList<BasinCourseEntry> courses,
@@ -27,94 +30,41 @@ public static partial class ScholarFlowDatabase
             var indexedTicks = await LoadIndexedFileTicksAsync(conn, ct);
             var activeSourcePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // 1. Inbox
-            var inboxPath = Path.GetFullPath(BasinService.GetInboxPath(basinRoot));
-            if (File.Exists(inboxPath))
-            {
-                activeSourcePaths.Add(inboxPath);
-                var currentTicks = File.GetLastWriteTimeUtc(inboxPath).Ticks;
-                if (
-                    !indexedTicks.TryGetValue(inboxPath, out var savedTicks)
-                    || savedTicks != currentTicks
-                )
-                {
-                    var inboxTasks = await MarkdownTaskCodec.LoadFileAsync(
-                        inboxPath,
-                        defaultCourseFolder: null,
-                        ct
-                    );
-                    await ReplaceFileTasksInConnectionAsync(
-                        conn,
-                        basinRoot,
-                        inboxPath,
-                        courseFolder: null,
-                        inboxTasks,
-                        currentTicks,
-                        ct
-                    );
-                }
-            }
+            // 1. Inbox (SQLite-canonical; one-time automatic import from legacy .scholarflow/inbox.md if present)
+            var inboxScopeKey = GetLogicalTaskScopeKey(null);
+            activeSourcePaths.Add(inboxScopeKey);
+            var legacyInboxPath = Path.GetFullPath(BasinService.GetInboxPath(basinRoot));
+            await MigrateLegacyScopeIfNeededAsync(
+                conn,
+                basinRoot,
+                inboxScopeKey,
+                legacyInboxPath,
+                course: null,
+                indexedTicks,
+                ct
+            );
 
-            // 2. Active Courses
+            // 2. Active Courses (SQLite-canonical; one-time automatic import from legacy <Course>/tasks.md if present)
             foreach (var course in courses.Where(c => !c.IsArchived))
             {
-                var tasksPath = Path.GetFullPath(
+                var courseScopeKey = GetLogicalTaskScopeKey(course.FolderName);
+                activeSourcePaths.Add(courseScopeKey);
+
+                var legacyTasksPath = Path.GetFullPath(
                     BasinService.GetCourseTasksPath(basinRoot, course.FolderName)
                 );
-                if (!File.Exists(tasksPath))
-                    continue;
-
-                activeSourcePaths.Add(tasksPath);
-                var termMap = BasinService.LoadCourseTermMap(basinRoot, course.FolderName);
-                var termJsonPath = Path.Combine(basinRoot, course.FolderName, "term.json");
-                long termTicks = File.Exists(termJsonPath)
-                    ? File.GetLastWriteTimeUtc(termJsonPath).Ticks
-                    : 0L;
-                var currentTicks = File.GetLastWriteTimeUtc(tasksPath).Ticks ^ termTicks;
-                if (
-                    !indexedTicks.TryGetValue(tasksPath, out var savedTicks)
-                    || savedTicks != currentTicks
-                )
-                {
-                    var courseTasks = (
-                        await MarkdownTaskCodec.LoadFileAsync(tasksPath, course.FolderName, ct)
-                    ).ToList();
-                    bool anyEnriched = false;
-
-                    foreach (var t in courseTasks)
-                    {
-                        t.CourseFolder ??= course.FolderName;
-                        t.CourseAlias ??= course.Alias;
-                        if (BasinService.EnrichTaskMetadataAndFiles(basinRoot, course, t, termMap))
-                            anyEnriched = true;
-                    }
-
-                    if (anyEnriched)
-                    {
-                        BasinWatcher.SuppressGlobal(TimeSpan.FromMilliseconds(750));
-                        await MarkdownTaskCodec.SaveDocumentAsync(
-                            tasksPath,
-                            courseTasks,
-                            course.Title,
-                            false,
-                            ct
-                        );
-                        currentTicks = File.GetLastWriteTimeUtc(tasksPath).Ticks ^ termTicks;
-                    }
-
-                    await ReplaceFileTasksInConnectionAsync(
-                        conn,
-                        basinRoot,
-                        tasksPath,
-                        course.FolderName,
-                        courseTasks,
-                        currentTicks,
-                        ct
-                    );
-                }
+                await MigrateLegacyScopeIfNeededAsync(
+                    conn,
+                    basinRoot,
+                    courseScopeKey,
+                    legacyTasksPath,
+                    course,
+                    indexedTicks,
+                    ct
+                );
             }
 
-            // 3. Load canonical task hierarchy from SQLite
+            // 3. Load canonical task hierarchy directly from SQLite
             return await LoadAllTasksFromConnectionAsync(conn, activeSourcePaths, ct);
         }
         finally
@@ -123,8 +73,319 @@ public static partial class ScholarFlowDatabase
         }
     }
 
+    private static async Task MigrateLegacyScopeIfNeededAsync(
+        SqliteConnection conn,
+        string basinRoot,
+        string logicalScopeKey,
+        string legacyMdPath,
+        BasinCourseEntry? course,
+        Dictionary<string, long> indexedTicks,
+        CancellationToken ct
+    )
+    {
+        var migrationMarker = $"migrated:{legacyMdPath}";
+        if (indexedTicks.ContainsKey(migrationMarker))
+            return;
+
+        var existingUnderLegacyPath = await LoadAllTasksFromConnectionAsync(
+            conn,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { legacyMdPath },
+            ct
+        );
+        var existingUnderLogical = await LoadAllTasksFromConnectionAsync(
+            conn,
+            new HashSet<string>(StringComparer.OrdinalIgnoreCase) { logicalScopeKey },
+            ct
+        );
+
+        var combined = new List<TaskItem>(existingUnderLogical);
+
+        void MergeUnique(IEnumerable<TaskItem> incoming)
+        {
+            foreach (var item in incoming)
+            {
+                if (!combined.Any(e => MarkdownTaskCodec.IsMatchingTaskIdentity(e, item)))
+                    combined.Add(item);
+            }
+        }
+
+        if (File.Exists(legacyMdPath))
+        {
+            var fromDisk = (
+                await MarkdownTaskCodec.LoadFileAsync(legacyMdPath, course?.FolderName, ct)
+            ).ToList();
+            if (fromDisk.Count > 0)
+            {
+                if (course is not null)
+                {
+                    var termMap = BasinService.LoadCourseTermMap(basinRoot, course.FolderName);
+                    foreach (var t in fromDisk)
+                    {
+                        t.CourseFolder ??= course.FolderName;
+                        t.CourseAlias ??= course.Alias;
+                        BasinService.EnrichTaskMetadataAndFiles(basinRoot, course, t, termMap);
+                    }
+                }
+                MergeUnique(fromDisk);
+            }
+        }
+        else if (existingUnderLegacyPath.Count > 0)
+        {
+            MergeUnique(existingUnderLegacyPath);
+        }
+
+        if (combined.Count > 0)
+        {
+            await ReplaceFileTasksInConnectionAsync(
+                conn,
+                basinRoot,
+                logicalScopeKey,
+                course?.FolderName,
+                combined,
+                DateTime.UtcNow.Ticks,
+                ct
+            );
+        }
+
+        // Remove superseded physical-path rows if any existed
+        if (existingUnderLegacyPath.Count > 0)
+        {
+            await DeleteScopeRowsInConnectionAsync(conn, legacyMdPath, ct);
+        }
+
+        // Record one-time migration marker so legacy tasks.md/inbox.md is never re-imported or overwritten
+        await using var markCmd = conn.CreateCommand();
+        markCmd.CommandText = """
+            INSERT INTO indexed_files (path, course_folder, last_write_ticks)
+            VALUES ($path, $course, $ticks)
+            ON CONFLICT(path) DO UPDATE SET last_write_ticks = excluded.last_write_ticks;
+            """;
+        markCmd.Parameters.AddWithValue("$path", migrationMarker);
+        markCmd.Parameters.AddWithValue("$course", (object?)course?.FolderName ?? DBNull.Value);
+        markCmd.Parameters.AddWithValue("$ticks", DateTime.UtcNow.Ticks);
+        await markCmd.ExecuteNonQueryAsync(ct);
+        indexedTicks[migrationMarker] = DateTime.UtcNow.Ticks;
+    }
+
+    private static async Task DeleteScopeRowsInConnectionAsync(
+        SqliteConnection conn,
+        string sourcePath,
+        CancellationToken ct
+    )
+    {
+        await using var tx = (SqliteTransaction)await conn.BeginTransactionAsync(ct);
+        foreach (
+            var sql in new[]
+            {
+                "DELETE FROM task_labels WHERE task_id IN (SELECT id FROM tasks WHERE source_path = $path);",
+                "DELETE FROM task_files WHERE task_id IN (SELECT id FROM tasks WHERE source_path = $path);",
+                "DELETE FROM tasks_fts WHERE task_id IN (SELECT id FROM tasks WHERE source_path = $path);",
+                "DELETE FROM tasks WHERE source_path = $path;",
+                "DELETE FROM indexed_files WHERE path = $path;",
+            }
+        )
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = sql;
+            cmd.Parameters.AddWithValue("$path", sourcePath);
+            await cmd.ExecuteNonQueryAsync(ct);
+        }
+        await tx.CommitAsync(ct);
+    }
+
     /// <summary>
-    /// Updates SQLite immediately whenever a Markdown task file (tasks.md or inbox.md) is saved by the application.
+    /// Loads canonical root tasks (with nested children) for Inbox (when <paramref name="courseFolder"/> is null)
+    /// or a specific course directly from SQLite.
+    /// </summary>
+    public static async Task<List<TaskItem>> LoadScopeTasksAsync(
+        string basinRoot,
+        string? courseFolder,
+        CancellationToken ct = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(basinRoot) || !Directory.Exists(basinRoot))
+            return [];
+
+        var scopeKey = GetLogicalTaskScopeKey(courseFolder);
+        await DbLock.WaitAsync(ct);
+        try
+        {
+            await using var conn = new SqliteConnection(BuildConnectionString(basinRoot));
+            await conn.OpenAsync(ct);
+            await EnsureSchemaOnConnectionAsync(conn, ct);
+            return
+            [
+                .. await LoadAllTasksFromConnectionAsync(
+                    conn,
+                    new HashSet<string>(StringComparer.OrdinalIgnoreCase) { scopeKey },
+                    ct
+                ),
+            ];
+        }
+        finally
+        {
+            DbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Atomically replaces all canonical tasks for Inbox or a specific course directly in SQLite.
+    /// </summary>
+    public static async Task SaveScopeTasksAsync(
+        string basinRoot,
+        string? courseFolder,
+        IReadOnlyList<TaskItem> rootTasks,
+        CancellationToken ct = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(basinRoot))
+            return;
+
+        Directory.CreateDirectory(BasinService.GetMetaDir(basinRoot));
+        var scopeKey = GetLogicalTaskScopeKey(courseFolder);
+
+        await DbLock.WaitAsync(ct);
+        try
+        {
+            await using var conn = new SqliteConnection(BuildConnectionString(basinRoot));
+            await conn.OpenAsync(ct);
+            await EnsureSchemaOnConnectionAsync(conn, ct);
+            await ReplaceFileTasksInConnectionAsync(
+                conn,
+                basinRoot,
+                scopeKey,
+                courseFolder,
+                rootTasks,
+                DateTime.UtcNow.Ticks,
+                ct
+            );
+        }
+        finally
+        {
+            DbLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// Inserts or updates a single task (or nested subtask) directly in SQLite without touching any Markdown files.
+    /// </summary>
+    public static async Task UpsertTaskAsync(
+        string basinRoot,
+        TaskItem updatedTask,
+        CancellationToken ct = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(basinRoot) || updatedTask is null)
+            return;
+
+        updatedTask.EnsureChildTasksSynced();
+        var tasks = await LoadScopeTasksAsync(basinRoot, updatedTask.CourseFolder, ct);
+
+        bool replaced = ReplaceMatchingTaskInTree(tasks, updatedTask);
+        if (!replaced)
+        {
+            tasks.Add(updatedTask);
+        }
+
+        await SaveScopeTasksAsync(basinRoot, updatedTask.CourseFolder, tasks, ct);
+    }
+
+    /// <summary>
+    /// Deletes a single task (or nested subtask) directly from SQLite.
+    /// </summary>
+    public static async Task DeleteTaskAsync(
+        string basinRoot,
+        TaskItem targetTask,
+        CancellationToken ct = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(basinRoot) || targetTask is null)
+            return;
+
+        var tasks = await LoadScopeTasksAsync(basinRoot, targetTask.CourseFolder, ct);
+        if (RemoveMatchingTaskInTree(tasks, targetTask))
+        {
+            await SaveScopeTasksAsync(basinRoot, targetTask.CourseFolder, tasks, ct);
+        }
+    }
+
+    /// <summary>
+    /// Exports a clean one-way Markdown snapshot of all canonical SQLite tasks (Inbox + active courses).
+    /// </summary>
+    public static async Task ExportAllTasksToMarkdownAsync(
+        string basinRoot,
+        IReadOnlyList<BasinCourseEntry> courses,
+        string outputFilePath,
+        CancellationToken ct = default
+    )
+    {
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("# ScholarFlow Tasks Snapshot");
+        sb.AppendLine();
+        sb.AppendLine($"_Exported {DateTime.Now:yyyy-MM-dd HH:mm}_");
+        sb.AppendLine();
+
+        var inbox = await LoadScopeTasksAsync(basinRoot, null, ct);
+        if (inbox.Count > 0)
+        {
+            sb.AppendLine(MarkdownTaskCodec.RenderDocument(inbox, "Inbox"));
+            sb.AppendLine();
+        }
+
+        foreach (var c in courses.Where(c => !c.IsArchived))
+        {
+            var cTasks = await LoadScopeTasksAsync(basinRoot, c.FolderName, ct);
+            if (cTasks.Count == 0)
+                continue;
+            sb.AppendLine(MarkdownTaskCodec.RenderDocument(cTasks, c.Title));
+            sb.AppendLine();
+        }
+
+        var dir = Path.GetDirectoryName(outputFilePath);
+        if (!string.IsNullOrEmpty(dir))
+            Directory.CreateDirectory(dir);
+        await File.WriteAllTextAsync(outputFilePath, sb.ToString(), ct);
+    }
+
+    private static bool ReplaceMatchingTaskInTree(List<TaskItem> nodes, TaskItem updated)
+    {
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            if (MarkdownTaskCodec.IsMatchingTaskIdentity(nodes[i], updated))
+            {
+                nodes[i] = updated;
+                return true;
+            }
+            if (nodes[i].ChildTasks.Count > 0 && ReplaceMatchingTaskInTree(nodes[i].ChildTasks, updated))
+            {
+                nodes[i].EnsureChildTasksSynced();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool RemoveMatchingTaskInTree(List<TaskItem> nodes, TaskItem target)
+    {
+        for (int i = 0; i < nodes.Count; i++)
+        {
+            if (MarkdownTaskCodec.IsMatchingTaskIdentity(nodes[i], target))
+            {
+                nodes.RemoveAt(i);
+                return true;
+            }
+            if (nodes[i].ChildTasks.Count > 0 && RemoveMatchingTaskInTree(nodes[i].ChildTasks, target))
+            {
+                nodes[i].EnsureChildTasksSynced();
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Updates SQLite under the canonical logical scope key whenever a legacy Markdown task file is synced.
     /// </summary>
     public static async Task SyncMarkdownFileToDbAsync(
         string basinRoot,
@@ -137,6 +398,7 @@ public static partial class ScholarFlowDatabase
         if (string.IsNullOrWhiteSpace(basinRoot) || !Directory.Exists(basinRoot))
             return;
 
+        var scopeKey = GetLogicalTaskScopeKey(courseFolder);
         var fullPath = Path.GetFullPath(filePath);
         var ticks = File.Exists(fullPath)
             ? File.GetLastWriteTimeUtc(fullPath).Ticks
@@ -151,7 +413,7 @@ public static partial class ScholarFlowDatabase
             await ReplaceFileTasksInConnectionAsync(
                 conn,
                 basinRoot,
-                fullPath,
+                scopeKey,
                 courseFolder,
                 tasks,
                 ticks,

@@ -484,6 +484,7 @@ public static partial class MarkdownTaskCodec
 
             var sourcePath =
                 !string.IsNullOrWhiteSpace(updatedTask.SourceMarkdownPath)
+                && !updatedTask.SourceMarkdownPath.StartsWith("db:", StringComparison.OrdinalIgnoreCase)
                     ? updatedTask.SourceMarkdownPath
                 : string.IsNullOrWhiteSpace(updatedTask.CourseFolder)
                     ? Path.Combine(basinRoot, ".scholarflow", "inbox.md")

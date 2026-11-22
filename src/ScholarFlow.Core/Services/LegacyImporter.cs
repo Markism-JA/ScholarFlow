@@ -72,10 +72,12 @@ public sealed class LegacyImporter(BasinService? basinService = null)
             if (!Directory.Exists(ongoingDir))
                 continue;
 
-            var tasksPath = BasinService.GetCourseTasksPath(basinRoot, folderName);
-            var existingTasks = (
-                await MarkdownTaskCodec.LoadFileAsync(tasksPath, folderName, ct)
-            ).ToList();
+            var scopeKey = Database.ScholarFlowDatabase.GetLogicalTaskScopeKey(folderName);
+            var existingTasks = await Database.ScholarFlowDatabase.LoadScopeTasksAsync(
+                basinRoot,
+                folderName,
+                ct
+            );
             var trackedNames = existingTasks
                 .SelectMany(t => t.LinkedFiles)
                 .Select(Path.GetFileName)
@@ -125,7 +127,7 @@ public sealed class LegacyImporter(BasinService? basinService = null)
                         CourseFolder = folderName,
                         CourseAlias = courseEntry.Alias,
                         LinkedFiles = [$"ongoing/{fileName}"],
-                        SourceMarkdownPath = tasksPath,
+                        SourceMarkdownPath = scopeKey,
                     }
                 );
 
@@ -134,11 +136,11 @@ public sealed class LegacyImporter(BasinService? basinService = null)
             }
 
             if (changed)
-                await MarkdownTaskCodec.SaveDocumentAsync(
-                    tasksPath,
+                await Database.ScholarFlowDatabase.SaveScopeTasksAsync(
+                    basinRoot,
+                    folderName,
                     existingTasks,
-                    courseEntry.Title,
-                    ct: ct
+                    ct
                 );
         }
 

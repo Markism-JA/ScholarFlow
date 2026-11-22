@@ -1,3 +1,4 @@
+using ScholarFlow.Core.Database;
 using ScholarFlow.Core.Markdown;
 using ScholarFlow.Core.Models;
 using ScholarFlow.Core.Services;
@@ -27,16 +28,14 @@ public sealed class TaskLifecycleAndImporterTests : IDisposable
         var labPdf = Path.Combine(ongoingDir, "Lab_1.pdf");
         await File.WriteAllTextAsync(labPdf, "pdf");
 
-        var tasksPath = BasinService.GetCourseTasksPath(_tempRoot, "Software_Quality_Assurance");
         var task = new TaskItem
         {
             Title = "Lab 1",
             CourseFolder = "Software_Quality_Assurance",
             CourseAlias = "sqa",
             LinkedFiles = ["ongoing/Lab_1.pdf"],
-            SourceMarkdownPath = tasksPath
         };
-        await MarkdownTaskCodec.SaveDocumentAsync(tasksPath, [task], "Software Quality Assurance");
+        await ScholarFlowDatabase.UpsertTaskAsync(_tempRoot, task);
 
         var lifecycle = new TaskLifecycleService();
         await lifecycle.SetCompletedAsync(_tempRoot, task, isCompleted: true, new DateOnly(2026, 11, 19));
@@ -44,11 +43,39 @@ public sealed class TaskLifecycleAndImporterTests : IDisposable
         Assert.False(File.Exists(labPdf));
         Assert.True(File.Exists(Path.Combine(_tempRoot, "Software_Quality_Assurance", "completed", "Lab_1.pdf")));
 
-        var reloaded = await MarkdownTaskCodec.LoadFileAsync(tasksPath, "Software_Quality_Assurance");
+        var reloaded = await ScholarFlowDatabase.LoadScopeTasksAsync(_tempRoot, "Software_Quality_Assurance");
         Assert.Single(reloaded);
         Assert.True(reloaded[0].IsCompleted);
         Assert.Equal(new DateOnly(2026, 11, 19), reloaded[0].CompletedDate);
         Assert.Equal(["completed/Lab_1.pdf"], reloaded[0].LinkedFiles);
+    }
+
+    [Fact]
+    public async Task SqliteCanonical_MigratesLegacyTasksMdOnceAndSupportsMarkdownExport()
+    {
+        var basin = new BasinService();
+        await basin.InitializeOrOpenAsync(_tempRoot);
+        var courses = new[]
+        {
+            new BasinCourseEntry { Title = "Operating Systems", FolderName = "Operating_Systems", Alias = "os" }
+        };
+        await basin.SaveCoursesAsync(_tempRoot, courses);
+
+        // Simulate a legacy tasks.md created by an older version
+        var legacyPath = BasinService.GetCourseTasksPath(_tempRoot, "Operating_Systems");
+        Directory.CreateDirectory(Path.GetDirectoryName(legacyPath)!);
+        await File.WriteAllTextAsync(legacyPath, "# Operating Systems\n\n- [ ] Legacy Paging Lab 📅 2026-12-01 #os\n");
+
+        var loaded = await ScholarFlowDatabase.SyncAndLoadAllTasksAsync(_tempRoot, courses);
+        var migrated = Assert.Single(loaded);
+        Assert.Equal("Legacy Paging Lab", migrated.Title);
+
+        // Export one-way Markdown snapshot
+        var exportPath = Path.Combine(_tempRoot, "tasks_snapshot.md");
+        await ScholarFlowDatabase.ExportAllTasksToMarkdownAsync(_tempRoot, courses, exportPath);
+        Assert.True(File.Exists(exportPath));
+        var exported = await File.ReadAllTextAsync(exportPath);
+        Assert.Contains("Legacy Paging Lab", exported, StringComparison.Ordinal);
     }
 
     [Fact]

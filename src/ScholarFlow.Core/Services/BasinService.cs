@@ -82,10 +82,6 @@ public sealed partial class BasinService
             await SaveJsonAsync(configPath, config, ct);
         }
 
-        var inboxPath = GetInboxPath(basinRoot);
-        if (!File.Exists(inboxPath))
-            await MarkdownTaskCodec.SaveDocumentAsync(inboxPath, [], "Inbox", ct: ct);
-
         await DeduplicateAndMergeCoursesAsync(basinRoot, ct);
         return config;
     }
@@ -292,34 +288,43 @@ public sealed partial class BasinService
 
         Directory.CreateDirectory(canonicalDir);
 
-        // 1. Merge tasks.md if duplicate has tasks
+        // 1. Merge canonical SQLite tasks (plus any legacy tasks.md) from duplicate into canonical course
+        var dupFolder = Path.GetFileName(dupDir);
+        var canonTasks = await Database.ScholarFlowDatabase.LoadScopeTasksAsync(
+            basinRoot,
+            canonicalEntry.FolderName,
+            ct
+        );
+        var dupTasks = await Database.ScholarFlowDatabase.LoadScopeTasksAsync(
+            basinRoot,
+            dupFolder,
+            ct
+        );
         var dupTasksPath = Path.Combine(dupDir, "tasks.md");
-        var canonTasksPath = Path.Combine(canonicalDir, "tasks.md");
         if (File.Exists(dupTasksPath))
         {
-            var canonTasks = await MarkdownTaskCodec.LoadFileAsync(
-                canonTasksPath,
-                canonicalEntry.FolderName,
-                ct
-            );
-            var dupTasks = await MarkdownTaskCodec.LoadFileAsync(
+            var legacyDupTasks = await MarkdownTaskCodec.LoadFileAsync(
                 dupTasksPath,
                 canonicalEntry.FolderName,
                 ct
             );
+            dupTasks = MarkdownTaskCodec.MergeLmsTasks(dupTasks, legacyDupTasks);
+        }
+        if (dupTasks.Count > 0)
+        {
             foreach (var t in dupTasks)
             {
                 t.CourseFolder = canonicalEntry.FolderName;
                 t.CourseAlias = canonicalEntry.Alias;
-                t.SourceMarkdownPath = canonTasksPath;
             }
             var merged = MarkdownTaskCodec.MergeLmsTasks(canonTasks, dupTasks);
-            await MarkdownTaskCodec.SaveDocumentAsync(
-                canonTasksPath,
+            await Database.ScholarFlowDatabase.SaveScopeTasksAsync(
+                basinRoot,
+                canonicalEntry.FolderName,
                 merged,
-                canonicalEntry.Title,
-                ct: ct
+                ct
             );
+            await Database.ScholarFlowDatabase.SaveScopeTasksAsync(basinRoot, dupFolder, [], ct);
         }
 
         // 2. Copy all subdirectories/files (new handouts, term.json, ongoing/, completed/) from dupDir into canonicalDir
@@ -479,10 +484,6 @@ public sealed partial class BasinService
         Directory.CreateDirectory(Path.Combine(courseDir, "ongoing"));
         Directory.CreateDirectory(Path.Combine(courseDir, "completed"));
 
-        var tasksPath = GetCourseTasksPath(basinRoot, entry.FolderName);
-        if (!File.Exists(tasksPath))
-            await File.WriteAllTextAsync(tasksPath, $"# {entry.Title}\n\n", ct);
-
         await SaveCoursesAsync(basinRoot, existing, ct);
         return entry;
     }
@@ -616,10 +617,6 @@ public sealed partial class BasinService
         var courseDir = Path.Combine(basinRoot, entry.FolderName);
         Directory.CreateDirectory(Path.Combine(courseDir, "ongoing"));
         Directory.CreateDirectory(Path.Combine(courseDir, "completed"));
-
-        var tasksPath = GetCourseTasksPath(basinRoot, entry.FolderName);
-        if (!File.Exists(tasksPath))
-            await File.WriteAllTextAsync(tasksPath, $"# {entry.Title}\n\n", ct);
 
         await SaveCoursesAsync(basinRoot, existing, ct);
         return entry;
@@ -1120,26 +1117,10 @@ public sealed partial class BasinService
         if (string.IsNullOrWhiteSpace(task.Title))
             throw new ArgumentException("Task title cannot be empty.", nameof(quickAddInput));
 
-        var targetPath = string.IsNullOrWhiteSpace(task.CourseFolder)
-            ? GetInboxPath(basinRoot)
-            : GetCourseTasksPath(basinRoot, task.CourseFolder);
-
-        var header = string.IsNullOrWhiteSpace(task.CourseFolder)
-            ? "Inbox"
-            : courses
-                .FirstOrDefault(c =>
-                    c.FolderName.Equals(task.CourseFolder, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.Title
-                ?? task.CourseFolder;
-
-        task.SourceMarkdownPath = targetPath;
-
-        var existing = (
-            await MarkdownTaskCodec.LoadFileAsync(targetPath, task.CourseFolder, ct)
-        ).ToList();
-        existing.Add(task);
-        await MarkdownTaskCodec.SaveDocumentAsync(targetPath, existing, header, ct: ct);
+        task.SourceMarkdownPath = Database.ScholarFlowDatabase.GetLogicalTaskScopeKey(
+            task.CourseFolder
+        );
+        await Database.ScholarFlowDatabase.UpsertTaskAsync(basinRoot, task, ct);
 
         return task;
     }
