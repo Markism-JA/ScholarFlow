@@ -5,21 +5,20 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Material.Icons;
 using ScholarFlow.Desktop.Theme;
 
 namespace ScholarFlow.Desktop.UI;
 
 /// <summary>
-/// Pure-C# themed Month Date Picker and Interactive Clock Time Picker widgets.
+/// Pure-C# themed Month Date Picker and Digital Scroll-Drum Time Picker widgets.
 /// Uses ThemeService brushes exclusively so Dark and Light modes stay 100% cohesive
 /// across Task Overview (Inspector) and Quick Add without unthemed Fluent popups.
 /// </summary>
 public static class DateTimePickerWidgets
 {
     private static readonly string[] ShortDayHeaders = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-    private static readonly int[] ClockHours = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-    private static readonly int[] ClockMinutes = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
 
     /// <summary>
     /// Builds a themed Date Picker button that opens a fully themed Month Calendar Flyout.
@@ -332,8 +331,8 @@ public static class DateTimePickerWidgets
     }
 
     /// <summary>
-    /// Builds a themed Time / Clock Picker button that opens an interactive 12-hour Clock Flyout
-    /// with 1-click Hour grid, 5-minute + exact ±1 minute controls, AM/PM toggle, and academic deadline presets.
+    /// Builds a themed Time Picker button that opens a compact digital time input
+    /// paired with 3 synchronized scroll-drum columns (Hour, Minute, AM/PM) and quick presets.
     /// </summary>
     public static Button BuildTimePickerButton(
         TimeOnly? initialTime,
@@ -342,6 +341,9 @@ public static class DateTimePickerWidgets
         double minWidth = 132
     )
     {
+        const double DrumRowHeight = 28;
+        const double DrumHeight = 152;
+
         TimeOnly? committedTime = initialTime;
         int draftHour12 = initialTime.HasValue ? ToHour12(initialTime.Value.Hour) : 11;
         int draftMinute = initialTime.HasValue ? initialTime.Value.Minute : 59;
@@ -359,19 +361,21 @@ public static class DateTimePickerWidgets
             TextTrimming = TextTrimming.CharacterEllipsis,
         };
 
+        var triggerIcon = UiBuilder.Icon(
+            MaterialIconKind.ClockOutline,
+            14,
+            committedTime.HasValue
+                ? ThemeService.Brush(ThemeService.TextPrimary)
+                : ThemeService.Brush(ThemeService.TextSecondary)
+        );
+
         var triggerContent = new Grid
         {
             ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
             ColumnSpacing = 6,
             Children =
             {
-                UiBuilder.Icon(
-                    MaterialIconKind.ClockOutline,
-                    14,
-                    committedTime.HasValue
-                        ? ThemeService.Brush(ThemeService.AccentPrimary)
-                        : ThemeService.Brush(ThemeService.TextSecondary)
-                ),
+                triggerIcon,
                 labelText,
                 UiBuilder.Icon(
                     MaterialIconKind.ChevronDown,
@@ -416,7 +420,7 @@ public static class DateTimePickerWidgets
         {
             Background = Brushes.Transparent,
             Padding = new Thickness(2),
-            Width = 276,
+            Width = 236,
         };
 
         var flyout = new Flyout
@@ -434,216 +438,461 @@ public static class DateTimePickerWidgets
             labelText.Foreground = committedTime.HasValue
                 ? ThemeService.Brush(ThemeService.TextPrimary)
                 : ThemeService.Brush(ThemeService.TextMuted);
-            if (triggerContent.Children[0] is Material.Icons.Avalonia.MaterialIcon icon)
-            {
-                icon.Foreground = committedTime.HasValue
-                    ? ThemeService.Brush(ThemeService.AccentPrimary)
-                    : ThemeService.Brush(ThemeService.TextSecondary);
-            }
+            triggerIcon.Foreground = committedTime.HasValue
+                ? ThemeService.Brush(ThemeService.TextPrimary)
+                : ThemeService.Brush(ThemeService.TextSecondary);
         }
 
-        void RebuildClockPopup()
+        async Task CommitDraftAndCloseAsync()
         {
-            var stack = new StackPanel { Spacing = 9 };
+            var selected = BuildDraftTime();
+            committedTime = selected;
+            UpdateTriggerVisual();
+            flyout.Hide();
+            await onTimeSelected(selected);
+        }
 
-            // Top Digital Clock Readout + AM/PM Toggle
-            var topGrid = new Grid
+        void BuildTimePopup()
+        {
+            bool syncingInputs = false;
+
+            var hourButtons = new Button[12];
+            var minuteButtons = new Button[60];
+            Button amBtn = null!;
+            Button pmBtn = null!;
+            Button periodToggleBtn = null!;
+            ScrollViewer hourScroll = null!;
+            ScrollViewer minuteScroll = null!;
+
+            TextBox hourBox = BuildTimeInputBox(
+                draftHour12.ToString("00", CultureInfo.InvariantCulture),
+                "Type or scroll hour (1–12)"
+            );
+            TextBox minuteBox = BuildTimeInputBox(
+                draftMinute.ToString("00", CultureInfo.InvariantCulture),
+                "Type or scroll minute (00–59)"
+            );
+
+            void ScrollToSelection()
             {
-                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
-                ColumnSpacing = 8,
+                Dispatcher.UIThread.Post(
+                    () =>
+                    {
+                        double hourTarget = Math.Max(
+                            0,
+                            (draftHour12 - 1) * DrumRowHeight - (DrumHeight - DrumRowHeight) / 2.0
+                        );
+                        double minTarget = Math.Max(
+                            0,
+                            draftMinute * DrumRowHeight - (DrumHeight - DrumRowHeight) / 2.0
+                        );
+                        hourScroll.Offset = new Vector(0, hourTarget);
+                        minuteScroll.Offset = new Vector(0, minTarget);
+                    },
+                    DispatcherPriority.Loaded
+                );
+            }
+
+            void SyncVisuals(bool scrollIntoView = false, bool syncTextBoxes = true)
+            {
+                if (syncTextBoxes)
+                {
+                    syncingInputs = true;
+                    hourBox.Text = draftHour12.ToString("00", CultureInfo.InvariantCulture);
+                    minuteBox.Text = draftMinute.ToString("00", CultureInfo.InvariantCulture);
+                    syncingInputs = false;
+                }
+
+                for (int i = 0; i < 12; i++)
+                {
+                    StyleDrumRow(hourButtons[i], isSelected: draftHour12 == i + 1);
+                }
+
+                for (int i = 0; i < 60; i++)
+                {
+                    StyleDrumRow(minuteButtons[i], isSelected: draftMinute == i);
+                }
+
+                StyleDrumRow(amBtn, isSelected: !draftIsPm);
+                StyleDrumRow(pmBtn, isSelected: draftIsPm);
+                if (periodToggleBtn.Content is TextBlock periodTb)
+                    periodTb.Text = draftIsPm ? "PM" : "AM";
+
+                if (scrollIntoView)
+                    ScrollToSelection();
+            }
+
+            void StepHour(int delta)
+            {
+                draftHour12 = ((draftHour12 - 1 + delta) % 12 + 12) % 12 + 1;
+                SyncVisuals(scrollIntoView: true);
+            }
+
+            void StepMinute(int delta)
+            {
+                draftMinute = ((draftMinute + delta) % 60 + 60) % 60;
+                SyncVisuals(scrollIntoView: true);
+            }
+
+            // Direct typing + keyboard arrows + mouse wheel for Hour
+            hourBox.TextChanged += (_, _) =>
+            {
+                if (syncingInputs)
+                    return;
+                var raw = (hourBox.Text ?? "").Trim();
+                if (!int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out int h))
+                    return;
+
+                if (h == 0)
+                {
+                    draftHour12 = 12;
+                    draftIsPm = false;
+                }
+                else if (h is >= 1 and <= 12)
+                {
+                    draftHour12 = h;
+                }
+                else if (h is >= 13 and <= 23)
+                {
+                    draftHour12 = h - 12;
+                    draftIsPm = true;
+                }
+                else
+                {
+                    return;
+                }
+
+                SyncVisuals(scrollIntoView: true, syncTextBoxes: false);
+            };
+            hourBox.LostFocus += (_, _) => SyncVisuals(scrollIntoView: false, syncTextBoxes: true);
+            hourBox.KeyDown += async (_, e) =>
+            {
+                if (e.Key == Key.Up)
+                {
+                    e.Handled = true;
+                    StepHour(1);
+                }
+                else if (e.Key == Key.Down)
+                {
+                    e.Handled = true;
+                    StepHour(-1);
+                }
+                else if (e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    await CommitDraftAndCloseAsync();
+                }
+                else if (e.Key == Key.OemSemicolon)
+                {
+                    e.Handled = true;
+                    minuteBox.Focus();
+                    minuteBox.SelectAll();
+                }
+            };
+            hourBox.PointerWheelChanged += (_, e) =>
+            {
+                e.Handled = true;
+                StepHour(e.Delta.Y > 0 ? 1 : -1);
             };
 
-            var readoutPill = new Border
+            // Direct typing + keyboard arrows + mouse wheel for Minute
+            minuteBox.TextChanged += (_, _) =>
             {
+                if (syncingInputs)
+                    return;
+                var raw = (minuteBox.Text ?? "").Trim();
+                if (!int.TryParse(raw, NumberStyles.None, CultureInfo.InvariantCulture, out int m))
+                    return;
+                if (m is < 0 or > 59)
+                    return;
+
+                draftMinute = m;
+                SyncVisuals(scrollIntoView: true, syncTextBoxes: false);
+            };
+            minuteBox.LostFocus += (_, _) => SyncVisuals(scrollIntoView: false, syncTextBoxes: true);
+            minuteBox.KeyDown += async (_, e) =>
+            {
+                if (e.Key == Key.Up)
+                {
+                    e.Handled = true;
+                    StepMinute(1);
+                }
+                else if (e.Key == Key.Down)
+                {
+                    e.Handled = true;
+                    StepMinute(-1);
+                }
+                else if (e.Key == Key.Enter)
+                {
+                    e.Handled = true;
+                    await CommitDraftAndCloseAsync();
+                }
+            };
+            minuteBox.PointerWheelChanged += (_, e) =>
+            {
+                e.Handled = true;
+                StepMinute(e.Delta.Y > 0 ? 1 : -1);
+            };
+
+            // Top digital input bar: [ HH ] : [ MM ]   [AM/PM]
+            var topInputRow = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,*,Auto"),
+                ColumnSpacing = 6,
+            };
+
+            var colonText = new TextBlock
+            {
+                Text = ":",
+                FontSize = 18,
+                FontWeight = FontWeight.Bold,
+                Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+
+            periodToggleBtn = new Button
+            {
+                Content = new TextBlock
+                {
+                    Text = draftIsPm ? "PM" : "AM",
+                    FontSize = 12,
+                    FontWeight = FontWeight.SemiBold,
+                    Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+                Width = 48,
+                Height = 34,
                 Background = ThemeService.Brush(ThemeService.BgElevated),
                 BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(7),
-                Padding = new Thickness(10, 6),
-                Child = new StackPanel
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(0),
+                Cursor = new Cursor(StandardCursorType.Hand),
+                VerticalAlignment = VerticalAlignment.Center,
+                HorizontalContentAlignment = HorizontalAlignment.Center,
+                VerticalContentAlignment = VerticalAlignment.Center,
+            };
+            ToolTip.SetTip(periodToggleBtn, "Toggle AM / PM");
+            periodToggleBtn.PointerEntered += (_, _) =>
+                periodToggleBtn.Background = ThemeService.Brush(ThemeService.BgHover);
+            periodToggleBtn.PointerExited += (_, _) =>
+                periodToggleBtn.Background = ThemeService.Brush(ThemeService.BgElevated);
+            periodToggleBtn.Click += (_, e) =>
+            {
+                e.Handled = true;
+                draftIsPm = !draftIsPm;
+                SyncVisuals(scrollIntoView: false, syncTextBoxes: false);
+            };
+
+            topInputRow.Children.Add(hourBox);
+            Grid.SetColumn(colonText, 1);
+            topInputRow.Children.Add(colonText);
+            Grid.SetColumn(minuteBox, 2);
+            topInputRow.Children.Add(minuteBox);
+            Grid.SetColumn(periodToggleBtn, 3);
+            topInputRow.Children.Add(periodToggleBtn);
+
+            // Column headers for the 3-column time drum
+            var colHeaders = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("*,*,54"),
+                ColumnSpacing = 6,
+                Margin = new Thickness(2, 2, 2, 0),
+            };
+            var hrHdr = BuildDrumHeader("HR");
+            var minHdr = BuildDrumHeader("MIN");
+            var perHdr = BuildDrumHeader("AM/PM");
+            colHeaders.Children.Add(hrHdr);
+            Grid.SetColumn(minHdr, 1);
+            colHeaders.Children.Add(minHdr);
+            Grid.SetColumn(perHdr, 2);
+            colHeaders.Children.Add(perHdr);
+
+            // Hour scroll column (1..12)
+            var hourList = new StackPanel { Spacing = 0 };
+            for (int i = 0; i < 12; i++)
+            {
+                int capturedH = i + 1;
+                var rowBtn = BuildDrumRow(
+                    capturedH.ToString("00", CultureInfo.InvariantCulture),
+                    DrumRowHeight,
+                    () =>
+                    {
+                        draftHour12 = capturedH;
+                        SyncVisuals(scrollIntoView: false);
+                    }
+                );
+                hourButtons[i] = rowBtn;
+                hourList.Children.Add(rowBtn);
+            }
+            hourScroll = new ScrollViewer
+            {
+                Height = DrumHeight,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = hourList,
+            };
+
+            // Minute scroll column (00..59)
+            var minuteList = new StackPanel { Spacing = 0 };
+            for (int i = 0; i < 60; i++)
+            {
+                int capturedM = i;
+                var rowBtn = BuildDrumRow(
+                    capturedM.ToString("00", CultureInfo.InvariantCulture),
+                    DrumRowHeight,
+                    () =>
+                    {
+                        draftMinute = capturedM;
+                        SyncVisuals(scrollIntoView: false);
+                    }
+                );
+                minuteButtons[i] = rowBtn;
+                minuteList.Children.Add(rowBtn);
+            }
+            minuteScroll = new ScrollViewer
+            {
+                Height = DrumHeight,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                Content = minuteList,
+            };
+
+            // AM / PM column
+            amBtn = BuildDrumRow(
+                "AM",
+                DrumRowHeight,
+                () =>
                 {
-                    Orientation = Orientation.Horizontal,
-                    Spacing = 6,
-                    HorizontalAlignment = HorizontalAlignment.Center,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    Children =
-                    {
-                        UiBuilder.Icon(
-                            MaterialIconKind.ClockTimeFourOutline,
-                            16,
-                            ThemeService.Brush(ThemeService.AccentPrimary)
-                        ),
-                        new TextBlock
-                        {
-                            Text = $"{draftHour12:00}:{draftMinute:00} {(draftIsPm ? "PM" : "AM")}",
-                            FontSize = 16,
-                            FontWeight = FontWeight.Bold,
-                            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                            VerticalAlignment = VerticalAlignment.Center,
-                        },
-                    },
-                },
+                    draftIsPm = false;
+                    SyncVisuals(scrollIntoView: false, syncTextBoxes: false);
+                }
+            );
+            pmBtn = BuildDrumRow(
+                "PM",
+                DrumRowHeight,
+                () =>
+                {
+                    draftIsPm = true;
+                    SyncVisuals(scrollIntoView: false, syncTextBoxes: false);
+                }
+            );
+            var periodList = new StackPanel
+            {
+                Spacing = 2,
+                VerticalAlignment = VerticalAlignment.Top,
+                Children = { amBtn, pmBtn },
             };
-            topGrid.Children.Add(readoutPill);
 
-            var amPmStack = new StackPanel
+            var drumGrid = new Grid
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 4,
-                VerticalAlignment = VerticalAlignment.Center,
+                ColumnDefinitions = ColumnDefinitions.Parse("*,1,*,1,54"),
+                Height = DrumHeight,
             };
-            amPmStack.Children.Add(
-                UiBuilder.GhostButton(
-                    "AM",
-                    null,
-                    () =>
-                    {
-                        draftIsPm = false;
-                        RebuildClockPopup();
-                    },
-                    isActive: !draftIsPm
-                )
-            );
-            amPmStack.Children.Add(
-                UiBuilder.GhostButton(
-                    "PM",
-                    null,
-                    () =>
-                    {
-                        draftIsPm = true;
-                        RebuildClockPopup();
-                    },
-                    isActive: draftIsPm
-                )
-            );
-            Grid.SetColumn(amPmStack, 1);
-            topGrid.Children.Add(amPmStack);
-            stack.Children.Add(topGrid);
+            drumGrid.Children.Add(hourScroll);
 
-            // Hour Selector (12, 1..11)
-            stack.Children.Add(UiBuilder.SectionHeader("Hour"));
-            var hourGrid = new UniformGrid { Columns = 6, Rows = 2 };
-            foreach (var h in ClockHours)
+            var sep1 = new Border
             {
-                var capturedH = h;
-                bool active = draftHour12 == capturedH;
-                hourGrid.Children.Add(
-                    BuildClockCell(
-                        capturedH.ToString(CultureInfo.InvariantCulture),
-                        active,
-                        () =>
-                        {
-                            draftHour12 = capturedH;
-                            RebuildClockPopup();
-                        }
-                    )
-                );
-            }
-            stack.Children.Add(hourGrid);
-
-            // Minute Selector (00..55 + fine ±1m + :59)
-            var minHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
-            minHeader.Children.Add(UiBuilder.SectionHeader("Minute"));
-
-            var fineBtns = new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 3,
-                VerticalAlignment = VerticalAlignment.Center,
+                Background = ThemeService.Brush(ThemeService.BorderSubtle),
+                Width = 1,
+                Margin = new Thickness(0, 6),
             };
-            fineBtns.Children.Add(
-                UiBuilder.GhostButton(
-                    "-1m",
-                    null,
-                    () =>
-                    {
-                        draftMinute = (draftMinute + 59) % 60;
-                        RebuildClockPopup();
-                    }
-                )
-            );
-            fineBtns.Children.Add(
-                UiBuilder.GhostButton(
-                    "+1m",
-                    null,
-                    () =>
-                    {
-                        draftMinute = (draftMinute + 1) % 60;
-                        RebuildClockPopup();
-                    }
-                )
-            );
-            fineBtns.Children.Add(
-                UiBuilder.GhostButton(
-                    ":59",
-                    null,
-                    () =>
-                    {
-                        draftMinute = 59;
-                        RebuildClockPopup();
-                    },
-                    isActive: draftMinute == 59
-                )
-            );
-            Grid.SetColumn(fineBtns, 1);
-            minHeader.Children.Add(fineBtns);
-            stack.Children.Add(minHeader);
+            Grid.SetColumn(sep1, 1);
+            drumGrid.Children.Add(sep1);
 
-            var minGrid = new UniformGrid { Columns = 6, Rows = 2 };
-            foreach (var m in ClockMinutes)
+            Grid.SetColumn(minuteScroll, 2);
+            drumGrid.Children.Add(minuteScroll);
+
+            var sep2 = new Border
             {
-                var capturedM = m;
-                bool active = draftMinute == capturedM;
-                minGrid.Children.Add(
-                    BuildClockCell(
-                        $":{capturedM:00}",
-                        active,
-                        () =>
-                        {
-                            draftMinute = capturedM;
-                            RebuildClockPopup();
-                        }
-                    )
-                );
-            }
-            stack.Children.Add(minGrid);
+                Background = ThemeService.Brush(ThemeService.BorderSubtle),
+                Width = 1,
+                Margin = new Thickness(0, 6),
+            };
+            Grid.SetColumn(sep2, 3);
+            drumGrid.Children.Add(sep2);
 
-            // Quick Academic Presets
-            var presetsWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+            Grid.SetColumn(periodList, 4);
+            drumGrid.Children.Add(periodList);
+
+            var drumFrame = new Border
+            {
+                Background = ThemeService.Brush(ThemeService.BgSurface),
+                BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(7),
+                Padding = new Thickness(3, 4),
+                Child = drumGrid,
+            };
+
+            // Compact 1-row quick academic deadline presets
+            var presetsGrid = new UniformGrid { Columns = 4 };
             foreach (
                 var (label, preset) in new[]
                 {
-                    ("9:00 AM", new TimeOnly(9, 0)),
-                    ("12:00 PM", new TimeOnly(12, 0)),
-                    ("5:00 PM", new TimeOnly(17, 0)),
-                    ("11:59 PM", new TimeOnly(23, 59)),
+                    ("9 AM", new TimeOnly(9, 0)),
+                    ("12 PM", new TimeOnly(12, 0)),
+                    ("5 PM", new TimeOnly(17, 0)),
+                    ("11:59p", new TimeOnly(23, 59)),
                 }
             )
             {
                 var capturedPreset = preset;
-                var pBtn = UiBuilder.GhostButton(
-                    label,
-                    null,
-                    async () =>
+                bool isCurrent = BuildDraftTime() == capturedPreset;
+                var chip = new Button
+                {
+                    Content = new TextBlock
                     {
-                        committedTime = capturedPreset;
-                        draftHour12 = ToHour12(capturedPreset.Hour);
-                        draftMinute = capturedPreset.Minute;
-                        draftIsPm = capturedPreset.Hour >= 12;
-                        UpdateTriggerVisual();
-                        flyout.Hide();
-                        await onTimeSelected(capturedPreset);
+                        Text = label,
+                        FontSize = 11,
+                        FontWeight = isCurrent ? FontWeight.SemiBold : FontWeight.Normal,
+                        Foreground = isCurrent
+                            ? ThemeService.Brush(ThemeService.TextPrimary)
+                            : ThemeService.Brush(ThemeService.TextSecondary),
+                        HorizontalAlignment = HorizontalAlignment.Center,
+                        VerticalAlignment = VerticalAlignment.Center,
                     },
-                    isActive: BuildDraftTime() == capturedPreset
+                    Background = isCurrent
+                        ? ThemeService.Brush(ThemeService.BgElevated)
+                        : Brushes.Transparent,
+                    BorderBrush = isCurrent
+                        ? ThemeService.Brush(ThemeService.BorderStrong)
+                        : ThemeService.Brush(ThemeService.BorderSubtle),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(5),
+                    Height = 25,
+                    Margin = new Thickness(2, 0),
+                    Padding = new Thickness(0),
+                    HorizontalAlignment = HorizontalAlignment.Stretch,
+                    HorizontalContentAlignment = HorizontalAlignment.Center,
+                    VerticalContentAlignment = VerticalAlignment.Center,
+                    Cursor = new Cursor(StandardCursorType.Hand),
+                };
+                ToolTip.SetTip(
+                    chip,
+                    $"Set to {capturedPreset.ToString("h:mm tt", CultureInfo.CurrentCulture)}"
                 );
-                pBtn.Margin = new Thickness(0, 0, 4, 4);
-                presetsWrap.Children.Add(pBtn);
+                var baseChipBg = chip.Background;
+                chip.PointerEntered += (_, _) =>
+                    chip.Background = ThemeService.Brush(ThemeService.BgHover);
+                chip.PointerExited += (_, _) => chip.Background = baseChipBg;
+                chip.Click += async (_, e) =>
+                {
+                    e.Handled = true;
+                    committedTime = capturedPreset;
+                    draftHour12 = ToHour12(capturedPreset.Hour);
+                    draftMinute = capturedPreset.Minute;
+                    draftIsPm = capturedPreset.Hour >= 12;
+                    UpdateTriggerVisual();
+                    flyout.Hide();
+                    await onTimeSelected(capturedPreset);
+                };
+                presetsGrid.Children.Add(chip);
             }
-            stack.Children.Add(presetsWrap);
 
-            stack.Children.Add(UiBuilder.HairlineDivider());
-
-            // Footer: Clear + Apply
+            // Footer: Clear + Set Time
             var footer = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto") };
             var clearBtn = UiBuilder.GhostButton(
                 "Clear",
@@ -661,21 +910,28 @@ public static class DateTimePickerWidgets
             var applyBtn = UiBuilder.ActionButton(
                 "Set Time",
                 MaterialIconKind.Check,
-                async () =>
-                {
-                    var selected = BuildDraftTime();
-                    committedTime = selected;
-                    UpdateTriggerVisual();
-                    flyout.Hide();
-                    await onTimeSelected(selected);
-                },
+                async () => await CommitDraftAndCloseAsync(),
                 isPrimary: true
             );
             Grid.SetColumn(applyBtn, 2);
             footer.Children.Add(applyBtn);
 
-            stack.Children.Add(footer);
+            var stack = new StackPanel
+            {
+                Spacing = 8,
+                Children =
+                {
+                    topInputRow,
+                    colHeaders,
+                    drumFrame,
+                    presetsGrid,
+                    UiBuilder.HairlineDivider(),
+                    footer,
+                },
+            };
+
             flyoutHost.Child = stack;
+            SyncVisuals(scrollIntoView: true);
         }
 
         flyout.Opening += (_, _) =>
@@ -686,56 +942,106 @@ public static class DateTimePickerWidgets
                 draftMinute = committedTime.Value.Minute;
                 draftIsPm = committedTime.Value.Hour >= 12;
             }
-            RebuildClockPopup();
+            BuildTimePopup();
         };
 
         triggerBtn.Flyout = flyout;
         return triggerBtn;
     }
 
-    private static Button BuildClockCell(string label, bool isActive, Action onClick)
+    private static TextBox BuildTimeInputBox(string initialText, string tooltip)
     {
-        var normalBg = isActive
-            ? ThemeService.Brush(ThemeService.AccentPrimary)
-            : ThemeService.Brush(ThemeService.BgElevated);
-        var fg = isActive ? Brushes.White : ThemeService.Brush(ThemeService.TextPrimary);
+        var box = new TextBox
+        {
+            Text = initialText,
+            MaxLength = 2,
+            FontSize = 15,
+            FontWeight = FontWeight.SemiBold,
+            Height = 34,
+            MinHeight = 34,
+            Padding = new Thickness(4, 5),
+            TextAlignment = TextAlignment.Center,
+            VerticalContentAlignment = VerticalAlignment.Center,
+            HorizontalContentAlignment = HorizontalAlignment.Center,
+            Background = ThemeService.Brush(ThemeService.BgElevated),
+            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+            BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+        };
+        ToolTip.SetTip(box, tooltip);
+        box.GotFocus += (_, _) => box.SelectAll();
+        return box;
+    }
 
+    private static TextBlock BuildDrumHeader(string text) =>
+        new()
+        {
+            Text = text,
+            FontSize = 10,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            LetterSpacing = 0.6,
+        };
+
+    private static Button BuildDrumRow(string label, double height, Action onClick)
+    {
         var btn = new Button
         {
             Content = new TextBlock
             {
                 Text = label,
-                FontSize = 11.5,
-                FontWeight = isActive ? FontWeight.Bold : FontWeight.Medium,
-                Foreground = fg,
+                FontSize = 12.5,
                 HorizontalAlignment = HorizontalAlignment.Center,
                 VerticalAlignment = VerticalAlignment.Center,
             },
-            Background = normalBg,
-            BorderThickness = new Thickness(0),
-            CornerRadius = new CornerRadius(5),
-            Height = 28,
-            Margin = new Thickness(2),
+            Height = height,
+            Margin = new Thickness(3, 1),
             Padding = new Thickness(0),
+            CornerRadius = new CornerRadius(5),
+            BorderThickness = new Thickness(1),
             HorizontalAlignment = HorizontalAlignment.Stretch,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
             Cursor = new Cursor(StandardCursorType.Hand),
+            Tag = false,
         };
 
-        if (!isActive)
+        btn.PointerEntered += (_, _) =>
         {
-            btn.PointerEntered += (_, _) =>
+            if (btn.Tag is not true)
                 btn.Background = ThemeService.Brush(ThemeService.BgHover);
-            btn.PointerExited += (_, _) => btn.Background = normalBg;
-        }
-
+        };
+        btn.PointerExited += (_, _) =>
+        {
+            if (btn.Tag is not true)
+                btn.Background = Brushes.Transparent;
+        };
         btn.Click += (_, e) =>
         {
             e.Handled = true;
             onClick();
         };
         return btn;
+    }
+
+    private static void StyleDrumRow(Button btn, bool isSelected)
+    {
+        btn.Tag = isSelected;
+        btn.Background = isSelected
+            ? ThemeService.Brush(ThemeService.BgElevated)
+            : Brushes.Transparent;
+        btn.BorderBrush = isSelected
+            ? ThemeService.Brush(ThemeService.BorderStrong)
+            : Brushes.Transparent;
+        if (btn.Content is TextBlock tb)
+        {
+            tb.FontWeight = isSelected ? FontWeight.Bold : FontWeight.Normal;
+            tb.Foreground = isSelected
+                ? ThemeService.Brush(ThemeService.TextPrimary)
+                : ThemeService.Brush(ThemeService.TextSecondary);
+        }
     }
 
     private static string FormatDateLabel(DateOnly? date, string placeholder) =>
