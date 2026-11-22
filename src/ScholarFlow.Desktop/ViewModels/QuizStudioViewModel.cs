@@ -95,6 +95,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
             );
         public QuizContentModalityMode ModalityMode { get; set; } =
             QuizContentModalityMode.AutoDetect;
+        public QuizContentModalityFlags SelectedModalityFlags { get; set; } =
+            QuizContentModalityFlags.None;
         public HashSet<QuestionArchetype> SelectedArchetypes { get; } = [];
         public bool FocusWeakSpots { get; set; }
         public bool EnableContrastiveExplanations { get; set; } = true;
@@ -141,6 +143,8 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public string CustomPromptInstructions { get; private set; } = string.Empty;
     public QuizContentModalityMode ModalityMode { get; private set; } =
         QuizContentModalityMode.AutoDetect;
+    public QuizContentModalityFlags SelectedModalityFlags { get; private set; } =
+        QuizContentModalityFlags.None;
 
     public IReadOnlyList<(int PageNumber, string SectionTitle, string? Term)> MatchedScopePages
     {
@@ -364,6 +368,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
         state.CognitiveMix = CognitiveMix;
         state.CognitiveAllocations = new Dictionary<CognitiveLevel, int>(CognitiveAllocations);
         state.ModalityMode = ModalityMode;
+        state.SelectedModalityFlags = SelectedModalityFlags;
         state.SelectedArchetypes.Clear();
         foreach (var a in SelectedArchetypes)
             state.SelectedArchetypes.Add(a);
@@ -403,6 +408,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
             CognitiveMix = state.CognitiveMix;
             CognitiveAllocations = new Dictionary<CognitiveLevel, int>(state.CognitiveAllocations);
             ModalityMode = state.ModalityMode;
+            SelectedModalityFlags = state.SelectedModalityFlags;
             SelectedArchetypes.Clear();
             foreach (var a in state.SelectedArchetypes)
                 SelectedArchetypes.Add(a);
@@ -440,6 +446,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
                 QuizPresetMode.ExamSimulator
             );
             ModalityMode = QuizContentModalityMode.AutoDetect;
+            SelectedModalityFlags = QuizContentModalityFlags.None;
             SelectedArchetypes.Clear();
             FocusWeakSpots = false;
             EnableContrastiveExplanations = true;

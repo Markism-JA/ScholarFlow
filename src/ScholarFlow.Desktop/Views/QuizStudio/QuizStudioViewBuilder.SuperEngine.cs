@@ -64,12 +64,17 @@ public static partial class QuizStudioViewBuilder
         )
         {
             var captured = mix;
+            var presetWeights = QuizGenerationRequest.GetDefaultCognitiveAllocationsForMix(
+                captured
+            );
+            bool matchesWeights = presetWeights.All(kv =>
+                studio.CognitiveAllocations.GetValueOrDefault(kv.Key, -1) == kv.Value
+            );
             var btn = UiBuilder.GhostButton(
                 label,
                 null,
                 () => studio.SetCognitiveMix(captured),
-                isActive: studio.SelectedPreset != QuizPresetMode.Custom
-                    && studio.CognitiveMix == captured
+                isActive: matchesWeights
             );
             btn.Margin = new Thickness(4, 0, 0, 2);
             mixPills.Children.Add(btn);
@@ -329,11 +334,11 @@ public static partial class QuizStudioViewBuilder
     {
         var stack = new StackPanel { Spacing = 8 };
 
-        // 1. Content Modality & Visual Representation
+        // 1. Content Modality & Visual Representation (Auto-Detect / Prose Only + Multi-Select Code / Math LaTeX / Diagrams)
         var modHeader = new TextBlock
         {
             Text =
-                "Content Modality & Question Styles (Auto-adapts to Code, Math LaTeX, Diagrams & Images)",
+                "Content Modality & Question Styles (Auto-Detect or multi-select Code, Math LaTeX & Diagrams)",
             FontSize = 11.5,
             FontWeight = FontWeight.SemiBold,
             Foreground = ThemeService.Brush(ThemeService.TextSecondary),
@@ -341,48 +346,140 @@ public static partial class QuizStudioViewBuilder
         stack.Children.Add(modHeader);
 
         var modalityWrap = new WrapPanel { Orientation = Orientation.Horizontal };
+        bool isAutoDetectActive =
+            studio.ModalityMode == QuizContentModalityMode.AutoDetect
+            && studio.SelectedModalityFlags == QuizContentModalityFlags.None;
+        bool isProseOnlyActive = studio.ModalityMode == QuizContentModalityMode.StandardProseOnly;
+
+        var autoBtn = UiBuilder.GhostButton(
+            "Auto-Detect Format",
+            MaterialIconKind.AutoFix,
+            () => studio.SetModalityMode(QuizContentModalityMode.AutoDetect),
+            isActive: isAutoDetectActive
+        );
+        ToolTip.SetTip(
+            autoBtn,
+            "Automatically detect Code, Math LaTeX, and Flow Diagrams from the active PDF/file scope"
+        );
+        autoBtn.Margin = new Thickness(0, 0, 5, 4);
+        modalityWrap.Children.Add(autoBtn);
+
+        var proseBtn = UiBuilder.GhostButton(
+            "Prose Only",
+            MaterialIconKind.TextBoxOutline,
+            () => studio.SetModalityMode(QuizContentModalityMode.StandardProseOnly),
+            isActive: isProseOnlyActive
+        );
+        ToolTip.SetTip(
+            proseBtn,
+            "Force conceptual prose only (suppress all code blocks, LaTeX formulas, and diagrams)"
+        );
+        proseBtn.Margin = new Thickness(0, 0, 5, 4);
+        modalityWrap.Children.Add(proseBtn);
+
         foreach (
-            var (mMode, mLabel, mIcon) in new[]
+            var (flag, mLabel, mIcon, mTip) in new[]
             {
                 (
-                    QuizContentModalityMode.AutoDetect,
-                    "Auto-Detect Format",
-                    MaterialIconKind.AutoFix
-                ),
-                (
-                    QuizContentModalityMode.StandardProseOnly,
-                    "Prose Only",
-                    MaterialIconKind.TextBoxOutline
-                ),
-                (
-                    QuizContentModalityMode.IncludeCodeSnippets,
+                    QuizContentModalityFlags.Code,
                     "Code Snippets",
-                    MaterialIconKind.CodeTags
+                    MaterialIconKind.CodeTags,
+                    "Toggle Code Snippets (can be combined with Math LaTeX and Flow Diagrams; guarded against overfitting prose)"
                 ),
                 (
-                    QuizContentModalityMode.IncludeMathLatex,
-                    "Math LaTeX (MCQ)",
-                    MaterialIconKind.FunctionVariant
+                    QuizContentModalityFlags.MathLatex,
+                    "Math LaTeX",
+                    MaterialIconKind.FunctionVariant,
+                    "Toggle Math LaTeX equations & formulas (can be combined with Code and Diagrams; guarded against overfitting prose)"
                 ),
                 (
-                    QuizContentModalityMode.IncludeDiagrams,
+                    QuizContentModalityFlags.Diagrams,
                     "Flow Diagrams",
-                    MaterialIconKind.SitemapOutline
+                    MaterialIconKind.SitemapOutline,
+                    "Toggle Mermaid Flow & Sequence Diagrams (can be combined with Code and Math; guarded against overfitting prose)"
                 ),
             }
         )
         {
-            var capturedMode = mMode;
+            var capturedFlag = flag;
+            bool flagActive =
+                !isProseOnlyActive && studio.SelectedModalityFlags.HasFlag(capturedFlag);
             var mBtn = UiBuilder.GhostButton(
                 mLabel,
                 mIcon,
-                () => studio.SetModalityMode(capturedMode),
-                isActive: studio.ModalityMode == capturedMode
+                () => studio.ToggleModalityFlag(capturedFlag),
+                isActive: flagActive
             );
+            ToolTip.SetTip(mBtn, mTip);
             mBtn.Margin = new Thickness(0, 0, 5, 4);
             modalityWrap.Children.Add(mBtn);
         }
         stack.Children.Add(modalityWrap);
+
+        // Live Scope Detection Telemetry & Compatibility / Anti-Overfitting Info Banner
+        var (_, statusSummary, advisories) = studio.GetScopeCompatibilityAnalysis();
+        bool hasAdvisory = advisories.Count > 0;
+        var infoStack = new StackPanel { Spacing = 3 };
+        var topInfoRow = new Grid
+        {
+            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*"),
+            ColumnSpacing = 6,
+        };
+        topInfoRow.Children.Add(
+            UiBuilder.Icon(
+                hasAdvisory
+                    ? MaterialIconKind.InformationOutline
+                    : MaterialIconKind.CheckDecagramOutline,
+                14,
+                hasAdvisory
+                    ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+                    : ThemeService.Brush(ThemeService.AccentPrimary)
+            )
+        );
+        var summaryText = new TextBlock
+        {
+            Text = statusSummary,
+            FontSize = 11,
+            FontWeight = FontWeight.SemiBold,
+            Foreground = hasAdvisory
+                ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+                : ThemeService.Brush(ThemeService.TextSecondary),
+            VerticalAlignment = VerticalAlignment.Center,
+            TextWrapping = TextWrapping.Wrap,
+        };
+        Grid.SetColumn(summaryText, 1);
+        topInfoRow.Children.Add(summaryText);
+        infoStack.Children.Add(topInfoRow);
+
+        foreach (var adv in advisories)
+        {
+            infoStack.Children.Add(
+                new TextBlock
+                {
+                    Text = $"• {adv}",
+                    FontSize = 11,
+                    Foreground = ThemeService.Brush(ThemeService.TextSecondary),
+                    TextWrapping = TextWrapping.Wrap,
+                    Margin = new Thickness(20, 0, 0, 0),
+                }
+            );
+        }
+
+        stack.Children.Add(
+            new Border
+            {
+                Background = hasAdvisory
+                    ? ThemeService.Brush(ThemeService.PriorityP2Bg)
+                    : ThemeService.Brush(ThemeService.BgBase),
+                BorderBrush = hasAdvisory
+                    ? ThemeService.Brush(ThemeService.PriorityP2Fg)
+                    : ThemeService.Brush(ThemeService.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(8, 5),
+                Child = infoStack,
+            }
+        );
 
         // 2. Question Archetypes + Active Recall Toggles in one unified row
         var stylesWrap = new WrapPanel { Orientation = Orientation.Horizontal };

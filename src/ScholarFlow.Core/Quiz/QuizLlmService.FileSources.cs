@@ -13,33 +13,90 @@ public sealed partial class QuizLlmService
 {
     private const int MaxVisionImages = 8;
 
-    public static ContentModalityProfile DetectFileSourceModalities(QuizGenerationRequest request)
+    public static ContentModalityProfile DetectFileSourceModalities(
+        QuizGenerationRequest request,
+        string? preloadedTextContent = null
+    )
     {
-        if (request.ModalityMode == QuizContentModalityMode.StandardProseOnly)
-            return new ContentModalityProfile(HasCode: false, HasMath: false, HasDiagrams: false);
-
         string? codeLang = null;
-        bool hasCode = request.ModalityMode == QuizContentModalityMode.IncludeCodeSnippets;
+        bool hasCodeFile = false;
+        bool hasTexFile = false;
         bool hasImages = false;
+        var fileNameAccumulator = new StringBuilder();
+        var textSampleAccumulator = new StringBuilder();
+
+        if (!string.IsNullOrWhiteSpace(preloadedTextContent))
+        {
+            textSampleAccumulator.AppendLine(preloadedTextContent);
+        }
+
         foreach (var path in request.SourceFilePaths)
         {
+            var fileName = Path.GetFileName(path);
+            fileNameAccumulator.Append(fileName).Append(' ');
+            var ext = Path.GetExtension(path);
+            if (
+                ext.Equals(".tex", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".sty", StringComparison.OrdinalIgnoreCase)
+                || ext.Equals(".bib", StringComparison.OrdinalIgnoreCase)
+            )
+            {
+                hasTexFile = true;
+            }
+
             var (kind, lang) = StudySourceClassifier.Classify(path);
             if (kind == StudySourceKind.Code)
             {
-                hasCode = true;
+                hasCodeFile = true;
                 codeLang ??= lang;
             }
             else if (kind == StudySourceKind.Image)
             {
                 hasImages = true;
             }
+
+            // Sample up to 16 KB of text from readable non-image files when preloadedTextContent wasn't passed
+            if (
+                preloadedTextContent is null
+                && kind != StudySourceKind.Image
+                && textSampleAccumulator.Length < 48_000
+                && File.Exists(path)
+            )
+            {
+                try
+                {
+                    using var sr = new StreamReader(path);
+                    char[] buf = new char[8192];
+                    int read = sr.Read(buf, 0, buf.Length);
+                    if (read > 0)
+                        textSampleAccumulator.Append(buf, 0, read).AppendLine();
+                }
+                catch
+                {
+                    // Ignore unreadable file during lightweight modality probe
+                }
+            }
         }
 
-        return new ContentModalityProfile(
-            hasCode,
-            request.ModalityMode == QuizContentModalityMode.IncludeMathLatex,
-            hasImages || request.ModalityMode == QuizContentModalityMode.IncludeDiagrams,
-            codeLang
+        var (detCodeFromText, detMathFromText, detDiagFromText, detLangFromText) =
+            AnalyzeTextSignals(
+                textSampleAccumulator.ToString(),
+                request.CourseTitle,
+                fileNameAccumulator.ToString()
+            );
+
+        bool detectedCode = hasCodeFile || detCodeFromText;
+        bool detectedMath = hasTexFile || detMathFromText;
+        bool detectedDiagrams = detDiagFromText || hasImages;
+
+        return BuildResolvedModalityProfile(
+            detectedCode: detectedCode,
+            detectedMath: detectedMath,
+            detectedDiagrams: detectedDiagrams,
+            detectedLanguage: codeLang ?? detLangFromText,
+            hasImageSources: hasImages,
+            mode: request.ModalityMode,
+            selectedFlags: request.SelectedModalityFlags
         );
     }
 
@@ -92,9 +149,9 @@ public sealed partial class QuizLlmService
             request.BasinRoot,
             request.CourseFolder
         );
-        var modality = MergeModalities(request, pdfPages);
+        var modality = MergeModalities(request, pdfPages, bundle.Content);
         int count = Math.Clamp(request.QuestionCount, 1, 150);
-        return BuildSystemInstructions(request, weakTopics, modality)
+        return BuildSystemInstructions(request, weakTopics, modality, count)
             + "\n\n"
             + BuildFileUserPrompt(
                 request,
@@ -108,19 +165,31 @@ public sealed partial class QuizLlmService
 
     private static ContentModalityProfile MergeModalities(
         QuizGenerationRequest request,
-        IReadOnlyList<GroundedPdfPage> pdfPages
+        IReadOnlyList<GroundedPdfPage> pdfPages,
+        string? preloadedFileText = null
     )
     {
-        var fileMod = DetectFileSourceModalities(request);
+        var fileMod = DetectFileSourceModalities(request, preloadedFileText);
         if (pdfPages.Count == 0)
             return fileMod;
 
-        var pdfMod = DetectContentModalities(pdfPages, request.CourseTitle, request.ModalityMode);
+        var pdfMod = DetectContentModalities(
+            pdfPages,
+            request.CourseTitle,
+            request.ModalityMode,
+            request.SelectedModalityFlags
+        );
         return new ContentModalityProfile(
             HasCode: fileMod.HasCode || pdfMod.HasCode,
             HasMath: fileMod.HasMath || pdfMod.HasMath,
             HasDiagrams: fileMod.HasDiagrams || pdfMod.HasDiagrams,
-            DetectedLanguage: fileMod.DetectedLanguage ?? pdfMod.DetectedLanguage
+            DetectedLanguage: fileMod.DetectedLanguage ?? pdfMod.DetectedLanguage,
+            DetectedCodeInSource: fileMod.DetectedCodeInSource || pdfMod.DetectedCodeInSource,
+            DetectedMathInSource: fileMod.DetectedMathInSource || pdfMod.DetectedMathInSource,
+            DetectedDiagramsInSource: fileMod.DetectedDiagramsInSource
+                || pdfMod.DetectedDiagramsInSource,
+            IsProseOnlyOverride: fileMod.IsProseOnlyOverride || pdfMod.IsProseOnlyOverride,
+            HasImageSources: fileMod.HasImageSources || pdfMod.HasImageSources
         );
     }
 
@@ -136,11 +205,26 @@ public sealed partial class QuizLlmService
             request.BasinRoot,
             request.CourseFolder
         );
-        var modality = DetectFileSourceModalities(request);
+        var modality = DetectFileSourceModalities(request, textBundle?.Content);
+        if (
+            !modality.IsProseOnlyOverride
+            && (pages.Count > 0 || pdfManifest is { Count: > 0 })
+            && request.ResolveModalitySelection().IsAutoDetect
+        )
+        {
+            // Uploaded image packets & scoped PDFs are inspected visually by the multimodal web model;
+            // allow mathLatex and diagrams whenever the visual material warrants them.
+            modality = modality with
+            {
+                HasMath = true,
+                HasDiagrams = true,
+                HasImageSources = pages.Count > 0 || modality.HasImageSources,
+            };
+        }
         int count = Math.Clamp(request.QuestionCount, 1, 150);
 
         var sb = new StringBuilder();
-        sb.AppendLine(BuildSystemInstructions(request, weakTopics, modality));
+        sb.AppendLine(BuildSystemInstructions(request, weakTopics, modality, count));
         sb.AppendLine();
 
         if (pdfManifest is { Count: > 0 })
@@ -188,7 +272,6 @@ public sealed partial class QuizLlmService
         return sb.ToString();
     }
 
-    // NOTE: What does content modality mean for the prompt? Should we include a note about code/math/diagrams?
     private static string BuildFileUserPrompt(
         QuizGenerationRequest req,
         FileSourcePromptBundle bundle,
@@ -203,6 +286,8 @@ public sealed partial class QuizLlmService
             ", ",
             exactCounts.Where(kv => kv.Value > 0).Select(kv => $"{kv.Value} {kv.Key}")
         );
+
+        var modalitySummary = BuildModalityUserSummary(modality);
 
         var excludeBlock =
             req.ExcludePromptsOrTopics.Count > 0
@@ -245,7 +330,7 @@ public sealed partial class QuizLlmService
                 count,
                 1,
                 150
-            )} total): {breakdown}{imageNote}{truncNote}{excludeBlock}{BuildGuardedCustomInstructionsBlock(
+            )} total): {breakdown}{modalitySummary}{imageNote}{truncNote}{excludeBlock}{BuildGuardedCustomInstructionsBlock(
                 req.CustomInstructions
             )}
             Generate high-quality, evidence-grounded questions strictly matching the required question breakdown from the following sources:
@@ -334,8 +419,8 @@ public sealed partial class QuizLlmService
             request.BasinRoot,
             request.CourseFolder
         );
-        var modality = MergeModalities(request, pdfPages);
-        var sysPrompt = BuildSystemInstructions(request, weakTopics, modality);
+        var modality = MergeModalities(request, pdfPages, bundle.Content);
+        var sysPrompt = BuildSystemInstructions(request, weakTopics, modality, desiredCount);
         var usrPrompt = BuildFileUserPrompt(
             request,
             bundle,

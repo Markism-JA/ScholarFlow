@@ -711,6 +711,7 @@ public sealed partial class QuizStudioViewModel
         if (PreviewScopeIndex >= MatchedScopePages.Count)
             PreviewScopeIndex = 0;
 
+        TriggerPdfScopeSignalProbe();
         RefreshLivePromptPreviewIfActive();
     }
 }

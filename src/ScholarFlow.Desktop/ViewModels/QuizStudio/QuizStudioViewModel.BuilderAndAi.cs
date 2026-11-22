@@ -108,12 +108,308 @@ public sealed partial class QuizStudioViewModel
 
     public void SetModalityMode(QuizContentModalityMode mode)
     {
-        if (ModalityMode == mode)
-            return;
+        if (
+            mode
+            is QuizContentModalityMode.AutoDetect
+                or QuizContentModalityMode.StandardProseOnly
+        )
+        {
+            if (ModalityMode == mode && SelectedModalityFlags == QuizContentModalityFlags.None)
+                return;
 
-        ModalityMode = mode;
+            ModalityMode = mode;
+            SelectedModalityFlags = QuizContentModalityFlags.None;
+            RefreshLivePromptPreviewIfActive();
+            _mainVm.RequestUiRefresh();
+            return;
+        }
+
+        // Legacy single-enum calls map cleanly to toggling the multi-select flag
+        var flag = mode switch
+        {
+            QuizContentModalityMode.IncludeCodeSnippets => QuizContentModalityFlags.Code,
+            QuizContentModalityMode.IncludeMathLatex => QuizContentModalityFlags.MathLatex,
+            QuizContentModalityMode.IncludeDiagrams => QuizContentModalityFlags.Diagrams,
+            _ => QuizContentModalityFlags.None,
+        };
+        if (flag != QuizContentModalityFlags.None)
+            ToggleModalityFlag(flag);
+    }
+
+    public void ToggleModalityFlag(QuizContentModalityFlags flag)
+    {
+        if (SelectedModalityFlags.HasFlag(flag))
+            SelectedModalityFlags &= ~flag;
+        else
+            SelectedModalityFlags |= flag;
+
+        // If any specialized modality flag is toggled on, leave ProseOnly; if all untoggled, return to AutoDetect
+        ModalityMode = QuizContentModalityMode.AutoDetect;
         RefreshLivePromptPreviewIfActive();
         _mainVm.RequestUiRefresh();
+    }
+
+    private readonly Dictionary<
+        string,
+        (bool Code, bool Math, bool Diagrams, string? Lang)
+    > _pdfScopeSignalCache = new(StringComparer.OrdinalIgnoreCase);
+
+    private string BuildCurrentPdfScopeSignalKey(out List<int> samplePages)
+    {
+        samplePages = [];
+        if (string.IsNullOrWhiteSpace(SelectedPdfPath) || !File.Exists(SelectedPdfPath))
+            return string.Empty;
+
+        if (MatchedScopePages.Count > 0)
+        {
+            int count = MatchedScopePages.Count;
+            int[] indices =
+                count <= 4
+                    ? [.. Enumerable.Range(0, count)]
+                    : [0, count / 3, (2 * count) / 3, count - 1];
+            foreach (var idx in indices.Distinct())
+                samplePages.Add(MatchedScopePages[idx].PageNumber);
+        }
+        else if (PdfTotalPages > 0)
+        {
+            samplePages.Add(1);
+            if (PdfTotalPages >= 2)
+                samplePages.Add(Math.Min(PdfTotalPages, 2));
+        }
+
+        return $"{SelectedPdfPath}::{string.Join(",", samplePages)}";
+    }
+
+    internal void TriggerPdfScopeSignalProbe()
+    {
+        var key = BuildCurrentPdfScopeSignalKey(out var samplePages);
+        if (
+            string.IsNullOrEmpty(key)
+            || samplePages.Count == 0
+            || _pdfScopeSignalCache.ContainsKey(key)
+        )
+            return;
+
+        var pdfPath = SelectedPdfPath!;
+        var courseTitle = SelectedCourse?.Title;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var ranges = samplePages.Select(p => new PdfPageRange(p, p)).ToList();
+                var pages = PdfQuizGrounder.ExtractGroundedPages(
+                    pdfPath,
+                    null,
+                    null,
+                    null,
+                    null,
+                    ranges,
+                    maxPages: 4
+                );
+                var combined = string.Join("\n", pages.Select(p => p.Text));
+                var sections = string.Join(" | ", pages.Select(p => p.SectionBreadcrumb));
+                var sig = QuizLlmService.AnalyzeTextSignals(combined, courseTitle, sections);
+                lock (_pdfScopeSignalCache)
+                {
+                    _pdfScopeSignalCache[key] = (
+                        sig.DetectedCode,
+                        sig.DetectedMath,
+                        sig.DetectedDiagrams,
+                        sig.DetectedLanguage
+                    );
+                }
+                Avalonia.Threading.Dispatcher.UIThread.Post(_mainVm.RequestUiRefresh);
+            }
+            catch
+            {
+                // Non-fatal background signal probe
+            }
+        });
+    }
+
+    /// <summary>
+    /// Computes live detected modalities for the current PDF/File scope plus human-readable
+    /// compatibility &amp; anti-overfitting advisories when selected builder options conflict.
+    /// </summary>
+    public (
+        ContentModalityProfile Profile,
+        string StatusSummary,
+        IReadOnlyList<string> Advisories
+    ) GetScopeCompatibilityAnalysis()
+    {
+        var courseTitle = SelectedCourse?.Title ?? string.Empty;
+        var sectionSummary = string.Join(
+            " | ",
+            MatchedScopePages.Take(20).Select(p => p.SectionTitle).Distinct()
+        );
+        var (titleCode, titleMath, titleDiag, titleLang) = QuizLlmService.AnalyzeTextSignals(
+            string.Empty,
+            courseTitle,
+            sectionSummary
+        );
+
+        bool pdfCode = titleCode;
+        bool pdfMath = titleMath;
+        bool pdfDiag = titleDiag;
+        string? pdfLang = titleLang;
+
+        if (!IsFileSourceMode || IsMixedSourceMode)
+        {
+            var key = BuildCurrentPdfScopeSignalKey(out _);
+            if (!string.IsNullOrEmpty(key))
+            {
+                lock (_pdfScopeSignalCache)
+                {
+                    if (_pdfScopeSignalCache.TryGetValue(key, out var cachedSig))
+                    {
+                        pdfCode |= cachedSig.Code;
+                        pdfMath |= cachedSig.Math;
+                        pdfDiag |= cachedSig.Diagrams;
+                        pdfLang ??= cachedSig.Lang;
+                    }
+                    else
+                    {
+                        TriggerPdfScopeSignalProbe();
+                    }
+                }
+            }
+        }
+
+        ContentModalityProfile profile;
+        if (IsFileSourceMode)
+        {
+            var req = BuildCurrentRequest();
+            var fileProfile = QuizLlmService.DetectFileSourceModalities(req);
+            if (IsMixedSourceMode)
+            {
+                var pdfProfile = QuizLlmService.BuildResolvedModalityProfile(
+                    pdfCode,
+                    pdfMath,
+                    pdfDiag,
+                    pdfLang,
+                    hasImageSources: false,
+                    ModalityMode,
+                    SelectedModalityFlags
+                );
+                profile = new ContentModalityProfile(
+                    HasCode: fileProfile.HasCode || pdfProfile.HasCode,
+                    HasMath: fileProfile.HasMath || pdfProfile.HasMath,
+                    HasDiagrams: fileProfile.HasDiagrams || pdfProfile.HasDiagrams,
+                    DetectedLanguage: fileProfile.DetectedLanguage ?? pdfProfile.DetectedLanguage,
+                    DetectedCodeInSource: fileProfile.DetectedCodeInSource
+                        || pdfProfile.DetectedCodeInSource,
+                    DetectedMathInSource: fileProfile.DetectedMathInSource
+                        || pdfProfile.DetectedMathInSource,
+                    DetectedDiagramsInSource: fileProfile.DetectedDiagramsInSource
+                        || pdfProfile.DetectedDiagramsInSource,
+                    IsProseOnlyOverride: fileProfile.IsProseOnlyOverride
+                        || pdfProfile.IsProseOnlyOverride,
+                    HasImageSources: fileProfile.HasImageSources
+                );
+            }
+            else
+            {
+                profile = fileProfile;
+            }
+        }
+        else
+        {
+            profile = QuizLlmService.BuildResolvedModalityProfile(
+                pdfCode,
+                pdfMath,
+                pdfDiag,
+                pdfLang,
+                hasImageSources: false,
+                ModalityMode,
+                SelectedModalityFlags
+            );
+        }
+
+        var detectedLabels = new List<string>();
+        if (profile.DetectedCodeInSource)
+            detectedLabels.Add(
+                string.IsNullOrWhiteSpace(profile.DetectedLanguage)
+                    ? "Code"
+                    : $"Code ({profile.DetectedLanguage})"
+            );
+        if (profile.DetectedMathInSource)
+            detectedLabels.Add("Math / LaTeX");
+        if (profile.DetectedDiagramsInSource || profile.HasImageSources)
+            detectedLabels.Add(profile.HasImageSources ? "Visual / Diagrams" : "Diagrams");
+
+        string detectedText =
+            detectedLabels.Count > 0
+                ? string.Join(" · ", detectedLabels)
+                : "Standard Conceptual Prose";
+
+        string statusSummary =
+            ModalityMode == QuizContentModalityMode.StandardProseOnly
+                ? $"Prose-Only override active (Scope signals: {detectedText})"
+            : SelectedModalityFlags == QuizContentModalityFlags.None
+                ? $"Auto-Detect active · Scope signals: {detectedText}"
+            : $"Multi-select active · Scope signals: {detectedText}";
+
+        var advisories = new List<string>();
+
+        if (ModalityMode == QuizContentModalityMode.StandardProseOnly)
+        {
+            if (profile.DetectedCodeInSource || profile.DetectedMathInSource)
+            {
+                advisories.Add(
+                    $"Scope contains {detectedText}, but Prose Only is selected — code snippets, LaTeX formulas, and diagrams will be suppressed."
+                );
+            }
+        }
+        else
+        {
+            if (
+                SelectedModalityFlags.HasFlag(QuizContentModalityFlags.MathLatex)
+                && !profile.DetectedMathInSource
+                && !profile.HasImageSources
+            )
+            {
+                advisories.Add(
+                    "Math LaTeX is selected, but no strong math/formula signals were detected in this scope — anti-overfitting protection will keep conceptual prose questions free of forced formulas."
+                );
+            }
+
+            if (
+                SelectedModalityFlags.HasFlag(QuizContentModalityFlags.Code)
+                && !profile.DetectedCodeInSource
+            )
+            {
+                advisories.Add(
+                    "Code Snippets is selected, but no programming code was detected in this scope — anti-overfitting protection will prevent invented code blocks on prose topics."
+                );
+            }
+
+            if (
+                SelectedPreset == QuizPresetMode.CodeLab
+                && !profile.DetectedCodeInSource
+                && !SelectedModalityFlags.HasFlag(QuizContentModalityFlags.Code)
+            )
+            {
+                advisories.Add(
+                    "Code Lab preset is active on a scope without detected code — select a code handout/file or switch to Exam Simulator for conceptual material."
+                );
+            }
+        }
+
+        if (profile.HasMath)
+        {
+            var resolvedKinds = GetResolvedExactKindCounts();
+            int mcqAndSit =
+                resolvedKinds.GetValueOrDefault(QuizQuestionKind.MultipleChoice, 0)
+                + resolvedKinds.GetValueOrDefault(QuizQuestionKind.Situational, 0);
+            if (mcqAndSit == 0)
+            {
+                advisories.Add(
+                    "Math LaTeX is active while Multiple Choice and Situational are both 0 — equations will display on cards, and free-text answers will be restricted to plain numbers or canonical terms."
+                );
+            }
+        }
+
+        return (profile, statusSummary, advisories);
     }
 
     public void SetBuilderOutputMode(QuizBuilderOutputMode mode)
@@ -282,6 +578,11 @@ public sealed partial class QuizStudioViewModel
 
             if (preset == QuizPresetMode.WeakTopicDrill)
                 FocusWeakSpots = true;
+            if (
+                preset == QuizPresetMode.CodeLab
+                && ModalityMode == QuizContentModalityMode.StandardProseOnly
+            )
+                ModalityMode = QuizContentModalityMode.AutoDetect;
         }
         RefreshLivePromptPreviewIfActive();
         _mainVm.RequestUiRefresh();
@@ -788,6 +1089,8 @@ public sealed partial class QuizStudioViewModel
             AllocationMode = AllocationMode,
             KindAllocations = new Dictionary<QuizQuestionKind, int>(KindAllocations),
             ModalityMode = ModalityMode,
+            SelectedModalityFlags = SelectedModalityFlags,
+            AvailableTerms = [.. _mainVm.ActiveTerms],
             CognitiveMix = CognitiveMix,
             CognitiveAllocations = new Dictionary<CognitiveLevel, int>(CognitiveAllocations),
             SelectedArchetypes = [.. SelectedArchetypes],

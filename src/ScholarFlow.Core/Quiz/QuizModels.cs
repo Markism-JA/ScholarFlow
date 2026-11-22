@@ -70,11 +70,25 @@ public enum QuizContentModalityMode
     IncludeDiagrams,
 }
 
+[Flags]
+public enum QuizContentModalityFlags
+{
+    None = 0,
+    Code = 1 << 0,
+    MathLatex = 1 << 1,
+    Diagrams = 1 << 2,
+}
+
 public sealed record ContentModalityProfile(
     bool HasCode,
     bool HasMath,
     bool HasDiagrams,
-    string? DetectedLanguage = null
+    string? DetectedLanguage = null,
+    bool DetectedCodeInSource = false,
+    bool DetectedMathInSource = false,
+    bool DetectedDiagramsInSource = false,
+    bool IsProseOnlyOverride = false,
+    bool HasImageSources = false
 );
 
 /// <summary>
@@ -691,6 +705,42 @@ public sealed class QuizGenerationRequest
     public Dictionary<QuizQuestionKind, int> KindAllocations { get; set; } =
         GetDefaultAllocationsForPreset(QuizPresetMode.ExamSimulator);
     public QuizContentModalityMode ModalityMode { get; set; } = QuizContentModalityMode.AutoDetect;
+
+    /// <summary>
+    /// Multi-select modality flags (Code, MathLatex, Diagrams). When non-empty (and ModalityMode is not StandardProseOnly),
+    /// enables all selected modalities simultaneously while guarding against overfitting on prose sections.
+    /// </summary>
+    public QuizContentModalityFlags SelectedModalityFlags { get; set; } =
+        QuizContentModalityFlags.None;
+
+    /// <summary>
+    /// Optional configured academic terms for the active basin (empty on Local-Only basins without terms).
+    /// </summary>
+    public List<string> AvailableTerms { get; set; } = [];
+
+    public (
+        bool IsProseOnly,
+        bool IsAutoDetect,
+        QuizContentModalityFlags ExplicitFlags
+    ) ResolveModalitySelection()
+    {
+        if (ModalityMode == QuizContentModalityMode.StandardProseOnly)
+            return (true, false, QuizContentModalityFlags.None);
+
+        var flags = SelectedModalityFlags;
+        flags |= ModalityMode switch
+        {
+            QuizContentModalityMode.IncludeCodeSnippets => QuizContentModalityFlags.Code,
+            QuizContentModalityMode.IncludeMathLatex => QuizContentModalityFlags.MathLatex,
+            QuizContentModalityMode.IncludeDiagrams => QuizContentModalityFlags.Diagrams,
+            _ => QuizContentModalityFlags.None,
+        };
+
+        return flags == QuizContentModalityFlags.None
+            ? (false, true, QuizContentModalityFlags.None)
+            : (false, false, flags);
+    }
+
     public CognitiveMixPreset CognitiveMix { get; set; } = CognitiveMixPreset.Balanced;
 
     /// <summary>

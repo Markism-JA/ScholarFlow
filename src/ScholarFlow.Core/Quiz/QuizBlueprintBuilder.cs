@@ -180,11 +180,26 @@ public static class QuizBlueprintBuilder
             );
         }
 
-        // 6. Progressive Hints
+        // 6. Progressive Hints (strictly closed-book human thinking scaffolds, never section/figure citations)
         if (req.IncludeProgressiveHints)
         {
             sb.AppendLine(
-                "- PROGRESSIVE HINTS: Populate \"hint\" with a brief 1-sentence cognitive nudge (a guiding clue, invariant, or boundary condition) that helps recall WITHOUT revealing or containing the answer itself."
+                "- PROGRESSIVE HINTS: Populate \"hint\" with a self-contained 1-sentence thinking scaffold that helps a human reason toward the answer in a closed-book quiz WITHOUT revealing or containing the answer word:"
+            );
+            sb.AppendLine(
+                "  * For Conceptual / Situational items: provide a discriminating contrast cue, cause-and-effect mechanism, or elimination principle."
+            );
+            sb.AppendLine(
+                "  * For Math / Quantitative items: name the applicable theorem/identity, the starting algebraic/calculus step, or a limiting/boundary case to test."
+            );
+            sb.AppendLine(
+                "  * For Code items: point to the specific variable state transition, loop boundary, or invariant to trace."
+            );
+            sb.AppendLine(
+                "  * For Ordering items: state the prerequisite dependency that anchors which phase must come first."
+            );
+            sb.AppendLine(
+                "  * STRICTLY FORBIDDEN IN HINTS: NEVER cite or point to document locations such as \"See Section X\", \"Check Figure Y\", \"Refer to Page/Table/Slide/Handout/Chapter\", or \"According to the notes\"—those are useless to a student taking a closed-book assessment."
             );
         }
         else

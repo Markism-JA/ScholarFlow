@@ -53,6 +53,16 @@ public static class QuizQualityCritic
 
     private static readonly Regex BlankMarkerRegex = new(@"_{3,}", RegexOptions.Compiled);
 
+    private static readonly Regex LazyMetaHintRegex = new(
+        @"\b((see|check|refer\s+to|review|look\s+at|consult|recall\s+from|shown\s+in|illustrated\s+in|discussed\s+in)\s+(the\s+)?(section|sec\.?|fig\.?|figure|table|page|p\.|pp\.|slide|handout|chapter|ch\.?|diagram|chart|notes|textbook|reading|module)\b|(section|figure|fig\.|table|page|slide|handout|chapter)\s+\d+(\.\d+)?)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled
+    );
+
+    private static readonly Regex DanglingPromptSourceRefRegex = new(
+        @"\b((in|according\s+to|from|based\s+on|shown\s+in|illustrated\s+in|referring\s+to|as\s+seen\s+in)\s+(figure|fig\.?|table|section|sec\.?|page|slide|handout|chapter)\s+\d+(\.\d+)?[a-z]?)",
+        RegexOptions.IgnoreCase | RegexOptions.Compiled
+    );
+
     private static readonly Regex WordTokenRegex = new(@"[a-z0-9]+", RegexOptions.Compiled);
 #pragma warning restore SYSLIB1045
 
@@ -279,7 +289,31 @@ public static class QuizQualityCritic
             );
         }
 
-        // 3. Answer leakage in Hint (or in Prompt for FillInTheBlank)
+        // 3. Answer leakage or useless meta-reference in Hint or Prompt
+        if (!string.IsNullOrWhiteSpace(q.Prompt) && DanglingPromptSourceRefRegex.IsMatch(q.Prompt))
+        {
+            issues.Add(
+                new QuestionQualityIssue(
+                    q.Id,
+                    "DANGLING_SOURCE_REF",
+                    "Question prompt cites an opaque figure/table/section number (e.g. 'In Figure X') instead of naming the concept or embedding a diagram.",
+                    QualityIssueSeverity.Warning
+                )
+            );
+        }
+
+        if (!string.IsNullOrWhiteSpace(q.Hint) && LazyMetaHintRegex.IsMatch(q.Hint))
+        {
+            issues.Add(
+                new QuestionQualityIssue(
+                    q.Id,
+                    "LAZY_META_HINT",
+                    "Hint points to a section/figure/page instead of giving a self-contained closed-book thinking clue.",
+                    QualityIssueSeverity.Warning
+                )
+            );
+        }
+
         var cleanAns = (q.CorrectAnswer ?? string.Empty).Trim();
         if (cleanAns.Length >= 4)
         {

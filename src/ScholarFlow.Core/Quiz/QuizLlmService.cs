@@ -55,10 +55,11 @@ public sealed partial class QuizLlmService
         var modality = DetectContentModalities(
             extractedPages,
             request.CourseTitle,
-            request.ModalityMode
+            request.ModalityMode,
+            request.SelectedModalityFlags
         );
         int count = Math.Clamp(request.QuestionCount, 1, 150);
-        return BuildSystemInstructions(request, weakTopics, modality)
+        return BuildSystemInstructions(request, weakTopics, modality, count)
             + "\n\n"
             + BuildUserPrompt(request, groundedContent, count, modality: modality);
     }
@@ -72,11 +73,26 @@ public sealed partial class QuizLlmService
             request.BasinRoot,
             request.CourseFolder
         );
-        var modality = new ContentModalityProfile(HasCode: true, HasMath: true, HasDiagrams: true);
+        var sectionSummary = string.Join(" | ", pageManifest.Select(p => p.SectionBreadcrumb));
+        var (detCode, detMath, detDiag, detLang) = AnalyzeTextSignals(
+            string.Empty,
+            request.CourseTitle,
+            sectionSummary
+        );
+        var sel = request.ResolveModalitySelection();
+        var modality = BuildResolvedModalityProfile(
+            detectedCode: detCode || sel.IsAutoDetect,
+            detectedMath: detMath || sel.IsAutoDetect,
+            detectedDiagrams: detDiag || sel.IsAutoDetect,
+            detectedLanguage: detLang,
+            hasImageSources: false,
+            mode: request.ModalityMode,
+            selectedFlags: request.SelectedModalityFlags
+        );
         int count = Math.Clamp(request.QuestionCount, 1, 150);
 
         var sb = new StringBuilder();
-        sb.AppendLine(BuildSystemInstructions(request, weakTopics, modality));
+        sb.AppendLine(BuildSystemInstructions(request, weakTopics, modality, count));
         sb.AppendLine();
         sb.AppendLine("ATTACHED SCOPED PDF PAGE MAPPING:");
         sb.AppendLine(
@@ -178,9 +194,9 @@ public sealed partial class QuizLlmService
             var modality = DetectContentModalities(
                 pages,
                 request.CourseTitle,
-                request.ModalityMode
+                request.ModalityMode,
+                request.SelectedModalityFlags
             );
-            var sysPrompt = BuildSystemInstructions(request, weakTopics, modality);
 
             int batchCharBudget = isLocalEndpoint ? 28_000 : 72_000;
             var packedBatches = PdfQuizGrounder.PackPagesIntoBudgets(pages, batchCharBudget);
@@ -214,6 +230,12 @@ public sealed partial class QuizLlmService
                     (int)Math.Ceiling(remaining / (double)batchesLeft)
                 );
                 var batchPages = packedBatches[b];
+                var sysPrompt = BuildSystemInstructions(
+                    request,
+                    weakTopics,
+                    modality,
+                    thisBatchCount
+                );
                 var groundedContent = PdfQuizGrounder.FormatPagesForPrompt(
                     batchPages,
                     maxChars: int.MaxValue,

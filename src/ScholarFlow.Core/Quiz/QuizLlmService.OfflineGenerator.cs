@@ -43,10 +43,16 @@ public sealed partial class QuizLlmService
                 if (
                     term.Split(' ').Length > 5
                     || term.Contains("STI", StringComparison.OrdinalIgnoreCase)
-                    || term.StartsWith("This ", StringComparison.OrdinalIgnoreCase)
-                    || term.StartsWith("It ", StringComparison.OrdinalIgnoreCase)
-                    || term.StartsWith("The ", StringComparison.OrdinalIgnoreCase)
-                        && term.Split(' ').Length < 2
+                    || Regex.IsMatch(
+                        term,
+                        @"^(This|It|The|Figure|Fig\.?|Table|Section|Page|Chapter|Slide|Handout)\b",
+                        RegexOptions.IgnoreCase
+                    )
+                    || Regex.IsMatch(
+                        pred,
+                        @"\b(Figure|Fig\.|Table|Section|Page)\s+\d+",
+                        RegexOptions.IgnoreCase
+                    )
                 )
                 {
                     continue;
@@ -129,8 +135,8 @@ public sealed partial class QuizLlmService
 
                 var promptText =
                     requestedKind == QuizQuestionKind.Situational
-                        ? $"Scenario ({c.Page.SectionBreadcrumb}, Page {c.Page.PageNumber}): A team needs to apply the concept that \"{c.Predicate}\". Which concept should they use?"
-                        : $"According to {c.Page.SectionBreadcrumb} (Page {c.Page.PageNumber}), which concept best matches the following statement?\n\n\"...{c.Predicate}\"";
+                        ? $"Scenario: A team needs to apply the principle or mechanism that \"{c.Predicate}\". Which concept should they use?"
+                        : $"Which concept or term best matches the following definition?\n\n\"...{c.Predicate}\"";
 
                 questions.Add(
                     new GeneratedQuestionDto
@@ -173,8 +179,7 @@ public sealed partial class QuizLlmService
                         CognitiveLevel = nameof(CognitiveLevel.Recall),
                         Difficulty = 3,
                         TopicTag = topicTag,
-                        Prompt =
-                            $"Fill in the blank ({c.Page.SectionBreadcrumb}):\n\n\"{blanked}\"",
+                        Prompt = $"Fill in the missing concept:\n\n\"{blanked}\"",
                         Options = [],
                         CorrectAnswer = c.TermName,
                         Explanation =
@@ -198,7 +203,7 @@ public sealed partial class QuizLlmService
                         Difficulty = 3,
                         TopicTag = topicTag,
                         Prompt =
-                            $"Identify the term or concept defined in {c.Page.SectionBreadcrumb} (Page {c.Page.PageNumber}) as:\n\n\"{c.Predicate}\"",
+                            $"Identify the canonical term or concept defined as:\n\n\"{c.Predicate}\"",
                         Options = [],
                         CorrectAnswer = c.TermName,
                         Explanation =
@@ -254,8 +259,7 @@ public sealed partial class QuizLlmService
                         CognitiveLevel = nameof(CognitiveLevel.Application),
                         Difficulty = 2,
                         TopicTag = topicTag,
-                        Prompt =
-                            $"True or False: In the context of {c.Page.SectionBreadcrumb}, {c.FullSentence}",
+                        Prompt = $"True or False: {c.FullSentence}",
                         Options = ["True", "False"],
                         CorrectAnswer = "True",
                         Explanation =
