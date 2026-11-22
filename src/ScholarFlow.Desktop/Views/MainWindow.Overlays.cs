@@ -767,7 +767,7 @@ public sealed partial class MainWindow
                     ("/ or Ctrl+K", "Open Quick-Search & Navigation palette"),
                     ("Ctrl+Shift+F", "Open Knowledge Hub Search (#course @pdf @code @quiz @weak)"),
                     ("[ or Ctrl+B", "Toggle left navigation sidebar (or floating drawer on narrow windows)"),
-                    ("1 – 6", "Switch views (Inbox, Today, Upcoming, Calendar, Completed, Test & Recall)"),
+                    ("1 – 7", "Switch views (Inbox, Today, Upcoming, Calendar, Test & Recall, All Active, Completed)"),
                     ("T", "Toggle Dark / Light theme"),
                     ("Esc", "Close active modal, search bar, drawer, or full-screen studio"),
                 ]

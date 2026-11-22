@@ -244,7 +244,8 @@ public sealed partial class MainWindow
                 _vm.ActiveMode == WorkspaceTabMode.TaskList
                     && _vm.ActiveSmartView == SmartViewKind.Inbox,
                 () => _vm.SelectSmartView(SmartViewKind.Inbox),
-                compact
+                compact,
+                tooltipShortcut: "1"
             )
         );
 
@@ -256,7 +257,8 @@ public sealed partial class MainWindow
                 _vm.ActiveMode == WorkspaceTabMode.TaskList
                     && _vm.ActiveSmartView == SmartViewKind.Today,
                 () => _vm.SelectSmartView(SmartViewKind.Today),
-                compact
+                compact,
+                tooltipShortcut: "2"
             )
         );
 
@@ -268,7 +270,8 @@ public sealed partial class MainWindow
                 _vm.ActiveMode == WorkspaceTabMode.TaskList
                     && _vm.ActiveSmartView == SmartViewKind.Upcoming,
                 () => _vm.SelectSmartView(SmartViewKind.Upcoming),
-                compact
+                compact,
+                tooltipShortcut: "3"
             )
         );
 
@@ -279,7 +282,8 @@ public sealed partial class MainWindow
                 0,
                 _vm.ActiveMode == WorkspaceTabMode.Calendar,
                 _vm.SelectCalendarView,
-                compact
+                compact,
+                tooltipShortcut: "4"
             )
         );
 
@@ -294,7 +298,8 @@ public sealed partial class MainWindow
                 dueCardsOrQuizzes,
                 _vm.ActiveMode == WorkspaceTabMode.QuizStudio,
                 async () => await _vm.SelectQuizStudioViewAsync(),
-                compact
+                compact,
+                tooltipShortcut: "5"
             )
         );
 
@@ -306,7 +311,8 @@ public sealed partial class MainWindow
                 _vm.ActiveMode == WorkspaceTabMode.TaskList
                     && _vm.ActiveSmartView == SmartViewKind.All,
                 () => _vm.SelectSmartView(SmartViewKind.All),
-                compact
+                compact,
+                tooltipShortcut: "6"
             )
         );
 
@@ -318,7 +324,8 @@ public sealed partial class MainWindow
                 _vm.ActiveMode == WorkspaceTabMode.TaskList
                     && _vm.ActiveSmartView == SmartViewKind.Completed,
                 () => _vm.SelectSmartView(SmartViewKind.Completed),
-                compact
+                compact,
+                tooltipShortcut: "7"
             )
         );
 
@@ -832,7 +839,8 @@ public sealed partial class MainWindow
         Action onClick,
         bool compact = false,
         string? subtitleTag = null,
-        IBrush? customAccentFg = null
+        IBrush? customAccentFg = null,
+        string? tooltipShortcut = null
     )
     {
         var fg =
@@ -923,8 +931,11 @@ public sealed partial class MainWindow
         var tipParts = new List<string> { title };
         if (badgeCount > 0)
             tipParts.Add($"({badgeCount})");
-        if (!string.IsNullOrWhiteSpace(subtitleTag))
-            tipParts.Add($"[{subtitleTag}]");
+        var shortcutText = !string.IsNullOrWhiteSpace(subtitleTag)
+            ? subtitleTag
+            : tooltipShortcut;
+        if (!string.IsNullOrWhiteSpace(shortcutText))
+            tipParts.Add($"[{shortcutText}]");
         ToolTip.SetTip(btn, string.Join(" ", tipParts));
 
         btn.PointerEntered += (_, _) => btn.Background = hoverBg;

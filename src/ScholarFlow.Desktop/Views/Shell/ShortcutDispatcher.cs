@@ -533,12 +533,17 @@ public static class ShortcutDispatcher
 
             case Key.D5:
                 e.Handled = true;
-                vm.SelectSmartView(SmartViewKind.Completed);
+                await vm.SelectQuizStudioViewAsync();
                 break;
 
             case Key.D6:
                 e.Handled = true;
-                await vm.SelectQuizStudioViewAsync();
+                vm.SelectSmartView(SmartViewKind.All);
+                break;
+
+            case Key.D7:
+                e.Handled = true;
+                vm.SelectSmartView(SmartViewKind.Completed);
                 break;
         }
     }
