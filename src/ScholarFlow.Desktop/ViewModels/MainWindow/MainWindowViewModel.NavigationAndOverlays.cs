@@ -294,7 +294,7 @@ public sealed partial class MainWindowViewModel
         if (openInspector && task is not null)
         {
             IsInspectorOpen = true;
-            NotifyStateChanged(UiChangeKind.FullLayout);
+            NotifyStateChanged(UiChangeKind.InspectorOnly);
             return;
         }
         NotifyStateChanged(UiChangeKind.SelectionOnly);
@@ -310,7 +310,7 @@ public sealed partial class MainWindowViewModel
         if (SelectedTask is not null)
         {
             IsInspectorOpen = true;
-            NotifyStateChanged(UiChangeKind.FullLayout);
+            NotifyStateChanged(UiChangeKind.InspectorOnly);
         }
     }
 
@@ -320,7 +320,7 @@ public sealed partial class MainWindowViewModel
             return;
 
         IsInspectorOpen = false;
-        NotifyStateChanged(UiChangeKind.FullLayout);
+        NotifyStateChanged(UiChangeKind.InspectorOnly);
     }
 
     public void ToggleInspector()

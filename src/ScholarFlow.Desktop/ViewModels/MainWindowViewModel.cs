@@ -34,6 +34,7 @@ public enum UiChangeKind
     FullLayout,
     CenterBodyOnly,
     SidebarOnly,
+    InspectorOnly,
     SelectionOnly,
     QuickAddOnly,
     SearchOrTaskList,
