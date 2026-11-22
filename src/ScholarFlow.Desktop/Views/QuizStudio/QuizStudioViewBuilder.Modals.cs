@@ -266,9 +266,7 @@ public static partial class QuizStudioViewBuilder
                 if (
                     studio.IsFileSourceMode
                     && !studio.IsMixedSourceMode
-                    && !studio.SelectedFileSourcePaths.Any(
-                        ScholarFlow.Core.Knowledge.ImagePacketPacker.IsImage
-                    )
+                    && !studio.SelectedFileSourcePaths.Any(Core.Knowledge.ImagePacketPacker.IsImage)
                 )
                 {
                     await studio.ExportScopedPdfForUploadAsync(top?.Clipboard);
@@ -278,7 +276,7 @@ public static partial class QuizStudioViewBuilder
                 string? chosenPath = null;
                 if (top?.StorageProvider is not null)
                 {
-                    var courseTag = ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(
+                    var courseTag = Core.Services.FilenameSanitizer.SanitizeFileName(
                         studio.SelectedCourse?.Alias ?? "ScholarFlow",
                         ""
                     );

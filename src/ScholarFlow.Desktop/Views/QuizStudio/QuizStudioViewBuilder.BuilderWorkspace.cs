@@ -764,8 +764,10 @@ public static partial class QuizStudioViewBuilder
         );
         if (!string.IsNullOrWhiteSpace(studio.CustomPromptInstructions))
         {
-            var clearDirBtn = UiBuilder.GhostButton("Clear", MaterialIconKind.Close, () =>
-                studio.SetCustomPromptInstructions(string.Empty, notify: true)
+            var clearDirBtn = UiBuilder.GhostButton(
+                "Clear",
+                MaterialIconKind.Close,
+                () => studio.SetCustomPromptInstructions(string.Empty, notify: true)
             );
             Grid.SetColumn(clearDirBtn, 1);
             customPromptHeader.Children.Add(clearDirBtn);
@@ -844,7 +846,7 @@ public static partial class QuizStudioViewBuilder
         else
         {
             bool isOfflineMode = studio.BuilderOutputMode == QuizBuilderOutputMode.OfflineSmart;
-            var aiStatus = studio.GetActiveAiEngineStatus();
+            var (DisplayLabel, IsConfigured, MissingReason) = studio.GetActiveAiEngineStatus();
 
             if (!isOfflineMode)
             {
@@ -854,16 +856,16 @@ public static partial class QuizStudioViewBuilder
                     ColumnSpacing = 8,
                 };
 
-                var fullStatusText = aiStatus.IsConfigured
-                    ? $"Active AI Engine: {aiStatus.DisplayLabel}"
-                    : $"Setup Required ({aiStatus.DisplayLabel}): {aiStatus.MissingReason}";
+                var fullStatusText = IsConfigured
+                    ? $"Active AI Engine: {DisplayLabel}"
+                    : $"Setup Required ({DisplayLabel}): {MissingReason}";
 
                 var statusIcon = UiBuilder.Icon(
-                    aiStatus.IsConfigured
+                    IsConfigured
                         ? MaterialIconKind.RobotOutline
                         : MaterialIconKind.AlertCircleOutline,
                     15,
-                    aiStatus.IsConfigured
+                    IsConfigured
                         ? ThemeService.Brush(ThemeService.AccentPrimary)
                         : ThemeService.Brush(ThemeService.PriorityP2Fg)
                 );
@@ -874,8 +876,8 @@ public static partial class QuizStudioViewBuilder
                 {
                     Text = fullStatusText,
                     FontSize = 12,
-                    FontWeight = aiStatus.IsConfigured ? FontWeight.Medium : FontWeight.SemiBold,
-                    Foreground = aiStatus.IsConfigured
+                    FontWeight = IsConfigured ? FontWeight.Medium : FontWeight.SemiBold,
+                    Foreground = IsConfigured
                         ? ThemeService.Brush(ThemeService.TextSecondary)
                         : ThemeService.Brush(ThemeService.PriorityP2Fg),
                     VerticalAlignment = VerticalAlignment.Center,
@@ -888,10 +890,10 @@ public static partial class QuizStudioViewBuilder
                 statusGrid.Children.Add(statusText);
 
                 var cfgBtn = UiBuilder.GhostButton(
-                    aiStatus.IsConfigured ? "Change" : "Configure",
+                    IsConfigured ? "Change" : "Configure",
                     MaterialIconKind.CogOutline,
                     studio.ToggleAiSettings,
-                    isActive: !aiStatus.IsConfigured
+                    isActive: !IsConfigured
                 );
                 cfgBtn.VerticalAlignment = VerticalAlignment.Center;
                 Grid.SetColumn(cfgBtn, 2);
@@ -900,10 +902,10 @@ public static partial class QuizStudioViewBuilder
                 configCard.Children.Add(
                     new Border
                     {
-                        Background = aiStatus.IsConfigured
+                        Background = IsConfigured
                             ? ThemeService.Brush(ThemeService.BgBase)
                             : ThemeService.Brush(ThemeService.PriorityP2Bg),
-                        BorderBrush = aiStatus.IsConfigured
+                        BorderBrush = IsConfigured
                             ? ThemeService.Brush(ThemeService.BorderSubtle)
                             : ThemeService.Brush(ThemeService.PriorityP2Fg),
                         BorderThickness = new Thickness(1),
@@ -919,14 +921,14 @@ public static partial class QuizStudioViewBuilder
                 Orientation = Orientation.Horizontal,
                 Margin = new Thickness(0, 2, 0, 0),
             };
-            bool canSubmit = isOfflineMode || aiStatus.IsConfigured;
+            bool canSubmit = isOfflineMode || IsConfigured;
             var genPrimaryBtn = UiBuilder.PrimaryButton(
                 studio.IsGenerating ? "Generating Grounded Assessment..."
                     : isOfflineMode ? $"Generate {studio.QuestionCount}-Item Offline PDF Quiz"
-                    : !aiStatus.IsConfigured ? "Configure AI Engine to Generate"
+                    : !IsConfigured ? "Configure AI Engine to Generate"
                     : $"Generate {studio.QuestionCount}-Item Grounded Exam",
                 isOfflineMode ? MaterialIconKind.LightningBoltOutline
-                    : !aiStatus.IsConfigured ? MaterialIconKind.CogOutline
+                    : !IsConfigured ? MaterialIconKind.CogOutline
                     : MaterialIconKind.AutoFix,
                 async () => await studio.GenerateQuizNowAsync(forceOffline: isOfflineMode)
             );

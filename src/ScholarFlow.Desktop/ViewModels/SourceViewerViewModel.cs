@@ -11,9 +11,9 @@ public sealed record SourceViewerLineItem(int LineNumber, string Text, bool IsHi
 /// Plain Text (with virtualized syntax-highlighted lines &amp; line-range evidence highlighting),
 /// and Images (with zoom/fit controls).
 /// </summary>
-public sealed class SourceViewerViewModel : IDisposable
+public sealed class SourceViewerViewModel(Action onChanged) : IDisposable
 {
-    private readonly Action _onChanged;
+    private readonly Action _onChanged = onChanged;
 
     public string CurrentFilePath { get; private set; } = string.Empty;
     public string FileName =>
@@ -43,11 +43,6 @@ public sealed class SourceViewerViewModel : IDisposable
     public bool ShowImageHighlights { get; private set; } = true;
 
     private int _loadGeneration;
-
-    public SourceViewerViewModel(Action onChanged)
-    {
-        _onChanged = onChanged;
-    }
 
     public async Task LoadFileAsync(
         string filePath,

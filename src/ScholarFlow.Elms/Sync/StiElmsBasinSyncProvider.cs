@@ -12,7 +12,7 @@ namespace ScholarFlow.Elms.Sync;
 /// <summary>
 /// Pluggable <see cref="IBasinSyncProvider"/> implementation for STI eLMS (CYPHER).
 /// Owns account-scoped <see cref="StiElmsClient"/> instances, session persistence, browser launch,
-/// and sync execution cleanly isolated behind <see cref="ScholarFlow.Core"/> contracts.
+/// and sync execution cleanly isolated behind <see cref="Core"/> contracts.
 /// </summary>
 public sealed class StiElmsBasinSyncProvider : IBasinSyncProvider, IAsyncDisposable
 {
@@ -75,9 +75,10 @@ public sealed class StiElmsBasinSyncProvider : IBasinSyncProvider, IAsyncDisposa
     private StiElmsClient GetOrCreateClient(BasinConfig config)
     {
         var key = GetConcurrencyKey(config);
-        return _clientsByKey.GetOrAdd(key, _ => new StiElmsClient(
-            logger: _loggerFactory?.CreateLogger<StiElmsClient>()
-        ));
+        return _clientsByKey.GetOrAdd(
+            key,
+            _ => new StiElmsClient(logger: _loggerFactory?.CreateLogger<StiElmsClient>())
+        );
     }
 
     public async Task<ProviderAuthStatus> AuthenticateAsync(
@@ -137,8 +138,9 @@ public sealed class StiElmsBasinSyncProvider : IBasinSyncProvider, IAsyncDisposa
             ct
         );
         var courses = await client.GetEnrolledCoursesAsync(ct: ct);
-        return courses
-            .Select(c => new DiscoveredCourse(
+        return
+        [
+            .. courses.Select(c => new DiscoveredCourse(
                 c.CourseId,
                 c.Title,
                 c.SanitizedFolderName,
@@ -147,8 +149,8 @@ public sealed class StiElmsBasinSyncProvider : IBasinSyncProvider, IAsyncDisposa
                 c.TermSuffix,
                 c.CourseUrl,
                 CourseOrigin.Synced
-            ))
-            .ToList();
+            )),
+        ];
     }
 
     public Task<IReadOnlyList<AppNotification>> FastPollAsync(

@@ -6,7 +6,6 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Material.Icons;
-using ScholarFlow.Core.Knowledge;
 using ScholarFlow.Core.Models;
 using ScholarFlow.Core.Tasks;
 using ScholarFlow.Desktop.Theme;
@@ -282,8 +281,10 @@ public sealed partial class MainWindow
                         TextTrimming = TextTrimming.CharacterEllipsis,
                     }
                 );
-                var trackBtn = UiBuilder.GhostButton("Track", MaterialIconKind.Plus, async () =>
-                    await vm.RegisterOngoingFileAsync(file)
+                var trackBtn = UiBuilder.GhostButton(
+                    "Track",
+                    MaterialIconKind.Plus,
+                    async () => await vm.RegisterOngoingFileAsync(file)
                 );
                 Grid.SetColumn(trackBtn, 1);
                 fRow.Children.Add(trackBtn);
@@ -694,16 +695,20 @@ public sealed partial class MainWindow
         if (!string.IsNullOrWhiteSpace(primaryPdf))
         {
             rightRow.Children.Add(
-                UiBuilder.GhostButton("PDF", MaterialIconKind.FilePdfBox, () =>
-                    vm.OpenTaskFile(task, primaryPdf)
+                UiBuilder.GhostButton(
+                    "PDF",
+                    MaterialIconKind.FilePdfBox,
+                    () => vm.OpenTaskFile(task, primaryPdf)
                 )
             );
         }
         else if (task.AllFiles.Count > 0)
         {
             rightRow.Children.Add(
-                UiBuilder.GhostButton("File", MaterialIconKind.Paperclip, () =>
-                    vm.OpenTaskFile(task, task.AllFiles[0])
+                UiBuilder.GhostButton(
+                    "File",
+                    MaterialIconKind.Paperclip,
+                    () => vm.OpenTaskFile(task, task.AllFiles[0])
                 )
             );
         }

@@ -2,7 +2,6 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Controls.Primitives;
-using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
@@ -274,7 +273,7 @@ public sealed class App : Application
             : isSingleSessionPaused ? "ScholarFlow — STI eLMS Polling PAUSED"
             : "ScholarFlow — Academic Workspace";
 
-        var menu = _trayIcon.Menu ?? new NativeMenu();
+        var menu = _trayIcon.Menu ?? [];
         menu.Items.Clear();
 
         var showItem = new NativeMenuItem("Show ScholarFlow");

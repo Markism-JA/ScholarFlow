@@ -289,7 +289,7 @@ public static class SyntaxHighlighter
 
     public static void PopulateInlines(TextBlock target, string code, string? language = null)
     {
-        target.Inlines ??= new InlineCollection();
+        target.Inlines ??= [];
         target.Inlines.Clear();
         if (string.IsNullOrEmpty(code))
             return;

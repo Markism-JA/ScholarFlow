@@ -178,8 +178,8 @@ public static class OnboardingAndSettingsModalBuilder
                 fieldBox.PropertyChanged += (_, e) =>
                 {
                     if (e.Property == TextBox.TextProperty)
-                        vm.OnboardingProviderSettings[capturedField.Key] = fieldBox.Text
-                            ?? string.Empty;
+                        vm.OnboardingProviderSettings[capturedField.Key] =
+                            fieldBox.Text ?? string.Empty;
                 };
                 providerCard.Children.Add(fieldBox);
             }
@@ -520,15 +520,19 @@ public static class OnboardingAndSettingsModalBuilder
             FontSize = 12,
         };
         addTermGrid.Children.Add(newTermBox);
-        var addTermBtn = UiBuilder.GhostButton("Add Term", MaterialIconKind.Plus, async () =>
-        {
-            if (!string.IsNullOrWhiteSpace(newTermBox.Text))
+        var addTermBtn = UiBuilder.GhostButton(
+            "Add Term",
+            MaterialIconKind.Plus,
+            async () =>
             {
-                var txt = newTermBox.Text;
-                newTermBox.Text = string.Empty;
-                await vm.AddBasinTermAsync(txt);
+                if (!string.IsNullOrWhiteSpace(newTermBox.Text))
+                {
+                    var txt = newTermBox.Text;
+                    newTermBox.Text = string.Empty;
+                    await vm.AddBasinTermAsync(txt);
+                }
             }
-        });
+        );
         Grid.SetColumn(addTermBtn, 1);
         addTermGrid.Children.Add(addTermBtn);
         basinCard.Children.Add(addTermGrid);
@@ -995,8 +999,10 @@ public static class OnboardingAndSettingsModalBuilder
         Grid.SetColumn(cancelBtn, 1);
         actions.Children.Add(cancelBtn);
 
-        submitBtn = UiBuilder.PrimaryButton("Create Course", MaterialIconKind.Check, async () =>
-            await SubmitAsync()
+        submitBtn = UiBuilder.PrimaryButton(
+            "Create Course",
+            MaterialIconKind.Check,
+            async () => await SubmitAsync()
         );
         Grid.SetColumn(submitBtn, 2);
         actions.Children.Add(submitBtn);
@@ -1051,14 +1057,12 @@ public static class OnboardingAndSettingsModalBuilder
 
         var allItems = plan.Sections.SelectMany(s => s.Items).ToList();
         int pdfCount = allItems.Count(i => i.IsPdf);
-        int imgCount = allItems.Count(i =>
-            i.ResolvedKind == ScholarFlow.Core.Knowledge.StudySourceKind.Image
-        );
+        int imgCount = allItems.Count(i => i.ResolvedKind == Core.Knowledge.StudySourceKind.Image);
         int noteCodeCount = allItems.Count(i =>
             i.ResolvedKind
-                is ScholarFlow.Core.Knowledge.StudySourceKind.Markdown
-                    or ScholarFlow.Core.Knowledge.StudySourceKind.PlainText
-                    or ScholarFlow.Core.Knowledge.StudySourceKind.Code
+                is Core.Knowledge.StudySourceKind.Markdown
+                    or Core.Knowledge.StudySourceKind.PlainText
+                    or Core.Knowledge.StudySourceKind.Code
         );
         int nonPdfCount = allItems.Count - pdfCount;
         int includedNonPdf = allItems.Count(i => !i.IsPdf && !i.IsExcluded);
@@ -1247,11 +1251,11 @@ public static class OnboardingAndSettingsModalBuilder
             vm.PacketOrganizerFilter switch
             {
                 "PDFs" => item.IsPdf,
-                "Images" => item.ResolvedKind == ScholarFlow.Core.Knowledge.StudySourceKind.Image,
+                "Images" => item.ResolvedKind == Core.Knowledge.StudySourceKind.Image,
                 "Notes & Code" => item.ResolvedKind
-                    is ScholarFlow.Core.Knowledge.StudySourceKind.Markdown
-                        or ScholarFlow.Core.Knowledge.StudySourceKind.PlainText
-                        or ScholarFlow.Core.Knowledge.StudySourceKind.Code,
+                    is Core.Knowledge.StudySourceKind.Markdown
+                        or Core.Knowledge.StudySourceKind.PlainText
+                        or Core.Knowledge.StudySourceKind.Code,
                 _ => true,
             };
 
@@ -1353,24 +1357,24 @@ public static class OnboardingAndSettingsModalBuilder
                     int realIdx = capturedSec.Items.IndexOf(capturedItem);
                     var (kindBadge, kindFg, kindBg) = capturedItem.ResolvedKind switch
                     {
-                        ScholarFlow.Core.Knowledge.StudySourceKind.Pdf => (
+                        Core.Knowledge.StudySourceKind.Pdf => (
                             "PDF",
                             ThemeService.Brush(ThemeService.PriorityP1Fg),
                             ThemeService.Brush(ThemeService.PriorityP1Bg)
                         ),
-                        ScholarFlow.Core.Knowledge.StudySourceKind.Image => (
+                        Core.Knowledge.StudySourceKind.Image => (
                             "IMG",
                             ThemeService.Brush(ThemeService.PriorityP2Fg),
                             ThemeService.Brush(ThemeService.PriorityP2Bg)
                         ),
-                        ScholarFlow.Core.Knowledge.StudySourceKind.Code => (
+                        Core.Knowledge.StudySourceKind.Code => (
                             string.IsNullOrWhiteSpace(capturedItem.ResolvedLanguage)
                                 ? "CODE"
                                 : capturedItem.ResolvedLanguage.ToUpperInvariant(),
                             ThemeService.Brush(ThemeService.AccentPrimary),
                             ThemeService.Brush(ThemeService.AccentSoftBg)
                         ),
-                        ScholarFlow.Core.Knowledge.StudySourceKind.Markdown => (
+                        Core.Knowledge.StudySourceKind.Markdown => (
                             "MD",
                             ThemeService.Brush(ThemeService.PriorityP3Fg),
                             ThemeService.Brush(ThemeService.PriorityP3Bg)
@@ -1559,8 +1563,10 @@ public static class OnboardingAndSettingsModalBuilder
             ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
             ColumnSpacing = 8,
         };
-        var resetBtn = UiBuilder.GhostButton("Reset to Auto", MaterialIconKind.Restore, async () =>
-            await vm.ResetPacketPlanToAutoAsync()
+        var resetBtn = UiBuilder.GhostButton(
+            "Reset to Auto",
+            MaterialIconKind.Restore,
+            async () => await vm.ResetPacketPlanToAutoAsync()
         );
         footer.Children.Add(resetBtn);
 

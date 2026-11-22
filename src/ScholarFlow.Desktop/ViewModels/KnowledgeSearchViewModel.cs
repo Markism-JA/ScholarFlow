@@ -1,7 +1,5 @@
 using Avalonia.Threading;
-using ScholarFlow.Core.Database;
 using ScholarFlow.Core.Knowledge;
-using ScholarFlow.Core.Models;
 using ScholarFlow.Core.Quiz;
 
 namespace ScholarFlow.Desktop.ViewModels;
@@ -11,9 +9,9 @@ namespace ScholarFlow.Desktop.ViewModels;
 /// Coordinates low-priority incremental background FTS5 indexing, cancel-on-keystroke
 /// sub-25ms debounced queries, weak-spot boosting, and 1-click Jump to Source &amp; Quiz This actions.
 /// </summary>
-public sealed class KnowledgeSearchViewModel : IDisposable
+public sealed class KnowledgeSearchViewModel(MainWindowViewModel mainVm) : IDisposable
 {
-    private readonly MainWindowViewModel _mainVm;
+    private readonly MainWindowViewModel _mainVm = mainVm;
     private readonly KnowledgeIndexService _indexService = new();
 
     private CancellationTokenSource? _searchCts;
@@ -48,11 +46,6 @@ public sealed class KnowledgeSearchViewModel : IDisposable
     /// allowing KnowledgeSearchViewBuilder to update the results pane in-place without losing TextBox focus.
     /// </summary>
     public event EventHandler? ResultsUpdated;
-
-    public KnowledgeSearchViewModel(MainWindowViewModel mainVm)
-    {
-        _mainVm = mainVm;
-    }
 
     public void ResetForBasinSwitch()
     {
@@ -303,7 +296,8 @@ public sealed class KnowledgeSearchViewModel : IDisposable
     public KnowledgeSearchResult? GetSelectedResult() =>
         SelectedResultIndex >= 0 && SelectedResultIndex < Results.Count
             ? Results[SelectedResultIndex]
-            : Results.FirstOrDefault();
+        : Results.Count > 0 ? Results[0]
+        : null;
 
     public void JumpToSource(KnowledgeSearchResult? item = null)
     {
@@ -358,10 +352,11 @@ public sealed class KnowledgeSearchViewModel : IDisposable
         if (target is null)
             return;
 
-        var matchedCourse = _mainVm.Courses.FirstOrDefault(c =>
-            c.FolderName.Equals(target.CourseFolder, StringComparison.OrdinalIgnoreCase)
-            || c.EffectiveAlias.Equals(target.CourseAlias, StringComparison.OrdinalIgnoreCase)
-        ) ?? _mainVm.ActiveCourse;
+        var matchedCourse =
+            _mainVm.Courses.FirstOrDefault(c =>
+                c.FolderName.Equals(target.CourseFolder, StringComparison.OrdinalIgnoreCase)
+                || c.EffectiveAlias.Equals(target.CourseAlias, StringComparison.OrdinalIgnoreCase)
+            ) ?? _mainVm.ActiveCourse;
 
         var kind = target.SourceKind.ToLowerInvariant();
 

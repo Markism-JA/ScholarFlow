@@ -190,7 +190,7 @@ public sealed partial class QuizStudioViewModel(MainWindowViewModel mainVm)
     public string? EditingGroundStatus { get; private set; }
     public bool IsDedicatedSnipperOpen { get; private set; }
     public bool IsLoadingSnipPage { get; private set; }
-    public Avalonia.Media.Imaging.Bitmap? EditingSnipPageBitmap { get; private set; }
+    public Bitmap? EditingSnipPageBitmap { get; private set; }
     public int EditingSnipPageNumber { get; private set; }
     public int EditingSnipTotalPages { get; private set; }
     public bool SnipFitToWidth { get; private set; } = true;

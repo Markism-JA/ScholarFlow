@@ -647,7 +647,7 @@ public sealed partial class MainWindowViewModel
             {
                 ActiveCourse = null;
                 ActiveMode = WorkspaceTabMode.TaskList;
-                ActiveSmartView = ScholarFlow.Core.Tasks.SmartViewKind.Inbox;
+                ActiveSmartView = Core.Tasks.SmartViewKind.Inbox;
             }
 
             await ReloadBasinDataAsync();

@@ -13,6 +13,9 @@ namespace ScholarFlow.Desktop.ViewModels;
 /// </summary>
 public sealed partial class MainWindowViewModel
 {
+    [GeneratedRegex(@"^\d{2}_+")]
+    private static partial Regex StripNumericPrefaceRegex();
+
     public string MaterialsSearchQuery { get; private set; } = string.Empty;
     public string MaterialsTypeFilter { get; private set; } = "All";
     public FileImportMode MaterialsImportMode { get; private set; } = FileImportMode.Copy;
@@ -289,18 +292,18 @@ public sealed partial class MainWindowViewModel
                 );
             }
 
-            foreach (var r in renames)
+            foreach (var (OldPath, TempPath, FinalPath, OldRel, NewRel) in renames)
             {
-                Directory.Move(r.OldPath, r.TempPath);
-                RemapQuizPathsForMaterialMove(r.OldPath, r.TempPath, isPrefix: true);
+                Directory.Move(OldPath, TempPath);
+                RemapQuizPathsForMaterialMove(OldPath, TempPath, isPrefix: true);
             }
 
-            foreach (var r in renames)
+            foreach (var (OldPath, TempPath, FinalPath, OldRel, NewRel) in renames)
             {
-                Directory.Move(r.TempPath, r.FinalPath);
-                RemapQuizPathsForMaterialMove(r.TempPath, r.FinalPath, isPrefix: true);
-                if (CollapsedMaterialFolders.Remove(r.OldPath))
-                    CollapsedMaterialFolders.Add(r.FinalPath);
+                Directory.Move(TempPath, FinalPath);
+                RemapQuizPathsForMaterialMove(TempPath, FinalPath, isPrefix: true);
+                if (CollapsedMaterialFolders.Remove(OldPath))
+                    CollapsedMaterialFolders.Add(FinalPath);
             }
 
             if (renames.Count > 0)
@@ -313,17 +316,16 @@ public sealed partial class MainWindowViewModel
                     {
                         foreach (var item in sec.Items)
                         {
-                            foreach (var r in renames)
+                            foreach (var (OldPath, TempPath, FinalPath, OldRel, NewRel) in renames)
                             {
                                 if (
                                     item.RelativePath.StartsWith(
-                                        r.OldRel,
+                                        OldRel,
                                         StringComparison.OrdinalIgnoreCase
                                     )
                                 )
                                 {
-                                    item.RelativePath =
-                                        r.NewRel + item.RelativePath[r.OldRel.Length..];
+                                    item.RelativePath = NewRel + item.RelativePath[OldRel.Length..];
                                     changed = true;
                                     break;
                                 }
@@ -657,7 +659,7 @@ public sealed partial class MainWindowViewModel
     }
 
     private static string StripNumericPrefix(string folderName) =>
-        Regex.Replace(folderName, @"^\d{2}_+", string.Empty);
+        StripNumericPrefaceRegex().Replace(folderName, string.Empty);
 
     private static string GetNormalizedRelativePath(string rootDir, string targetPath) =>
         Path.GetRelativePath(rootDir, targetPath).Replace('\\', '/');

@@ -563,7 +563,8 @@ public sealed partial class QuizStudioViewModel
             )
             : null;
 
-        string presetName = activeProfile?.Name
+        string presetName =
+            activeProfile?.Name
             ?? (
                 string.IsNullOrWhiteSpace(settings.AiProviderPreset)
                     ? "Custom"
@@ -629,11 +630,11 @@ public sealed partial class QuizStudioViewModel
 
         if (!req.UseOfflineHeuristicFallback)
         {
-            var aiStatus = GetActiveAiEngineStatus();
-            if (!aiStatus.IsConfigured)
+            var (DisplayLabel, IsConfigured, MissingReason) = GetActiveAiEngineStatus();
+            if (!IsConfigured)
             {
                 StatusMessage =
-                    $"AI Engine not configured: {aiStatus.MissingReason}. Set it up below or use Offline / Web AI JSON.";
+                    $"AI Engine not configured: {MissingReason}. Set it up below or use Offline / Web AI JSON.";
                 IsStatusError = true;
                 IsAiSettingsOpen = true;
                 _mainVm.RequestUiRefresh();

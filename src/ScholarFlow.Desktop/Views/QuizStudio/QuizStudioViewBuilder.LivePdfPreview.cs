@@ -11,7 +11,7 @@ namespace ScholarFlow.Desktop.Views;
 
 public static partial class QuizStudioViewBuilder
 {
-    private static Control BuildLivePdfPreviewPane(
+    private static Border BuildLivePdfPreviewPane(
         MainWindowViewModel vm,
         QuizStudioViewModel studio
     )
@@ -104,7 +104,7 @@ public static partial class QuizStudioViewBuilder
                     ? Avalonia.Controls.Primitives.ScrollBarVisibility.Auto
                     : Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled
             );
-            UiBuilder.AttachPdfWheelAndPan(previewScroll, delta => studio.ZoomPreview(delta));
+            UiBuilder.AttachPdfWheelAndPan(previewScroll, studio.ZoomPreview);
             pageVisual = previewScroll;
         }
         else if (studio.IsLoadingPreviewPage || studio.IsInspectingPdf)

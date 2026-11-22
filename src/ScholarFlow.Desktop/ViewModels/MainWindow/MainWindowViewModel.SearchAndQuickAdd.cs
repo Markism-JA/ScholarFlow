@@ -142,9 +142,7 @@ public sealed partial class MainWindowViewModel
                 if (item.PdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                     OpenPdfInReader(item.PdfPath);
                 else if (
-                    ScholarFlow.Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(
-                        item.PdfPath
-                    )
+                    Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(item.PdfPath)
                 )
                     OpenFileInSourceViewer(item.PdfPath);
                 else

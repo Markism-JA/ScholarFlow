@@ -54,18 +54,23 @@ public sealed partial class QuizStudioViewModel
                 string.Equals(q.CourseFolder, courseKey, StringComparison.OrdinalIgnoreCase)
             );
 
-        _cachedWeakTopics = relevantQuizzes
-            .SelectMany(q => q.Questions)
-            .Where(qq =>
-                !string.IsNullOrWhiteSpace(qq.TopicTag)
-                && (qq.SrsLapses > 0 || qq.LastAnsweredCorrect == false)
-            )
-            .GroupBy(qq => qq.TopicTag.Trim().ToLowerInvariant(), StringComparer.OrdinalIgnoreCase)
-            .OrderByDescending(g => g.Sum(x => x.SrsLapses))
-            .ThenByDescending(g => g.Count())
-            .Take(8)
-            .Select(g => g.Key)
-            .ToList();
+        _cachedWeakTopics =
+        [
+            .. relevantQuizzes
+                .SelectMany(q => q.Questions)
+                .Where(qq =>
+                    !string.IsNullOrWhiteSpace(qq.TopicTag)
+                    && (qq.SrsLapses > 0 || qq.LastAnsweredCorrect == false)
+                )
+                .GroupBy(
+                    qq => qq.TopicTag.Trim().ToLowerInvariant(),
+                    StringComparer.OrdinalIgnoreCase
+                )
+                .OrderByDescending(g => g.Sum(x => x.SrsLapses))
+                .ThenByDescending(g => g.Count())
+                .Take(8)
+                .Select(g => g.Key),
+        ];
 
         return _cachedWeakTopics;
     }

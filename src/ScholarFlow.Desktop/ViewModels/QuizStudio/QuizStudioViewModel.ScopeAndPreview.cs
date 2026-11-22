@@ -231,7 +231,7 @@ public sealed partial class QuizStudioViewModel
         return result;
     }
 
-    private static IReadOnlyList<PdfOutlineTreeNode> BuildOutlineTree(
+    private static List<PdfOutlineTreeNode> BuildOutlineTree(
         IReadOnlyList<PdfOutlineSectionInfo> sections
     )
     {
@@ -427,7 +427,7 @@ public sealed partial class QuizStudioViewModel
             );
         }
 
-        raw = raw.OrderBy(r => r.StartPage).ThenBy(r => r.EndPage).ToList();
+        raw = [.. raw.OrderBy(r => r.StartPage).ThenBy(r => r.EndPage)];
         if (raw.Count <= 1)
             return raw;
 
@@ -623,7 +623,8 @@ public sealed partial class QuizStudioViewModel
             )
         )
         {
-            SelectedPdfPath = AvailablePdfs.FirstOrDefault(p => p.IsMaster).FullPath
+            SelectedPdfPath =
+                AvailablePdfs.FirstOrDefault(p => p.IsMaster).FullPath
                 ?? (AvailablePdfs.Count > 0 ? AvailablePdfs[0].FullPath : null);
         }
 

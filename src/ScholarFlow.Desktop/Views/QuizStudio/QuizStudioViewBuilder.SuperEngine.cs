@@ -14,16 +14,20 @@ namespace ScholarFlow.Desktop.Views;
 
 public static partial class QuizStudioViewBuilder
 {
-    private static readonly Regex ContrastiveSplitRegex = new(
+    [GeneratedRegex(
         @"(?i)\b(Why correct:|Why distractors? fail:|Core principle:)",
-        RegexOptions.Compiled
-    );
+        RegexOptions.Compiled,
+        "en-US"
+    )]
+    private static partial Regex SplitConstructiveSplit();
+
+    private static readonly Regex ContrastiveSplitRegex = SplitConstructiveSplit();
 
     /// <summary>
     /// Interactive 4-column Cognitive Depth allocation bar (Recall / Comprehension / Application / Analysis)
     /// integrated directly underneath Question-Type distribution.
     /// </summary>
-    private static Control BuildCognitiveDepthAllocationSection(QuizStudioViewModel studio)
+    private static StackPanel BuildCognitiveDepthAllocationSection(QuizStudioViewModel studio)
     {
         var stack = new StackPanel { Spacing = 5 };
 
@@ -201,7 +205,7 @@ public static partial class QuizStudioViewBuilder
                 Child = cellRow,
             };
             Grid.SetRow(cellBorder, i / 2);
-            Grid.SetColumn(cellBorder, (i % 2) * 2);
+            Grid.SetColumn(cellBorder, i % 2 * 2);
             colsGrid.Children.Add(cellBorder);
         }
 
@@ -231,7 +235,7 @@ public static partial class QuizStudioViewBuilder
         return b;
     }
 
-    private static Control BuildOutlineSkeleton()
+    private static Border BuildOutlineSkeleton()
     {
         var list = new StackPanel { Spacing = 8, Margin = new Thickness(6, 8) };
         list.Children.Add(
@@ -271,7 +275,7 @@ public static partial class QuizStudioViewBuilder
         };
     }
 
-    private static Control BuildPdfPageSkeleton(int pageNumber)
+    private static Border BuildPdfPageSkeleton(int pageNumber)
     {
         var sheetContent = new StackPanel { Spacing = 12, Margin = new Thickness(24, 26) };
         sheetContent.Children.Add(
@@ -319,7 +323,9 @@ public static partial class QuizStudioViewBuilder
     /// Unified Content Modality, Question Archetypes &amp; Active Recall section (replaces the old separate
     /// Specialized Content Formats row and disconnected Learning-Science box).
     /// </summary>
-    private static Control BuildIntegratedModalityAndArchetypesSection(QuizStudioViewModel studio)
+    private static StackPanel BuildIntegratedModalityAndArchetypesSection(
+        QuizStudioViewModel studio
+    )
     {
         var stack = new StackPanel { Spacing = 8 };
 
@@ -485,7 +491,7 @@ public static partial class QuizStudioViewBuilder
     /// <summary>
     /// Pre-reveal Progressive Hint &amp; Opt-in Confidence Calibration bar in Quiz Runner.
     /// </summary>
-    private static Control? BuildRunnerHintAndConfidenceBar(
+    private static StackPanel? BuildRunnerHintAndConfidenceBar(
         QuizStudioViewModel studio,
         QuizQuestionRecord q
     )
@@ -654,7 +660,7 @@ public static partial class QuizStudioViewBuilder
     /// <summary>
     /// Themed quality-critic diagnostic callout inside Deck Organizer question cards with 1-click Fix with AI.
     /// </summary>
-    private static Control BuildOrganizerCriticCallout(
+    private static Border BuildOrganizerCriticCallout(
         QuizStudioViewModel studio,
         QuizQuestionRecord q,
         IReadOnlyList<QuestionQualityIssue> issues

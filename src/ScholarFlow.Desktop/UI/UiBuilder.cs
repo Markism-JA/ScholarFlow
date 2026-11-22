@@ -157,7 +157,8 @@ public static class UiBuilder
         IBrush? customFg = null
     )
     {
-        var fg = customFg
+        var fg =
+            customFg
             ?? (
                 isActive
                     ? ThemeService.Brush(ThemeService.AccentPrimary)

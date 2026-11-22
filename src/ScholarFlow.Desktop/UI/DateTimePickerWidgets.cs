@@ -302,13 +302,17 @@ public static class DateTimePickerWidgets
             Grid.SetColumn(tmrwBtn, 1);
             footer.Children.Add(tmrwBtn);
 
-            var clearBtn = UiBuilder.GhostButton("Clear", null, async () =>
-            {
-                currentDate = null;
-                UpdateTriggerVisual();
-                flyout.Hide();
-                await onDateSelected(null);
-            });
+            var clearBtn = UiBuilder.GhostButton(
+                "Clear",
+                null,
+                async () =>
+                {
+                    currentDate = null;
+                    UpdateTriggerVisual();
+                    flyout.Hide();
+                    await onDateSelected(null);
+                }
+            );
             Grid.SetColumn(clearBtn, 3);
             footer.Children.Add(clearBtn);
 
@@ -341,7 +345,7 @@ public static class DateTimePickerWidgets
         TimeOnly? committedTime = initialTime;
         int draftHour12 = initialTime.HasValue ? ToHour12(initialTime.Value.Hour) : 11;
         int draftMinute = initialTime.HasValue ? initialTime.Value.Minute : 59;
-        bool draftIsPm = initialTime.HasValue ? initialTime.Value.Hour >= 12 : true;
+        bool draftIsPm = !initialTime.HasValue || initialTime.Value.Hour >= 12;
 
         var labelText = new TextBlock
         {
@@ -524,11 +528,15 @@ public static class DateTimePickerWidgets
                 var capturedH = h;
                 bool active = draftHour12 == capturedH;
                 hourGrid.Children.Add(
-                    BuildClockCell(capturedH.ToString(CultureInfo.InvariantCulture), active, () =>
-                    {
-                        draftHour12 = capturedH;
-                        RebuildClockPopup();
-                    })
+                    BuildClockCell(
+                        capturedH.ToString(CultureInfo.InvariantCulture),
+                        active,
+                        () =>
+                        {
+                            draftHour12 = capturedH;
+                            RebuildClockPopup();
+                        }
+                    )
                 );
             }
             stack.Children.Add(hourGrid);
@@ -543,16 +551,28 @@ public static class DateTimePickerWidgets
                 Spacing = 3,
                 VerticalAlignment = VerticalAlignment.Center,
             };
-            fineBtns.Children.Add(UiBuilder.GhostButton("-1m", null, () =>
-                {
-                    draftMinute = (draftMinute + 59) % 60;
-                    RebuildClockPopup();
-                }));
-            fineBtns.Children.Add(UiBuilder.GhostButton("+1m", null, () =>
-                {
-                    draftMinute = (draftMinute + 1) % 60;
-                    RebuildClockPopup();
-                }));
+            fineBtns.Children.Add(
+                UiBuilder.GhostButton(
+                    "-1m",
+                    null,
+                    () =>
+                    {
+                        draftMinute = (draftMinute + 59) % 60;
+                        RebuildClockPopup();
+                    }
+                )
+            );
+            fineBtns.Children.Add(
+                UiBuilder.GhostButton(
+                    "+1m",
+                    null,
+                    () =>
+                    {
+                        draftMinute = (draftMinute + 1) % 60;
+                        RebuildClockPopup();
+                    }
+                )
+            );
             fineBtns.Children.Add(
                 UiBuilder.GhostButton(
                     ":59",
@@ -574,11 +594,17 @@ public static class DateTimePickerWidgets
             {
                 var capturedM = m;
                 bool active = draftMinute == capturedM;
-                minGrid.Children.Add(BuildClockCell($":{capturedM:00}", active, () =>
-                    {
-                        draftMinute = capturedM;
-                        RebuildClockPopup();
-                    }));
+                minGrid.Children.Add(
+                    BuildClockCell(
+                        $":{capturedM:00}",
+                        active,
+                        () =>
+                        {
+                            draftMinute = capturedM;
+                            RebuildClockPopup();
+                        }
+                    )
+                );
             }
             stack.Children.Add(minGrid);
 
@@ -619,13 +645,17 @@ public static class DateTimePickerWidgets
 
             // Footer: Clear + Apply
             var footer = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto") };
-            var clearBtn = UiBuilder.GhostButton("Clear", MaterialIconKind.Close, async () =>
-            {
-                committedTime = null;
-                UpdateTriggerVisual();
-                flyout.Hide();
-                await onTimeSelected(null);
-            });
+            var clearBtn = UiBuilder.GhostButton(
+                "Clear",
+                MaterialIconKind.Close,
+                async () =>
+                {
+                    committedTime = null;
+                    UpdateTriggerVisual();
+                    flyout.Hide();
+                    await onTimeSelected(null);
+                }
+            );
             footer.Children.Add(clearBtn);
 
             var applyBtn = UiBuilder.ActionButton(

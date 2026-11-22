@@ -120,8 +120,10 @@ public static partial class QuizStudioViewBuilder
         importJsonBtn.Margin = new Thickness(0, 0, 6, 4);
         actionsWrap.Children.Add(importJsonBtn);
 
-        var newAssessBtn = UiBuilder.PrimaryButton("New Assessment", MaterialIconKind.Plus, () =>
-            studio.SetSubTab(QuizStudioSubTab.Builder)
+        var newAssessBtn = UiBuilder.PrimaryButton(
+            "New Assessment",
+            MaterialIconKind.Plus,
+            () => studio.SetSubTab(QuizStudioSubTab.Builder)
         );
         newAssessBtn.Margin = new Thickness(0, 0, 0, 4);
         actionsWrap.Children.Add(newAssessBtn);
@@ -425,8 +427,10 @@ public static partial class QuizStudioViewBuilder
                 )
             );
             actions.Children.Add(
-                UiBuilder.GhostButton("Restart", MaterialIconKind.Restart, () =>
-                    studio.StartQuizSession(quiz, resumeSavedProgress: false)
+                UiBuilder.GhostButton(
+                    "Restart",
+                    MaterialIconKind.Restart,
+                    () => studio.StartQuizSession(quiz, resumeSavedProgress: false)
                 )
             );
         }
@@ -454,8 +458,10 @@ public static partial class QuizStudioViewBuilder
         );
         actions.Children.Add(shuffleStartBtn);
 
-        var organizeBtn = UiBuilder.GhostButton("Organize", MaterialIconKind.TuneVariant, () =>
-            studio.OpenQuizInOrganizer(quiz)
+        var organizeBtn = UiBuilder.GhostButton(
+            "Organize",
+            MaterialIconKind.TuneVariant,
+            () => studio.OpenQuizInOrganizer(quiz)
         );
         actions.Children.Add(organizeBtn);
 
@@ -493,7 +499,7 @@ public static partial class QuizStudioViewBuilder
                     {
                         Title = dialogTitle,
                         SuggestedFileName =
-                            $"{ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title + suffix, ".pdf")}",
+                            $"{Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title + suffix, ".pdf")}",
                         DefaultExtension = "pdf",
                     }
                 );
@@ -559,7 +565,7 @@ public static partial class QuizStudioViewBuilder
                         {
                             Title = "Export Quiz Deck JSON",
                             SuggestedFileName =
-                                $"{ScholarFlow.Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title, ".json")}",
+                                $"{Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title, ".json")}",
                             DefaultExtension = "json",
                         }
                     );

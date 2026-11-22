@@ -1,6 +1,5 @@
 using ScholarFlow.Core.Knowledge;
 using ScholarFlow.Core.Quiz;
-using ScholarFlow.Desktop.Services;
 
 namespace ScholarFlow.Desktop.ViewModels;
 
@@ -220,10 +219,11 @@ public sealed partial class QuizStudioViewModel
     }
 
     private IReadOnlyList<string> GetSelectedFileSourcesInOrder() =>
-        StudyFiles
-            .Where(f => _selectedFileSourcePaths.Contains(f.FilePath))
-            .Select(f => f.FilePath)
-            .ToList();
+        [
+            .. StudyFiles
+                .Where(f => _selectedFileSourcePaths.Contains(f.FilePath))
+                .Select(f => f.FilePath),
+        ];
 
     /// <summary>Manual Web UI: pack selected images (and scoped PDF pages if combined) into an uploadable PDF + copy prompt.</summary>
     private async Task ExportPackedImagesForUploadAsync(
@@ -268,7 +268,7 @@ public sealed partial class QuizStudioViewModel
                         req.SelectedRanges,
                         maxPages: 250
                     );
-                    pdfPageNumbers = pdfPages.Select(p => p.PageNumber).ToList();
+                    pdfPageNumbers = [.. pdfPages.Select(p => p.PageNumber)];
                     pdfManifest = pdfPages
                         .Select(p => (p.PageNumber, p.SectionBreadcrumb))
                         .ToList();

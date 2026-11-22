@@ -218,7 +218,7 @@ public static class CalendarViewBuilder
         return bodyContent;
     }
 
-    private static Control BuildHeaderBar(CalendarViewModel cal, bool isCompact)
+    private static Grid BuildHeaderBar(CalendarViewModel cal, bool isCompact)
     {
         var header = new Grid
         {
@@ -494,14 +494,18 @@ public static class CalendarViewBuilder
         );
         headerGrid.Children.Add(headerTitle);
 
-        var addForDayBtn = UiBuilder.GhostButton("Add", MaterialIconKind.Plus, () =>
-        {
-            vm.OpenQuickAddModal();
-            vm.InsertQuickAddToken(
-                cal.SelectedDate.ToString("yyyy-MM-dd"),
-                @"\b(today|tomorrow|tmrw|next\s+week|\+\d+d|\d{4}-\d{2}-\d{2})\b"
-            );
-        });
+        var addForDayBtn = UiBuilder.GhostButton(
+            "Add",
+            MaterialIconKind.Plus,
+            () =>
+            {
+                vm.OpenQuickAddModal();
+                vm.InsertQuickAddToken(
+                    cal.SelectedDate.ToString("yyyy-MM-dd"),
+                    @"\b(today|tomorrow|tmrw|next\s+week|\+\d+d|\d{4}-\d{2}-\d{2})\b"
+                );
+            }
+        );
         ToolTip.SetTip(addForDayBtn, $"Quick-add a task due on {cal.SelectedDate:MMM d, yyyy}");
         Grid.SetColumn(addForDayBtn, 1);
         headerGrid.Children.Add(addForDayBtn);
@@ -635,14 +639,18 @@ public static class CalendarViewBuilder
         if (!string.IsNullOrWhiteSpace(task.PrimaryPdfFile))
         {
             AddMeta(
-                UiBuilder.GhostButton("PDF", MaterialIconKind.FilePdfBox, () =>
-                    vm.OpenTaskFile(task, task.PrimaryPdfFile)
+                UiBuilder.GhostButton(
+                    "PDF",
+                    MaterialIconKind.FilePdfBox,
+                    () => vm.OpenTaskFile(task, task.PrimaryPdfFile)
                 )
             );
         }
         AddMeta(
-            UiBuilder.GhostButton("Inspect", MaterialIconKind.TuneVariant, () =>
-                vm.SelectTask(task, openInspector: true)
+            UiBuilder.GhostButton(
+                "Inspect",
+                MaterialIconKind.TuneVariant,
+                () => vm.SelectTask(task, openInspector: true)
             )
         );
 

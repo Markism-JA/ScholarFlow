@@ -446,8 +446,9 @@ public sealed partial class MainWindow
 
                 if (_vm.SupportsActiveFastPoll)
                 {
-                    var pollCompact = UiBuilder.IconButton(MaterialIconKind.Refresh, async () =>
-                        await _vm.RunFastPollAsync()
+                    var pollCompact = UiBuilder.IconButton(
+                        MaterialIconKind.Refresh,
+                        async () => await _vm.RunFastPollAsync()
                     );
                     ToolTip.SetTip(pollCompact, $"Fast poll {_vm.ActiveProviderName} assignments");
                     footer.Children.Add(CenterCompact(pollCompact));
@@ -801,13 +802,15 @@ public sealed partial class MainWindow
         IBrush? customAccentFg = null
     )
     {
-        var fg = customAccentFg
+        var fg =
+            customAccentFg
             ?? (
                 isActive
                     ? ThemeService.Brush(ThemeService.AccentPrimary)
                     : ThemeService.Brush(ThemeService.TextPrimary)
             );
-        var iconFg = customAccentFg
+        var iconFg =
+            customAccentFg
             ?? (
                 isActive
                     ? ThemeService.Brush(ThemeService.AccentPrimary)

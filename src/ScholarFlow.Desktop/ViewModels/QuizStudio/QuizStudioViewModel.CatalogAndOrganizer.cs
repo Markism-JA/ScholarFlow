@@ -211,7 +211,7 @@ public sealed partial class QuizStudioViewModel
             var fallbackMaster =
                 !string.IsNullOrWhiteSpace(_mainVm.BasinRoot)
                 && !string.IsNullOrWhiteSpace(quiz.CourseFolder)
-                    ? ScholarFlow.Core.Pdf.MasterPdfService.FindExistingMasterPdfPath(
+                    ? Core.Pdf.MasterPdfService.FindExistingMasterPdfPath(
                         _mainVm.BasinRoot,
                         quiz.CourseFolder
                     )
@@ -485,8 +485,9 @@ public sealed partial class QuizStudioViewModel
                 ? GetCachedOrganizerQualityReport().FlaggedQuestionIds
                 : null;
         var qSearch = OrganizerSearchQuery.Trim();
-        return deck
-            .Questions.Where(q =>
+        return
+        [
+            .. deck.Questions.Where(q =>
                 (!OrganizerKindFilter.HasValue || q.Kind == OrganizerKindFilter.Value)
                 && (
                     string.IsNullOrWhiteSpace(OrganizerTopicFilter)
@@ -517,7 +518,7 @@ public sealed partial class QuizStudioViewModel
                 }
                 && (
                     string.IsNullOrEmpty(qSearch)
-                    || ScholarFlow.Core.Services.QuickSearchMatcher.Matches(
+                    || Core.Services.QuickSearchMatcher.Matches(
                         qSearch,
                         q.Prompt,
                         q.CorrectAnswer,
@@ -528,8 +529,8 @@ public sealed partial class QuizStudioViewModel
                         q.Options.Count > 0 ? string.Join(' ', q.Options) : null
                     )
                 )
-            )
-            .ToList();
+            ),
+        ];
     }
 
     public void SelectOrganizerQuestion(
@@ -682,7 +683,7 @@ public sealed partial class QuizStudioViewModel
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
-            ? draft!.SourcePdfPath
+            ? draft.SourcePdfPath
             : OrganizerQuiz?.SourcePdfPath;
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
         {
@@ -720,7 +721,7 @@ public sealed partial class QuizStudioViewModel
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
-            ? draft!.SourcePdfPath
+            ? draft.SourcePdfPath
             : OrganizerQuiz?.SourcePdfPath;
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
         {
@@ -930,7 +931,7 @@ public sealed partial class QuizStudioViewModel
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
-            ? draft!.SourcePdfPath
+            ? draft.SourcePdfPath
             : OrganizerQuiz?.SourcePdfPath;
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
@@ -983,7 +984,7 @@ public sealed partial class QuizStudioViewModel
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
-            ? draft!.SourcePdfPath
+            ? draft.SourcePdfPath
             : OrganizerQuiz?.SourcePdfPath;
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
@@ -1074,7 +1075,7 @@ public sealed partial class QuizStudioViewModel
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
-            ? draft!.SourcePdfPath
+            ? draft.SourcePdfPath
             : OrganizerQuiz?.SourcePdfPath;
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
         {
@@ -1176,7 +1177,7 @@ public sealed partial class QuizStudioViewModel
     {
         var draft = EditingQuestionDraft;
         var pdfPath = !string.IsNullOrWhiteSpace(draft?.SourcePdfPath)
-            ? draft!.SourcePdfPath
+            ? draft.SourcePdfPath
             : OrganizerQuiz?.SourcePdfPath;
         if (draft is null || string.IsNullOrWhiteSpace(pdfPath) || !File.Exists(pdfPath))
             return;
@@ -1552,11 +1553,11 @@ public sealed partial class QuizStudioViewModel
         if (IsGenerating)
             return;
 
-        var aiStatus = GetActiveAiEngineStatus();
-        if (!aiStatus.IsConfigured)
+        var (DisplayLabel, IsConfigured, MissingReason) = GetActiveAiEngineStatus();
+        if (!IsConfigured)
         {
             StatusMessage =
-                $"AI Engine not configured: {aiStatus.MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
+                $"AI Engine not configured: {MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
             IsStatusError = true;
             IsAiSettingsOpen = true;
             _mainVm.RequestUiRefresh();
@@ -1565,7 +1566,7 @@ public sealed partial class QuizStudioViewModel
 
         IsGenerating = true;
         IsStatusError = false;
-        StatusMessage = $"Repairing question via {aiStatus.DisplayLabel}...";
+        StatusMessage = $"Repairing question via {DisplayLabel}...";
         _mainVm.RequestUiRefresh();
 
         try
@@ -1714,11 +1715,11 @@ public sealed partial class QuizStudioViewModel
         if (OrganizerQuiz is null || IsGenerating)
             return;
 
-        var aiStatus = GetActiveAiEngineStatus();
-        if (!aiStatus.IsConfigured)
+        var (DisplayLabel, IsConfigured, MissingReason) = GetActiveAiEngineStatus();
+        if (!IsConfigured)
         {
             StatusMessage =
-                $"AI Engine not configured: {aiStatus.MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
+                $"AI Engine not configured: {MissingReason}. Configure it in AI Engine settings or use Web AI JSON.";
             IsStatusError = true;
             IsAiSettingsOpen = true;
             _mainVm.RequestUiRefresh();
@@ -1727,7 +1728,7 @@ public sealed partial class QuizStudioViewModel
 
         IsGenerating = true;
         IsStatusError = false;
-        StatusMessage = $"Running comprehensive deck fix via {aiStatus.DisplayLabel}...";
+        StatusMessage = $"Running comprehensive deck fix via {DisplayLabel}...";
         _mainVm.RequestUiRefresh();
 
         try
@@ -1773,7 +1774,7 @@ public sealed partial class QuizStudioViewModel
             .Select(q => q.Id)
             .ToList();
         if (fallbackTargetIds.Count == 0)
-            fallbackTargetIds = OrganizerQuiz.Questions.Take(15).Select(q => q.Id).ToList();
+            fallbackTargetIds = [.. OrganizerQuiz.Questions.Take(15).Select(q => q.Id)];
 
         try
         {

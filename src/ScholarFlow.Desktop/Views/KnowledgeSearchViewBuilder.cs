@@ -53,8 +53,7 @@ public static class KnowledgeSearchViewBuilder
 
         if (!ReferenceEquals(_boundVm, vm))
         {
-            if (_boundVm is not null)
-                _boundVm.KnowledgeSearch.ResultsUpdated -= OnKnowledgeSearchResultsUpdated;
+            _boundVm?.KnowledgeSearch.ResultsUpdated -= OnKnowledgeSearchResultsUpdated;
             _boundVm = vm;
             ks.ResultsUpdated += OnKnowledgeSearchResultsUpdated;
         }
@@ -131,17 +130,12 @@ public static class KnowledgeSearchViewBuilder
             }
         }
 
-        if (_activeTelemetryHost is not null)
-            _activeTelemetryHost.Child = BuildTelemetryPills(ks);
-
-        if (_activeFilterBarHost is not null)
-            _activeFilterBarHost.Child = BuildFilterChipsPanel(_boundVm, ks);
-
-        if (_activeResultsHost is not null)
-            _activeResultsHost.Child = BuildResultsPane(ks);
+        _activeTelemetryHost?.Child = BuildTelemetryPills(ks);
+        _activeFilterBarHost?.Child = BuildFilterChipsPanel(_boundVm, ks);
+        _activeResultsHost?.Child = BuildResultsPane(ks);
     }
 
-    private static Control BuildHeaderBar(
+    private static Grid BuildHeaderBar(
         MainWindowViewModel vm,
         KnowledgeSearchViewModel ks,
         out Border telemetryHost
@@ -210,7 +204,7 @@ public static class KnowledgeSearchViewBuilder
         return grid;
     }
 
-    private static Control BuildTelemetryPills(KnowledgeSearchViewModel ks)
+    private static StackPanel BuildTelemetryPills(KnowledgeSearchViewModel ks)
     {
         var row = new StackPanel
         {
@@ -254,7 +248,7 @@ public static class KnowledgeSearchViewBuilder
         return row;
     }
 
-    private static Control BuildQueryBarCard(KnowledgeSearchViewModel ks, out TextBox queryBox)
+    private static Border BuildQueryBarCard(KnowledgeSearchViewModel ks, out TextBox queryBox)
     {
         var cardGrid = new Grid
         {
@@ -388,7 +382,7 @@ public static class KnowledgeSearchViewBuilder
         };
     }
 
-    private static Control BuildFilterChipsPanel(
+    private static StackPanel BuildFilterChipsPanel(
         MainWindowViewModel vm,
         KnowledgeSearchViewModel ks
     )
@@ -590,7 +584,7 @@ public static class KnowledgeSearchViewBuilder
 
     private sealed record IndexedResultRow(int Index, KnowledgeSearchResult Item);
 
-    private static Control BuildResultRowCard(
+    private static Border BuildResultRowCard(
         KnowledgeSearchViewModel ks,
         int index,
         KnowledgeSearchResult item
@@ -802,7 +796,7 @@ public static class KnowledgeSearchViewBuilder
 
     private static void PopulateHighlightedInlines(TextBlock tb, string snippet)
     {
-        var inlines = tb.Inlines ??= new InlineCollection();
+        var inlines = tb.Inlines ??= [];
         inlines.Clear();
 
         if (string.IsNullOrEmpty(snippet))
@@ -902,7 +896,7 @@ public static class KnowledgeSearchViewBuilder
         };
     }
 
-    private static Control BuildIndexingSkeleton()
+    private static StackPanel BuildIndexingSkeleton()
     {
         var stack = new StackPanel { Spacing = 10, Margin = new Thickness(0, 6, 0, 0) };
         for (int i = 0; i < 6; i++)
@@ -915,14 +909,14 @@ public static class KnowledgeSearchViewBuilder
                 Children =
                 {
                     BuildSkeletonBar(52, 18),
-                    BuildSkeletonBar(180 + (i % 3) * 45, 18),
+                    BuildSkeletonBar(180 + i % 3 * 45, 18),
                     BuildSkeletonBar(110, 18),
                     BuildSkeletonBar(64, 18),
                 },
             };
             cardStack.Children.Add(topRow);
-            cardStack.Children.Add(BuildSkeletonBar(520 + (i % 2) * 120, 14));
-            cardStack.Children.Add(BuildSkeletonBar(380 + (i % 3) * 80, 14));
+            cardStack.Children.Add(BuildSkeletonBar(520 + i % 2 * 120, 14));
+            cardStack.Children.Add(BuildSkeletonBar(380 + i % 3 * 80, 14));
 
             stack.Children.Add(
                 new Border
@@ -949,7 +943,7 @@ public static class KnowledgeSearchViewBuilder
             HorizontalAlignment = HorizontalAlignment.Left,
         };
 
-    private static Control BuildEmptyState(KnowledgeSearchViewModel ks)
+    private static Border BuildEmptyState(KnowledgeSearchViewModel ks)
     {
         var center = new StackPanel
         {
@@ -1020,8 +1014,10 @@ public static class KnowledgeSearchViewBuilder
         )
         {
             var captured = query;
-            var btn = UiBuilder.GhostButton(label, MaterialIconKind.Magnify, () =>
-                ks.ApplyExampleQuery(captured)
+            var btn = UiBuilder.GhostButton(
+                label,
+                MaterialIconKind.Magnify,
+                () => ks.ApplyExampleQuery(captured)
             );
             btn.Margin = new Thickness(3);
             examplesWrap.Children.Add(btn);

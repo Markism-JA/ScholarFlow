@@ -194,7 +194,7 @@ public sealed partial class MainWindowViewModel : IAsyncDisposable
         int? highlightEndLine = null,
         string? sectionTitle = null,
         string? evidenceHint = null,
-        IReadOnlyList<ScholarFlow.Core.Quiz.NormalizedHighlightRect>? imageHighlightRects = null
+        IReadOnlyList<Core.Quiz.NormalizedHighlightRect>? imageHighlightRects = null
     )
     {
         if (string.IsNullOrWhiteSpace(filePath))

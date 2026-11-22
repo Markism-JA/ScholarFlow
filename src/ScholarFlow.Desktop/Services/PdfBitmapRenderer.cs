@@ -64,7 +64,7 @@ public static class PdfBitmapRenderer
     public static void CropAndSavePageRegion(
         byte[] pdfBytes,
         int zeroBasedPage,
-        ScholarFlow.Core.Quiz.NormalizedHighlightRect region,
+        Core.Quiz.NormalizedHighlightRect region,
         string outputPngPath,
         int dpi = 220
     )

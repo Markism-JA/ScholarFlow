@@ -30,10 +30,9 @@ public static class CourseWorkspaceViewBuilder
     )
     {
         var coursePath = Path.Combine(vm.BasinRoot, course.FolderName);
-        var masterPdfPath = Core.Pdf.MasterPdfService.FindExistingMasterPdfPath(
-            vm.BasinRoot,
-            course.FolderName
-        ) ?? Core.Pdf.MasterPdfService.GetExpectedMasterPdfPath(vm.BasinRoot, course.FolderName);
+        var masterPdfPath =
+            Core.Pdf.MasterPdfService.FindExistingMasterPdfPath(vm.BasinRoot, course.FolderName)
+            ?? Core.Pdf.MasterPdfService.GetExpectedMasterPdfPath(vm.BasinRoot, course.FolderName);
         bool hasMasterPdf = File.Exists(masterPdfPath);
 
         var root = new Grid
@@ -316,7 +315,7 @@ public static class CourseWorkspaceViewBuilder
         "syllabus.json",
     };
 
-    private static Control BuildMaterialsTree(
+    private static Grid BuildMaterialsTree(
         MainWindowViewModel vm,
         BasinCourseEntry course,
         string coursePath
@@ -519,7 +518,7 @@ public static class CourseWorkspaceViewBuilder
             allCollapsibleKeys.Add(coursePath);
         bool allCollapsed =
             allCollapsibleKeys.Count > 0
-            && allCollapsibleKeys.All(k => vm.CollapsedMaterialFolders.Contains(k));
+            && allCollapsibleKeys.All(vm.CollapsedMaterialFolders.Contains);
         if (allCollapsibleKeys.Count > 0)
         {
             var collapseBtn = UiBuilder.GhostButton(
@@ -892,8 +891,8 @@ public static class CourseWorkspaceViewBuilder
         return outerGrid;
     }
 
-    private static Control BuildMaterialsEmptyState(bool isFiltered) =>
-        new Border
+    private static Border BuildMaterialsEmptyState(bool isFiltered) =>
+        new()
         {
             Background = ThemeService.Brush(ThemeService.BgElevated),
             BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
@@ -930,7 +929,7 @@ public static class CourseWorkspaceViewBuilder
             },
         };
 
-    private static Control BuildFolderDeleteConfirmRow(
+    private static Border BuildFolderDeleteConfirmRow(
         MainWindowViewModel vm,
         BasinCourseEntry course,
         FolderDeleteConfirmTreeRow dc
@@ -983,7 +982,7 @@ public static class CourseWorkspaceViewBuilder
         };
     }
 
-    private static Control BuildFolderHeaderCard(
+    private static Border BuildFolderHeaderCard(
         Control anchorControl,
         MainWindowViewModel vm,
         BasinCourseEntry course,
@@ -1208,7 +1207,7 @@ public static class CourseWorkspaceViewBuilder
         };
     }
 
-    private static Control BuildMaterialFileRow(
+    private static Border BuildMaterialFileRow(
         MainWindowViewModel vm,
         BasinCourseEntry course,
         string coursePath,
@@ -1382,8 +1381,10 @@ public static class CourseWorkspaceViewBuilder
             if (isPdf)
             {
                 actions.Children.Add(
-                    UiBuilder.GhostButton("Read", MaterialIconKind.BookOpenOutline, () =>
-                        vm.OpenPdfInReader(file)
+                    UiBuilder.GhostButton(
+                        "Read",
+                        MaterialIconKind.BookOpenOutline,
+                        () => vm.OpenPdfInReader(file)
                     )
                 );
                 actions.Children.Add(
@@ -1395,13 +1396,14 @@ public static class CourseWorkspaceViewBuilder
                 );
             }
             else if (
-                !isBrokenLink
-                && ScholarFlow.Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(file)
+                !isBrokenLink && Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(file)
             )
             {
                 actions.Children.Add(
-                    UiBuilder.GhostButton("View", MaterialIconKind.EyeOutline, () =>
-                        vm.OpenFileInSourceViewer(file)
+                    UiBuilder.GhostButton(
+                        "View",
+                        MaterialIconKind.EyeOutline,
+                        () => vm.OpenFileInSourceViewer(file)
                     )
                 );
             }
@@ -1526,7 +1528,7 @@ public static class CourseWorkspaceViewBuilder
             }
         );
         var paths = files
-            .Select(f => Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(f))
+            .Select(Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath)
             .Where(p => !string.IsNullOrWhiteSpace(p))
             .Cast<string>()
             .ToList();

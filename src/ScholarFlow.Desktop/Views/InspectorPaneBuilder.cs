@@ -333,8 +333,10 @@ public static class InspectorPaneBuilder
         )
         {
             var capturedSug = suggested;
-            var sugBtn = UiBuilder.GhostButton($"+ @{suggested}", null, async () =>
-                await vm.AddTaskLabelAsync(task, capturedSug)
+            var sugBtn = UiBuilder.GhostButton(
+                $"+ @{suggested}",
+                null,
+                async () => await vm.AddTaskLabelAsync(task, capturedSug)
             );
             sugBtn.Margin = new Thickness(0, 0, 4, 4);
             tagsWrap.Children.Add(sugBtn);
@@ -356,14 +358,18 @@ public static class InspectorPaneBuilder
                 newTagBox.Text = string.Empty;
             }
         };
-        var addTagBtn = UiBuilder.GhostButton("Add Tag", MaterialIconKind.Plus, async () =>
-        {
-            if (!string.IsNullOrWhiteSpace(newTagBox.Text))
+        var addTagBtn = UiBuilder.GhostButton(
+            "Add Tag",
+            MaterialIconKind.Plus,
+            async () =>
             {
-                await vm.AddTaskLabelAsync(task, newTagBox.Text);
-                newTagBox.Text = string.Empty;
+                if (!string.IsNullOrWhiteSpace(newTagBox.Text))
+                {
+                    await vm.AddTaskLabelAsync(task, newTagBox.Text);
+                    newTagBox.Text = string.Empty;
+                }
             }
-        });
+        );
         addTagBtn.Margin = new Thickness(6, 0, 0, 0);
         Grid.SetColumn(addTagBtn, 1);
         addTagGrid.Children.Add(newTagBox);
@@ -582,8 +588,10 @@ public static class InspectorPaneBuilder
                 await SubmitSubtaskAsync();
             }
         };
-        var addSubBtn = UiBuilder.GhostButton("Add", MaterialIconKind.Plus, async () =>
-            await SubmitSubtaskAsync()
+        var addSubBtn = UiBuilder.GhostButton(
+            "Add",
+            MaterialIconKind.Plus,
+            async () => await SubmitSubtaskAsync()
         );
         addSubBtn.Margin = new Thickness(6, 0, 0, 0);
         Grid.SetColumn(addSubBtn, 1);
@@ -855,20 +863,18 @@ public static class InspectorPaneBuilder
 
     private static Grid BuildFileActionRow(MainWindowViewModel vm, TaskItem task, string relFile)
     {
-        var (kind, _) = ScholarFlow.Core.Knowledge.StudySourceClassifier.Classify(relFile);
-        var isPdf = kind == ScholarFlow.Core.Knowledge.StudySourceKind.Pdf;
+        var (kind, _) = Core.Knowledge.StudySourceClassifier.Classify(relFile);
+        var isPdf = kind == Core.Knowledge.StudySourceKind.Pdf;
         var isInAppViewable =
-            isPdf
-            || ScholarFlow.Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(relFile);
+            isPdf || Core.Knowledge.StudySourceClassifier.IsViewableInSourceViewer(relFile);
         var fileName = Path.GetFileName(relFile);
 
         var fileIcon = kind switch
         {
-            ScholarFlow.Core.Knowledge.StudySourceKind.Pdf => MaterialIconKind.FilePdfBox,
-            ScholarFlow.Core.Knowledge.StudySourceKind.Code => MaterialIconKind.CodeBraces,
-            ScholarFlow.Core.Knowledge.StudySourceKind.Markdown =>
-                MaterialIconKind.LanguageMarkdownOutline,
-            ScholarFlow.Core.Knowledge.StudySourceKind.Image => MaterialIconKind.FileImageOutline,
+            Core.Knowledge.StudySourceKind.Pdf => MaterialIconKind.FilePdfBox,
+            Core.Knowledge.StudySourceKind.Code => MaterialIconKind.CodeBraces,
+            Core.Knowledge.StudySourceKind.Markdown => MaterialIconKind.LanguageMarkdownOutline,
+            Core.Knowledge.StudySourceKind.Image => MaterialIconKind.FileImageOutline,
             _ => MaterialIconKind.FileDocumentOutline,
         };
 

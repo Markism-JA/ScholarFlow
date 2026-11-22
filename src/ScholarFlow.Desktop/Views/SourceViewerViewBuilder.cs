@@ -160,20 +160,26 @@ public static class SourceViewerViewBuilder
         }
         else if (!string.IsNullOrEmpty(sv.RawText))
         {
-            var copyBtn = UiBuilder.GhostButton("Copy", MaterialIconKind.ContentCopy, async () =>
-            {
-                var top = TopLevel.GetTopLevel(header);
-                if (top?.Clipboard is not null)
-                    await top.Clipboard.SetTextAsync(sv.RawText);
-            });
+            var copyBtn = UiBuilder.GhostButton(
+                "Copy",
+                MaterialIconKind.ContentCopy,
+                async () =>
+                {
+                    var top = TopLevel.GetTopLevel(header);
+                    if (top?.Clipboard is not null)
+                        await top.Clipboard.SetTextAsync(sv.RawText);
+                }
+            );
             rightActions.Children.Add(copyBtn);
         }
 
         if (!string.IsNullOrWhiteSpace(sv.CurrentFilePath))
         {
             rightActions.Children.Add(
-                UiBuilder.GhostButton("Open Externally", MaterialIconKind.OpenInNew, () =>
-                    ExternalFileLauncher.OpenLocalFile(sv.CurrentFilePath)
+                UiBuilder.GhostButton(
+                    "Open Externally",
+                    MaterialIconKind.OpenInNew,
+                    () => ExternalFileLauncher.OpenLocalFile(sv.CurrentFilePath)
                 )
             );
         }
@@ -390,7 +396,7 @@ public static class SourceViewerViewBuilder
         return root;
     }
 
-    private static Control BuildVirtualizedCodeViewer(SourceViewerViewModel sv)
+    private static Border BuildVirtualizedCodeViewer(SourceViewerViewModel sv)
     {
         var monoFont = new FontFamily(
             "JetBrains Mono, Fira Code, Cascadia Code, Consolas, monospace"

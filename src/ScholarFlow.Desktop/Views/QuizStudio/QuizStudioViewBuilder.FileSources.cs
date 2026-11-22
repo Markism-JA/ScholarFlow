@@ -26,7 +26,7 @@ public static partial class QuizStudioViewBuilder
     /// Inline Course Files selector strip embedded directly inside Card 1 ("1. Study Sources &amp; Scope")
     /// so PDFs and Code/Markdown/Images live in one unified source section.
     /// </summary>
-    private static Control BuildInlineFileSourcesSection(QuizStudioViewModel studio)
+    private static StackPanel BuildInlineFileSourcesSection(QuizStudioViewModel studio)
     {
         var stack = new StackPanel { Spacing = 6 };
         var header = new Grid
@@ -148,7 +148,7 @@ public static partial class QuizStudioViewBuilder
     }
 
     /// <summary>Right pane in file-only mode: selected files with one-click open in the Source Viewer.</summary>
-    private static Control BuildFileSourcesPreviewPane(
+    private static ScrollViewer BuildFileSourcesPreviewPane(
         MainWindowViewModel vm,
         QuizStudioViewModel studio
     )
@@ -205,8 +205,10 @@ public static partial class QuizStudioViewBuilder
             Grid.SetColumn(info, 1);
             row.Children.Add(info);
 
-            var open = UiBuilder.GhostButton("View", MaterialIconKind.OpenInNew, () =>
-                vm.OpenFileInSourceViewer(path)
+            var open = UiBuilder.GhostButton(
+                "View",
+                MaterialIconKind.OpenInNew,
+                () => vm.OpenFileInSourceViewer(path)
             );
             Grid.SetColumn(open, 2);
             row.Children.Add(open);
@@ -218,7 +220,7 @@ public static partial class QuizStudioViewBuilder
     }
 
     /// <summary>Right pane in mixed mode: compact selected-files strip above the Live PDF Scope Preview.</summary>
-    private static Control BuildMixedPreviewPane(MainWindowViewModel vm, QuizStudioViewModel studio)
+    private static Grid BuildMixedPreviewPane(MainWindowViewModel vm, QuizStudioViewModel studio)
     {
         var grid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*"), RowSpacing = 10 };
         var filesWrap = new WrapPanel { Orientation = Orientation.Horizontal };
@@ -226,8 +228,10 @@ public static partial class QuizStudioViewBuilder
         {
             var d = StudySourceClassifier.Describe(path);
             var captured = path;
-            var btn = UiBuilder.GhostButton(d.DisplayName, IconForSource(d.Kind), () =>
-                vm.OpenFileInSourceViewer(captured)
+            var btn = UiBuilder.GhostButton(
+                d.DisplayName,
+                IconForSource(d.Kind),
+                () => vm.OpenFileInSourceViewer(captured)
             );
             btn.Margin = new Thickness(0, 0, 5, 4);
             filesWrap.Children.Add(btn);

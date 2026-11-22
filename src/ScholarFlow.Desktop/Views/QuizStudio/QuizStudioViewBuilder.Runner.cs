@@ -44,8 +44,10 @@ public static partial class QuizStudioViewBuilder
             )
         );
         topLeftActions.Children.Add(
-            UiBuilder.GhostButton("Restart", MaterialIconKind.Restart, () =>
-                studio.StartQuizSession(session, resumeSavedProgress: false)
+            UiBuilder.GhostButton(
+                "Restart",
+                MaterialIconKind.Restart,
+                () => studio.StartQuizSession(session, resumeSavedProgress: false)
             )
         );
         topBar.Children.Add(topLeftActions);
@@ -185,8 +187,9 @@ public static partial class QuizStudioViewBuilder
         var resolvedImg = studio.ResolveQuestionImageFullPath(q.ImagePath);
         if (!string.IsNullOrWhiteSpace(resolvedImg))
             qCardStack.Children.Add(
-                QuizRichContentRenderer.BuildQuestionImageCard(resolvedImg, () =>
-                    studio.OpenImageZoom(q.ImagePath)
+                QuizRichContentRenderer.BuildQuestionImageCard(
+                    resolvedImg,
+                    () => studio.OpenImageZoom(q.ImagePath)
                 )
             );
 
@@ -408,11 +411,18 @@ public static partial class QuizStudioViewBuilder
             if (!studio.IsAnswerRevealed)
             {
                 orderStack.Children.Add(
-                    UiBuilder.PrimaryButton("Check Sequence", MaterialIconKind.Check, async () =>
-                    {
-                        var currSeq = string.Join(" -> ", studio.GetOrderingItemsForQuestion(q));
-                        await studio.SubmitAnswerAsync(currSeq);
-                    })
+                    UiBuilder.PrimaryButton(
+                        "Check Sequence",
+                        MaterialIconKind.Check,
+                        async () =>
+                        {
+                            var currSeq = string.Join(
+                                " -> ",
+                                studio.GetOrderingItemsForQuestion(q)
+                            );
+                            await studio.SubmitAnswerAsync(currSeq);
+                        }
+                    )
                 );
             }
 
@@ -720,8 +730,10 @@ public static partial class QuizStudioViewBuilder
                 HorizontalAlignment = HorizontalAlignment.Center,
             };
             rateGroup.Children.Add(
-                UiBuilder.GhostButton("Again (1d)", MaterialIconKind.Refresh, async () =>
-                    await studio.RateAndAdvanceAsync(1)
+                UiBuilder.GhostButton(
+                    "Again (1d)",
+                    MaterialIconKind.Refresh,
+                    async () => await studio.RateAndAdvanceAsync(1)
                 )
             );
             rateGroup.Children.Add(
@@ -770,7 +782,7 @@ public static partial class QuizStudioViewBuilder
         return scroll;
     }
 
-    private static Control BuildImageZoomLightbox(string fullImagePath, Action onClose)
+    private static Border BuildImageZoomLightbox(string fullImagePath, Action onClose)
     {
         var closeBtn = UiBuilder.PrimaryButton("Close", MaterialIconKind.Close, onClose);
         closeBtn.HorizontalAlignment = HorizontalAlignment.Right;
@@ -847,8 +859,10 @@ public static partial class QuizStudioViewBuilder
             }
         );
 
-        var retryBtn = UiBuilder.GhostButton("Retake Assessment", MaterialIconKind.Restart, () =>
-            studio.StartQuizSession(session)
+        var retryBtn = UiBuilder.GhostButton(
+            "Retake Assessment",
+            MaterialIconKind.Restart,
+            () => studio.StartQuizSession(session)
         );
         Grid.SetColumn(retryBtn, 1);
         headerRow.Children.Add(retryBtn);

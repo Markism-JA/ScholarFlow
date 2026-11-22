@@ -18,7 +18,7 @@ namespace ScholarFlow.Desktop.Views;
 /// </summary>
 public static partial class QuizStudioViewBuilder
 {
-    private static Control BuildFloatingQuestionEditorOverlay(
+    private static Border BuildFloatingQuestionEditorOverlay(
         MainWindowViewModel vm,
         QuizStudioViewModel studio
     )
@@ -98,8 +98,10 @@ public static partial class QuizStudioViewBuilder
         Grid.SetColumn(cancelBtn, 3);
         headerGrid.Children.Add(cancelBtn);
 
-        var doneBtn = UiBuilder.PrimaryButton("Save", MaterialIconKind.Check, () =>
-            studio.CommitEditingQuestionDraft(0)
+        var doneBtn = UiBuilder.PrimaryButton(
+            "Save",
+            MaterialIconKind.Check,
+            () => studio.CommitEditingQuestionDraft(0)
         );
         doneBtn.IsEnabled = !string.IsNullOrWhiteSpace(draft.Prompt);
         Grid.SetColumn(doneBtn, 4);
@@ -1104,8 +1106,9 @@ public static partial class QuizStudioViewBuilder
             if (!string.IsNullOrWhiteSpace(resolvedDraftImg))
             {
                 advStack.Children.Add(
-                    QuizRichContentRenderer.BuildQuestionImageCard(resolvedDraftImg, () =>
-                        studio.OpenImageZoom(draft.ImagePath)
+                    QuizRichContentRenderer.BuildQuestionImageCard(
+                        resolvedDraftImg,
+                        () => studio.OpenImageZoom(draft.ImagePath)
                     )
                 );
             }

@@ -51,12 +51,16 @@ public sealed partial class MainWindow
         var selectorsWrap = new WrapPanel { Orientation = Orientation.Horizontal };
         void AddTokenBtn(string label, MaterialIconKind? icon, string token, string replaceRegex)
         {
-            var b = UiBuilder.GhostButton(label, icon, () =>
-            {
-                _vm.InsertQuickAddToken(token, replaceRegex);
-                _quickAddBox.Focus();
-                _quickAddBox.CaretIndex = _quickAddBox.Text?.Length ?? 0;
-            });
+            var b = UiBuilder.GhostButton(
+                label,
+                icon,
+                () =>
+                {
+                    _vm.InsertQuickAddToken(token, replaceRegex);
+                    _quickAddBox.Focus();
+                    _quickAddBox.CaretIndex = _quickAddBox.Text?.Length ?? 0;
+                }
+            );
             b.Margin = new Thickness(0, 0, 5, 5);
             selectorsWrap.Children.Add(b);
         }

@@ -52,9 +52,6 @@ public static partial class QuizRichContentRenderer
     [GeneratedRegex(@"^(?<pre>.*?)\\frac\{(?<num>[^{}]+)\}\{(?<den>[^{}]+)\}(?<post>.*)$")]
     private static partial Regex StandaloneFractionRegex();
 
-    [GeneratedRegex(@"\s*(?:-->|==>|->)\s*")]
-    private static partial Regex DiagramArrowSplitRegex();
-
     private static readonly (string Latex, string Symbol)[] LatexReplacements =
     [
         (@"\leq", "≤"),
@@ -280,12 +277,16 @@ public static partial class QuizRichContentRenderer
             Content = codeBlock,
         };
 
-        var copyBtn = UiBuilder.GhostButton("Copy Code", MaterialIconKind.ContentCopy, async () =>
-        {
-            var top = TopLevel.GetTopLevel(codeBlock);
-            if (top?.Clipboard is not null)
-                await top.Clipboard.SetTextAsync(cleanCode);
-        });
+        var copyBtn = UiBuilder.GhostButton(
+            "Copy Code",
+            MaterialIconKind.ContentCopy,
+            async () =>
+            {
+                var top = TopLevel.GetTopLevel(codeBlock);
+                if (top?.Clipboard is not null)
+                    await top.Clipboard.SetTextAsync(cleanCode);
+            }
+        );
         Grid.SetColumn(copyBtn, 1);
         topBar.Children.Add(copyBtn);
         outerStack.Children.Add(topBar);
@@ -640,7 +641,7 @@ public static partial class QuizRichContentRenderer
         };
     }
 
-    private static Control BuildFlowchartCanvas(ParsedDiagramGraph graph)
+    private static Canvas BuildFlowchartCanvas(ParsedDiagramGraph graph)
     {
         bool isLeftToRight = !graph.PreferTopDown;
         var nodes = graph.Nodes.ToDictionary(n => n.Id, StringComparer.OrdinalIgnoreCase);
@@ -697,11 +698,9 @@ public static partial class QuizRichContentRenderer
                     ? 16 + li * (nodeW + gapX)
                     : 16
                         + idx * (nodeW + gapX)
-                        + ((maxPerLayer - group.Count) * (nodeW + gapX)) * 0.5;
+                        + (maxPerLayer - group.Count) * (nodeW + gapX) * 0.5;
                 double y = isLeftToRight
-                    ? 16
-                        + idx * (nodeH + gapY)
-                        + ((maxPerLayer - group.Count) * (nodeH + gapY)) * 0.5
+                    ? 16 + idx * (nodeH + gapY) + (maxPerLayer - group.Count) * (nodeH + gapY) * 0.5
                     : 16 + li * (nodeH + gapY);
                 pos[group[idx].Id] = new Point(x, y);
             }
@@ -717,7 +716,7 @@ public static partial class QuizRichContentRenderer
         foreach (
             var sg in nodes
                 .Values.Where(n => !string.IsNullOrWhiteSpace(n.Subgraph))
-                .GroupBy(n => n.Subgraph!)
+                .GroupBy(n => n.Subgraph)
         )
         {
             double minX = sg.Min(n => pos[n.Id].X) - 10;
@@ -856,7 +855,7 @@ public static partial class QuizRichContentRenderer
         return canvas;
     }
 
-    private static Control BuildSequenceDiagramCanvas(ParsedSequenceDiagram seq)
+    private static Canvas BuildSequenceDiagramCanvas(ParsedSequenceDiagram seq)
     {
         var participants = seq.Participants;
         const double colSpacing = 178;
@@ -883,7 +882,7 @@ public static partial class QuizRichContentRenderer
         }
 
         var canvas = new Canvas { Width = canvasW, Height = estimatedH };
-        double CenterX(int idx) => 95 + idx * colSpacing;
+        static double CenterX(int idx) => 95 + idx * colSpacing;
 
         var indexById = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         for (int i = 0; i < participants.Count; i++)
@@ -1010,7 +1009,7 @@ public static partial class QuizRichContentRenderer
                     int i2 = indexById.GetValueOrDefault(step.ToId, i1);
                     double x1 = CenterX(Math.Min(i1, i2));
                     double x2 = CenterX(Math.Max(i1, i2));
-                    double noteW = i1 == i2 ? 150 : Math.Max(160, (x2 - x1) + 70);
+                    double noteW = i1 == i2 ? 150 : Math.Max(160, x2 - x1 + 70);
                     double noteX = (x1 + x2) * 0.5 - noteW * 0.5;
 
                     var noteBox = new Border
