@@ -315,17 +315,10 @@ public static partial class QuizStudioViewBuilder
     {
         bool isChecked = studio.SelectedQuizIdsForMerge.Contains(quiz.Id);
 
-        var rowGrid = new Grid
-        {
-            ColumnDefinitions = showCheckbox
-                ? ColumnDefinitions.Parse("Auto,*,Auto")
-                : ColumnDefinitions.Parse("0,*,Auto"),
-            ColumnSpacing = 10,
-        };
-
+        Button? chk = null;
         if (showCheckbox)
         {
-            var chk = UiBuilder.IconButton(
+            chk = UiBuilder.IconButton(
                 isChecked ? MaterialIconKind.CheckboxMarked : MaterialIconKind.CheckboxBlankOutline,
                 () => studio.ToggleQuizSelectionForMerge(quiz.Id),
                 16,
@@ -334,25 +327,48 @@ public static partial class QuizStudioViewBuilder
                     : ThemeService.Brush(ThemeService.TextMuted)
             );
             chk.VerticalAlignment = VerticalAlignment.Center;
-            rowGrid.Children.Add(chk);
+            ToolTip.SetTip(
+                chk,
+                isChecked ? "Unselect from multi-deck combiner" : "Select for multi-deck combiner"
+            );
         }
 
-        var centerStack = new StackPanel
+        bool isPdfStale = quiz.IsSourcePdfStale();
+
+        var titleLine = new WrapPanel
         {
-            Spacing = 2,
+            Orientation = Orientation.Horizontal,
             VerticalAlignment = VerticalAlignment.Center,
         };
-        centerStack.Children.Add(
+        titleLine.Children.Add(
             new TextBlock
             {
                 Text = quiz.Title,
                 FontSize = 13.5,
                 FontWeight = FontWeight.Medium,
                 Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                TextWrapping = compact ? TextWrapping.NoWrap : TextWrapping.Wrap,
+                TextWrapping = TextWrapping.Wrap,
                 TextTrimming = TextTrimming.CharacterEllipsis,
+                Margin = new Thickness(0, 0, 6, 0),
+                VerticalAlignment = VerticalAlignment.Center,
             }
         );
+
+        if (isPdfStale && !compact)
+        {
+            var stalePill = UiBuilder.Pill(
+                "PDF updated",
+                ThemeService.Brush(ThemeService.PriorityP2Fg),
+                ThemeService.Brush(ThemeService.PriorityP2Bg),
+                fontSize: 10
+            );
+            stalePill.VerticalAlignment = VerticalAlignment.Center;
+            ToolTip.SetTip(
+                stalePill,
+                "Source PDF changed since this quiz was generated — open ⋯ menu to Re-ground PDF"
+            );
+            titleLine.Children.Add(stalePill);
+        }
 
         var subParts = new List<string>
         {
@@ -365,52 +381,45 @@ public static partial class QuizStudioViewBuilder
         if (quiz.LastScorePercent.HasValue)
             subParts.Add($"Score: {quiz.LastScorePercent.Value:0.#}% ({quiz.AttemptCount}x)");
 
-        centerStack.Children.Add(
-            new TextBlock
-            {
-                Text = string.Join(" · ", subParts),
-                FontSize = 11.5,
-                Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                TextTrimming = TextTrimming.CharacterEllipsis,
-            }
-        );
-        Grid.SetColumn(centerStack, 1);
-        rowGrid.Children.Add(centerStack);
-
-        var actions = new StackPanel
+        var centerStack = new StackPanel
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 6,
+            Spacing = 2,
             VerticalAlignment = VerticalAlignment.Center,
+            Children =
+            {
+                titleLine,
+                new TextBlock
+                {
+                    Text = string.Join(" · ", subParts),
+                    FontSize = 11.5,
+                    Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                },
+            },
         };
 
-        bool isPdfStale = quiz.IsSourcePdfStale();
-        if (isPdfStale && !compact)
-        {
-            var regroundBtn = UiBuilder.GhostButton(
-                "Re-ground PDF",
-                MaterialIconKind.Autorenew,
-                async () => await studio.RegroundQuizAsync(quiz),
-                isActive: true
-            );
-            actions.Children.Add(regroundBtn);
-        }
-
+        Border? scorePill = null;
         if (quiz.LastScorePercent.HasValue)
         {
             bool high = quiz.LastScorePercent.Value >= 75;
-            actions.Children.Add(
-                UiBuilder.Pill(
-                    $"{quiz.LastScorePercent.Value:0}%",
-                    high
-                        ? ThemeService.Brush(ThemeService.SuccessFg)
-                        : ThemeService.Brush(ThemeService.PriorityP2Fg),
-                    high
-                        ? ThemeService.Brush(ThemeService.SuccessBg)
-                        : ThemeService.Brush(ThemeService.PriorityP2Bg)
-                )
+            scorePill = UiBuilder.Pill(
+                $"{quiz.LastScorePercent.Value:0}%",
+                high
+                    ? ThemeService.Brush(ThemeService.SuccessFg)
+                    : ThemeService.Brush(ThemeService.PriorityP2Fg),
+                high
+                    ? ThemeService.Brush(ThemeService.SuccessBg)
+                    : ThemeService.Brush(ThemeService.PriorityP2Bg)
             );
+            scorePill.VerticalAlignment = VerticalAlignment.Center;
         }
+
+        // Wrapping primary actions + consolidated ⋯ overflow menu
+        var actionsWrap = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
         if (quiz.HasInProgressAttempt)
         {
@@ -419,31 +428,35 @@ public static partial class QuizStudioViewBuilder
                 1,
                 quiz.Questions.Count
             );
-            actions.Children.Add(
-                UiBuilder.PrimaryButton(
-                    $"Continue (Q{resumeQ}/{quiz.Questions.Count})",
-                    MaterialIconKind.PlayOutline,
-                    () => studio.StartQuizSession(quiz, resumeSavedProgress: true)
-                )
+            var contBtn = UiBuilder.PrimaryButton(
+                $"Continue (Q{resumeQ}/{quiz.Questions.Count})",
+                MaterialIconKind.PlayOutline,
+                () => studio.StartQuizSession(quiz, resumeSavedProgress: true)
             );
-            actions.Children.Add(
-                UiBuilder.GhostButton(
-                    "Restart",
-                    MaterialIconKind.Restart,
-                    () => studio.StartQuizSession(quiz, resumeSavedProgress: false)
-                )
+            contBtn.Margin = new Thickness(0, 0, 5, 3);
+            ToolTip.SetTip(contBtn, "Resume saved in-progress attempt");
+            actionsWrap.Children.Add(contBtn);
+
+            var restartBtn = UiBuilder.GhostButton(
+                "Restart",
+                MaterialIconKind.Restart,
+                () => studio.StartQuizSession(quiz, resumeSavedProgress: false)
             );
+            restartBtn.Margin = new Thickness(0, 0, 5, 3);
+            ToolTip.SetTip(restartBtn, "Start fresh from question 1");
+            actionsWrap.Children.Add(restartBtn);
         }
         else
         {
-            actions.Children.Add(
-                UiBuilder.GhostButton(
-                    "Start",
-                    MaterialIconKind.PlayOutline,
-                    () => studio.StartQuizSession(quiz, resumeSavedProgress: false),
-                    isActive: true
-                )
+            var startBtn = UiBuilder.GhostButton(
+                "Start",
+                MaterialIconKind.PlayOutline,
+                () => studio.StartQuizSession(quiz, resumeSavedProgress: false),
+                isActive: true
             );
+            startBtn.Margin = new Thickness(0, 0, 5, 3);
+            ToolTip.SetTip(startBtn, "Start practice session");
+            actionsWrap.Children.Add(startBtn);
         }
 
         var shuffleStartBtn = UiBuilder.GhostButton(
@@ -456,32 +469,18 @@ public static partial class QuizStudioViewBuilder
                     shuffleOptionsOverride: true
                 )
         );
-        actions.Children.Add(shuffleStartBtn);
+        shuffleStartBtn.Margin = new Thickness(0, 0, 5, 3);
+        ToolTip.SetTip(shuffleStartBtn, "Start with shuffled questions & answer choices");
+        actionsWrap.Children.Add(shuffleStartBtn);
 
         var organizeBtn = UiBuilder.GhostButton(
             "Organize",
             MaterialIconKind.TuneVariant,
             () => studio.OpenQuizInOrganizer(quiz)
         );
-        actions.Children.Add(organizeBtn);
-
-        bool isPdfQuiz = quiz.SourcePdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
-        if (!compact && File.Exists(quiz.SourcePdfPath))
-        {
-            var pdfBtn = UiBuilder.IconButton(
-                isPdfQuiz ? MaterialIconKind.FilePdfBox : MaterialIconKind.CodeTags,
-                () =>
-                {
-                    if (isPdfQuiz)
-                        vm.OpenPdfInReader(quiz.SourcePdfPath);
-                    else
-                        vm.OpenFileInSourceViewer(quiz.SourcePdfPath);
-                },
-                14.5,
-                ThemeService.Brush(ThemeService.TextSecondary)
-            );
-            actions.Children.Add(pdfBtn);
-        }
+        organizeBtn.Margin = new Thickness(0, 0, compact ? 0 : 4, 3);
+        ToolTip.SetTip(organizeBtn, "Open deck in Deck Organizer to edit questions or run AI fix");
+        actionsWrap.Children.Add(organizeBtn);
 
         if (!compact)
         {
@@ -491,7 +490,7 @@ public static partial class QuizStudioViewBuilder
                 QuizPdfExportOptions options
             )
             {
-                var top = TopLevel.GetTopLevel(actions);
+                var top = TopLevel.GetTopLevel(actionsWrap);
                 if (top?.StorageProvider is null)
                     return;
                 var file = await top.StorageProvider.SaveFilePickerAsync(
@@ -510,88 +509,185 @@ public static partial class QuizStudioViewBuilder
                     await studio.ExportQuizToPdfFileAsync(quiz, outPath, options);
             }
 
-            var printFlyout = new MenuFlyout();
-            var mExam = new MenuItem { Header = "Printable Exam (Worksheet + Hints + Key)" };
+            var moreMenu = new MenuFlyout();
+
+            bool isPdfQuiz = quiz.SourcePdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase);
+            if (File.Exists(quiz.SourcePdfPath))
+            {
+                var openSourceItem = new MenuItem
+                {
+                    Header = isPdfQuiz ? "Open Source PDF in Reader" : "Open Source File",
+                };
+                openSourceItem.Click += (_, _) =>
+                {
+                    if (isPdfQuiz)
+                        vm.OpenPdfInReader(quiz.SourcePdfPath);
+                    else
+                        vm.OpenFileInSourceViewer(quiz.SourcePdfPath);
+                };
+                moreMenu.Items.Add(openSourceItem);
+            }
+
+            if (isPdfStale)
+            {
+                var regroundItem = new MenuItem { Header = "Re-ground Stale PDF" };
+                regroundItem.Click += async (_, _) => await studio.RegroundQuizAsync(quiz);
+                moreMenu.Items.Add(regroundItem);
+            }
+
+            if (moreMenu.Items.Count > 0)
+                moreMenu.Items.Add(new Separator());
+
+            var mExam = new MenuItem { Header = "Export Printable Exam PDF (Worksheet + Key)" };
             mExam.Click += async (_, _) =>
                 await ExportCatalogPdfAsync(
                     "_Exam",
                     "Export Printable Exam PDF",
                     QuizPdfExportOptions.ExamDefault
                 );
-            var mGuide = new MenuItem { Header = "Study Guide (Inline Answers & Feedback)" };
+            moreMenu.Items.Add(mExam);
+
+            var mGuide = new MenuItem { Header = "Export Study Guide PDF (Inline Answers)" };
             mGuide.Click += async (_, _) =>
                 await ExportCatalogPdfAsync(
                     "_StudyGuide",
                     "Export Study Guide PDF",
                     QuizPdfExportOptions.StudyGuide
                 );
-            var mBlank = new MenuItem { Header = "Questions Only (Blank Exam Sheet)" };
+            moreMenu.Items.Add(mGuide);
+
+            var mBlank = new MenuItem { Header = "Export Questions-Only PDF (Blank Sheet)" };
             mBlank.Click += async (_, _) =>
                 await ExportCatalogPdfAsync(
                     "_QuestionsOnly",
                     "Export Questions-Only PDF",
                     QuizPdfExportOptions.QuestionsOnly
                 );
-            printFlyout.Items.Add(mExam);
-            printFlyout.Items.Add(mGuide);
-            printFlyout.Items.Add(mBlank);
+            moreMenu.Items.Add(mBlank);
 
-            Button? exportPdfBtn = null;
-            exportPdfBtn = UiBuilder.IconButton(
-                MaterialIconKind.PrinterOutline,
-                () =>
-                {
-                    if (exportPdfBtn is not null)
-                        printFlyout.ShowAt(exportPdfBtn);
-                },
-                14.5,
+            var mJson = new MenuItem { Header = "Export Deck JSON" };
+            mJson.Click += async (_, _) =>
+            {
+                var top = TopLevel.GetTopLevel(actionsWrap);
+                if (top?.StorageProvider is null)
+                    return;
+                var file = await top.StorageProvider.SaveFilePickerAsync(
+                    new Avalonia.Platform.Storage.FilePickerSaveOptions
+                    {
+                        Title = "Export Quiz Deck JSON",
+                        SuggestedFileName =
+                            $"{Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title, ".json")}",
+                        DefaultExtension = "json",
+                    }
+                );
+                var outPath = file is null
+                    ? null
+                    : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file);
+                if (!string.IsNullOrWhiteSpace(outPath))
+                    await studio.ExportQuizToJsonFileAsync(quiz, outPath);
+            };
+            moreMenu.Items.Add(mJson);
+
+            moreMenu.Items.Add(new Separator());
+
+            var mDelete = new MenuItem { Header = "Delete Quiz" };
+            mDelete.Click += async (_, _) => await studio.DeleteQuizAsync(quiz);
+            moreMenu.Items.Add(mDelete);
+
+            var moreBtn = UiBuilder.IconButton(
+                MaterialIconKind.DotsHorizontal,
+                () => { },
+                16,
                 ThemeService.Brush(ThemeService.TextSecondary)
             );
-            ToolTip.SetTip(
-                exportPdfBtn,
-                "Export Printable PDF (Exam, Study Guide, or Questions Only)"
-            );
-            actions.Children.Add(exportPdfBtn);
-
-            var exportJsonBtn = UiBuilder.IconButton(
-                MaterialIconKind.CodeJson,
-                async () =>
-                {
-                    var top = TopLevel.GetTopLevel(actions);
-                    if (top?.StorageProvider is null)
-                        return;
-                    var file = await top.StorageProvider.SaveFilePickerAsync(
-                        new Avalonia.Platform.Storage.FilePickerSaveOptions
-                        {
-                            Title = "Export Quiz Deck JSON",
-                            SuggestedFileName =
-                                $"{Core.Services.FilenameSanitizer.SanitizeFileName(quiz.Title, ".json")}",
-                            DefaultExtension = "json",
-                        }
-                    );
-                    var outPath = file is null
-                        ? null
-                        : Avalonia.Platform.Storage.StorageProviderExtensions.TryGetLocalPath(file);
-                    if (!string.IsNullOrWhiteSpace(outPath))
-                        await studio.ExportQuizToJsonFileAsync(quiz, outPath);
-                },
-                14.5,
-                ThemeService.Brush(ThemeService.TextSecondary)
-            );
-            actions.Children.Add(exportJsonBtn);
-
-            actions.Children.Add(
-                UiBuilder.IconButton(
-                    MaterialIconKind.TrashCanOutline,
-                    async () => await studio.DeleteQuizAsync(quiz),
-                    14.5,
-                    ThemeService.Brush(ThemeService.TextMuted)
-                )
-            );
+            moreBtn.Flyout = moreMenu;
+            moreBtn.Margin = new Thickness(0, 0, 0, 3);
+            ToolTip.SetTip(moreBtn, "More options (PDF export, JSON, open source, delete)");
+            actionsWrap.Children.Add(moreBtn);
         }
 
-        Grid.SetColumn(actions, 2);
-        rowGrid.Children.Add(actions);
+        // Responsive card layout host: 1-row on wide (>= 740px), clean 2-row stacked on narrow (< 740px)
+        var layoutHost = new Border();
+        bool? lastStacked = null;
+
+        void ApplyRowLayout(bool stacked)
+        {
+            if (lastStacked == stacked && layoutHost.Child is not null)
+                return;
+            lastStacked = stacked;
+
+            static void Detach(Control? c)
+            {
+                if (c is null)
+                    return;
+                if (c.Parent is Panel p)
+                    p.Children.Remove(c);
+                else if (c.Parent is Decorator d && ReferenceEquals(d.Child, c))
+                    d.Child = null;
+            }
+
+            Detach(chk);
+            Detach(centerStack);
+            Detach(scorePill);
+            Detach(actionsWrap);
+
+            if (stacked)
+            {
+                var topLine = new Grid
+                {
+                    ColumnDefinitions = showCheckbox
+                        ? ColumnDefinitions.Parse("Auto,*,Auto")
+                        : ColumnDefinitions.Parse("0,*,Auto"),
+                    ColumnSpacing = 8,
+                };
+                if (chk is not null)
+                    topLine.Children.Add(chk);
+                Grid.SetColumn(centerStack, 1);
+                topLine.Children.Add(centerStack);
+                if (scorePill is not null)
+                {
+                    Grid.SetColumn(scorePill, 2);
+                    topLine.Children.Add(scorePill);
+                }
+
+                actionsWrap.Margin = new Thickness(showCheckbox ? 30 : 0, 6, 0, 0);
+                layoutHost.Child = new StackPanel
+                {
+                    Spacing = 0,
+                    Children = { topLine, actionsWrap },
+                };
+            }
+            else
+            {
+                var rightGroup = new StackPanel
+                {
+                    Orientation = Orientation.Horizontal,
+                    Spacing = 6,
+                    VerticalAlignment = VerticalAlignment.Center,
+                };
+                if (scorePill is not null)
+                    rightGroup.Children.Add(scorePill);
+                actionsWrap.Margin = new Thickness(0, 3, 0, 0);
+                rightGroup.Children.Add(actionsWrap);
+
+                var rowGrid = new Grid
+                {
+                    ColumnDefinitions = showCheckbox
+                        ? ColumnDefinitions.Parse("Auto,*,Auto")
+                        : ColumnDefinitions.Parse("0,*,Auto"),
+                    ColumnSpacing = 10,
+                };
+                if (chk is not null)
+                    rowGrid.Children.Add(chk);
+                Grid.SetColumn(centerStack, 1);
+                rowGrid.Children.Add(centerStack);
+                Grid.SetColumn(rightGroup, 2);
+                rowGrid.Children.Add(rightGroup);
+                layoutHost.Child = rowGrid;
+            }
+        }
+
+        ApplyRowLayout(compact);
 
         var rowBorder = new Border
         {
@@ -601,9 +697,14 @@ public static partial class QuizStudioViewBuilder
             BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
             BorderThickness = new Thickness(0, 0, 0, 1),
             CornerRadius = new CornerRadius(4),
-            Padding = new Thickness(6, 7),
+            Padding = new Thickness(8, 8),
             Transitions = UiBuilder.CreateSmoothBrushTransitions(110),
-            Child = rowGrid,
+            Child = layoutHost,
+        };
+        rowBorder.SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width > 0)
+                ApplyRowLayout(e.NewSize.Width < (compact ? 520 : 720));
         };
         rowBorder.PointerEntered += (_, _) =>
         {
