@@ -361,7 +361,7 @@ public static partial class MarkdownRenderer
         };
     }
 
-    private static TextBlock BuildFormattedTextBlock(
+    private static SelectableTextBlock BuildFormattedTextBlock(
         string text,
         double fontSize,
         IBrush foreground,
@@ -369,7 +369,7 @@ public static partial class MarkdownRenderer
         FontWeight defaultWeight = FontWeight.Normal
     )
     {
-        var tb = new TextBlock
+        var tb = new SelectableTextBlock
         {
             FontSize = fontSize,
             FontWeight = defaultWeight,

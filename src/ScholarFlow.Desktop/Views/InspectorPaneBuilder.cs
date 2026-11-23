@@ -59,10 +59,10 @@ public static class InspectorPaneBuilder
 
         var rootGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*") };
 
-        // 1. Drawer Top Header Bar (Course & Term Breadcrumb + Actions + Close X)
+        // 1. Drawer Top Header Bar (Course & Term Breadcrumb + Expand Left + Actions + Close X)
         var headerBar = new Grid
         {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto"),
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto,Auto"),
             Margin = new Thickness(14, 10, 10, 8),
         };
 
@@ -92,9 +92,30 @@ public static class InspectorPaneBuilder
                 FontWeight = FontWeight.SemiBold,
                 Foreground = ThemeService.Brush(ThemeService.TextSecondary),
                 VerticalAlignment = VerticalAlignment.Center,
+                TextTrimming = TextTrimming.CharacterEllipsis,
             }
         );
         headerBar.Children.Add(crumbRow);
+
+        var expandBtn = UiBuilder.IconButton(
+            vm.IsInspectorExpanded
+                ? MaterialIconKind.ChevronDoubleRight
+                : MaterialIconKind.ChevronDoubleLeft,
+            vm.ToggleInspectorExpanded,
+            16,
+            vm.IsInspectorExpanded
+                ? ThemeService.Brush(ThemeService.AccentPrimary)
+                : ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(
+            expandBtn,
+            vm.IsInspectorExpanded
+                ? "Restore Inspector width"
+                : "Expand Inspector left for reading descriptions"
+        );
+        expandBtn.Margin = new Thickness(0, 0, 2, 0);
+        Grid.SetColumn(expandBtn, 1);
+        headerBar.Children.Add(expandBtn);
 
         var completeBtn = UiBuilder.GhostButton(
             task.IsCompleted ? "Reopen" : "Complete",
@@ -102,8 +123,12 @@ public static class InspectorPaneBuilder
             async () => await vm.ToggleTaskCompletedAsync(task),
             isActive: task.IsCompleted
         );
+        ToolTip.SetTip(
+            completeBtn,
+            task.IsCompleted ? "Mark task as active again" : "Mark task as completed"
+        );
         completeBtn.Margin = new Thickness(0, 0, 4, 0);
-        Grid.SetColumn(completeBtn, 1);
+        Grid.SetColumn(completeBtn, 2);
         headerBar.Children.Add(completeBtn);
 
         var delBtn = UiBuilder.IconButton(
@@ -112,7 +137,8 @@ public static class InspectorPaneBuilder
             15,
             ThemeService.Brush(ThemeService.TextMuted)
         );
-        Grid.SetColumn(delBtn, 2);
+        ToolTip.SetTip(delBtn, "Delete task");
+        Grid.SetColumn(delBtn, 3);
         headerBar.Children.Add(delBtn);
 
         var closeBtn = UiBuilder.IconButton(
@@ -121,7 +147,8 @@ public static class InspectorPaneBuilder
             16,
             ThemeService.Brush(ThemeService.TextSecondary)
         );
-        Grid.SetColumn(closeBtn, 3);
+        ToolTip.SetTip(closeBtn, "Close Inspector (I / Esc)");
+        Grid.SetColumn(closeBtn, 4);
         headerBar.Children.Add(closeBtn);
 
         rootGrid.Children.Add(
@@ -599,12 +626,116 @@ public static class InspectorPaneBuilder
         addSubGrid.Children.Add(addSubBtn);
         stack.Children.Add(addSubGrid);
 
-        // Rendered Markdown Instructions / Note Preview
+        // Rendered Markdown Instructions / Note Preview (with partial selection, Copy All & Raw view)
         if (!string.IsNullOrWhiteSpace(vm.SelectedTaskNoteContent))
         {
             stack.Children.Add(UiBuilder.HairlineDivider());
             var noteHeader = new Grid { ColumnDefinitions = ColumnDefinitions.Parse("*,Auto") };
             noteHeader.Children.Add(UiBuilder.SectionHeader("Note & Instructions"));
+
+            var noteContent = vm.SelectedTaskNoteContent;
+            var noteBodyHost = new Border
+            {
+                Background = ThemeService.Brush(ThemeService.BgBase),
+                BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(7),
+                Padding = new Thickness(12, 10),
+                Child = MarkdownRenderer.Render(noteContent),
+            };
+
+            var noteActions = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            Button? copyBtn = null;
+            copyBtn = UiBuilder.GhostButton(
+                "Copy",
+                MaterialIconKind.ContentCopy,
+                async () =>
+                {
+                    var top = TopLevel.GetTopLevel(noteBodyHost);
+                    if (top?.Clipboard is not null)
+                    {
+                        await top.Clipboard.SetTextAsync(noteContent);
+                        if (copyBtn?.Content is StackPanel sp)
+                        {
+                            var lbl = sp.Children.OfType<TextBlock>().FirstOrDefault();
+                            if (lbl is not null)
+                            {
+                                lbl.Text = "Copied";
+                                _ = Task.Delay(1400)
+                                    .ContinueWith(_ =>
+                                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                                            lbl.Text = "Copy"
+                                        )
+                                    );
+                            }
+                        }
+                    }
+                }
+            );
+            ToolTip.SetTip(copyBtn, "Copy full note & instructions");
+            noteActions.Children.Add(copyBtn);
+
+            var expandDescBtn = UiBuilder.IconButton(
+                vm.IsInspectorExpanded
+                    ? MaterialIconKind.ArrowCollapseRight
+                    : MaterialIconKind.ArrowExpandLeft,
+                vm.ToggleInspectorExpanded,
+                14.5,
+                vm.IsInspectorExpanded
+                    ? ThemeService.Brush(ThemeService.AccentPrimary)
+                    : ThemeService.Brush(ThemeService.TextSecondary)
+            );
+            ToolTip.SetTip(
+                expandDescBtn,
+                vm.IsInspectorExpanded
+                    ? "Collapse description pane back to default width"
+                    : "Expand description pane left"
+            );
+            noteActions.Children.Add(expandDescBtn);
+
+            bool isRawView = false;
+            Button? rawBtn = null;
+            rawBtn = UiBuilder.GhostButton(
+                "Raw",
+                MaterialIconKind.TextBoxOutline,
+                () =>
+                {
+                    isRawView = !isRawView;
+                    if (isRawView)
+                    {
+                        noteBodyHost.Child = new SelectableTextBlock
+                        {
+                            Text = noteContent,
+                            FontFamily = new FontFamily(
+                                "JetBrains Mono, Fira Code, Cascadia Code, DejaVu Sans Mono, monospace"
+                            ),
+                            FontSize = 11.5,
+                            LineHeight = 17.5,
+                            Foreground = ThemeService.Brush(ThemeService.TextPrimary),
+                            TextWrapping = TextWrapping.Wrap,
+                        };
+                    }
+                    else
+                    {
+                        noteBodyHost.Child = MarkdownRenderer.Render(noteContent);
+                    }
+                    if (rawBtn?.Content is StackPanel sp)
+                    {
+                        var lbl = sp.Children.OfType<TextBlock>().FirstOrDefault();
+                        if (lbl is not null)
+                            lbl.Text = isRawView ? "Preview" : "Raw";
+                    }
+                }
+            );
+            ToolTip.SetTip(rawBtn, "Toggle raw selectable Markdown for multi-paragraph copying");
+            noteActions.Children.Add(rawBtn);
+
             if (!string.IsNullOrWhiteSpace(task.NotePath))
             {
                 var courseDir = string.IsNullOrWhiteSpace(task.CourseFolder)
@@ -622,22 +753,13 @@ public static class InspectorPaneBuilder
                     MaterialIconKind.FileEditOutline,
                     () => ExternalFileLauncher.OpenLocalFile(noteFull)
                 );
-                Grid.SetColumn(nvimBtn, 1);
-                noteHeader.Children.Add(nvimBtn);
+                noteActions.Children.Add(nvimBtn);
             }
-            stack.Children.Add(noteHeader);
 
-            stack.Children.Add(
-                new Border
-                {
-                    Background = ThemeService.Brush(ThemeService.BgBase),
-                    BorderBrush = ThemeService.Brush(ThemeService.BorderSubtle),
-                    BorderThickness = new Thickness(1),
-                    CornerRadius = new CornerRadius(7),
-                    Padding = new Thickness(12, 10),
-                    Child = MarkdownRenderer.Render(vm.SelectedTaskNoteContent),
-                }
-            );
+            Grid.SetColumn(noteActions, 1);
+            noteHeader.Children.Add(noteActions);
+            stack.Children.Add(noteHeader);
+            stack.Children.Add(noteBodyHost);
         }
 
         var scroll = UiBuilder.PersistentScrollViewer($"inspector:{vm.SelectedTask?.Id}", stack);

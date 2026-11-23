@@ -63,8 +63,10 @@ public sealed partial class MainWindowViewModel
 
     public void SetGroupingMode(TaskGroupingMode mode)
     {
+        if (ActiveGrouping == mode)
+            return;
         ActiveGrouping = mode;
-        NotifyStateChanged();
+        NotifyStateChanged(UiChangeKind.CenterBodyOnly);
     }
 
     public void SelectCalendarView()
@@ -85,7 +87,7 @@ public sealed partial class MainWindowViewModel
             ? null
             : courseFolder;
         RecomputeVisibleTasks();
-        NotifyStateChanged();
+        NotifyStateChanged(UiChangeKind.CenterBodyOnly);
     }
 
     public void SelectCourse(BasinCourseEntry course, bool showMaterials = false)
@@ -330,12 +332,21 @@ public sealed partial class MainWindowViewModel
         }
     }
 
+    public bool IsInspectorExpanded { get; private set; }
+
+    public void ToggleInspectorExpanded()
+    {
+        IsInspectorExpanded = !IsInspectorExpanded;
+        NotifyStateChanged(UiChangeKind.InspectorOnly);
+    }
+
     public void CloseInspector()
     {
         if (!IsInspectorOpen)
             return;
 
         IsInspectorOpen = false;
+        IsInspectorExpanded = false;
         NotifyStateChanged(UiChangeKind.InspectorOnly);
     }
 

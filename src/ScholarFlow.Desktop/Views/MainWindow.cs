@@ -60,10 +60,6 @@ public sealed partial class MainWindow : Window
     private StackPanel _searchResultsStack = new() { Spacing = 2 };
     private WrapPanel _searchFilterBar = new() { Orientation = Orientation.Horizontal };
 
-    private readonly Dictionary<
-        string,
-        (Border Row, TextBlock TitleBlock, StackPanel HoverActions)
-    > _taskRowsById = new(StringComparer.Ordinal);
     private string? _lastHighlightedTaskId;
     private string _mountedModalKind = string.Empty;
     private bool _lastRenderedIsSyncing;
@@ -71,6 +67,37 @@ public sealed partial class MainWindow : Window
     private bool _lastAutoSidebarCollapse;
     private Vector _sidebarScrollOffset;
     private Vector _taskListScrollOffset;
+
+    private enum TaskListTier
+    {
+        Compact, // < 460px  (narrow sub-pane, tiled window, or both sidebars open)
+        Medium, // 460–679px (one sidebar open or medium desktop width)
+        Expanded, // >= 680px (full desktop width)
+    }
+
+    private sealed record TaskRowResponsiveRefs(
+        Border Row,
+        TextBlock TitleBlock,
+        StackPanel HoverActions,
+        Grid RowGrid,
+        StackPanel CenterStack,
+        StackPanel RightRow,
+        Control? TermPill,
+        Control? CourseTag
+    );
+
+    private readonly Dictionary<string, TaskRowResponsiveRefs> _taskRowsById = new(
+        StringComparer.Ordinal
+    );
+    private TaskListTier _taskListTier = TaskListTier.Expanded;
+
+    private static TaskListTier ClassifyTaskListTier(double width) =>
+        width switch
+        {
+            < 460 => TaskListTier.Compact,
+            < 680 => TaskListTier.Medium,
+            _ => TaskListTier.Expanded,
+        };
 
     public MainWindow(MainWindowViewModel vm)
     {
@@ -116,13 +143,13 @@ public sealed partial class MainWindow : Window
         [
             new DoubleTransition
             {
-                Property = Layoutable.WidthProperty,
+                Property = WidthProperty,
                 Duration = TimeSpan.FromMilliseconds(185),
                 Easing = new CubicEaseOut(),
             },
             new DoubleTransition
             {
-                Property = Visual.OpacityProperty,
+                Property = OpacityProperty,
                 Duration = TimeSpan.FromMilliseconds(140),
             },
         ];
@@ -134,13 +161,13 @@ public sealed partial class MainWindow : Window
         [
             new DoubleTransition
             {
-                Property = Layoutable.WidthProperty,
+                Property = WidthProperty,
                 Duration = TimeSpan.FromMilliseconds(185),
                 Easing = new CubicEaseOut(),
             },
             new DoubleTransition
             {
-                Property = Visual.OpacityProperty,
+                Property = OpacityProperty,
                 Duration = TimeSpan.FromMilliseconds(150),
             },
         ];
@@ -173,7 +200,7 @@ public sealed partial class MainWindow : Window
             [
                 new DoubleTransition
                 {
-                    Property = Visual.OpacityProperty,
+                    Property = OpacityProperty,
                     Duration = TimeSpan.FromMilliseconds(160),
                 },
             ],
@@ -214,14 +241,14 @@ public sealed partial class MainWindow : Window
             [
                 new DoubleTransition
                 {
-                    Property = Visual.OpacityProperty,
+                    Property = OpacityProperty,
                     Duration = TimeSpan.FromMilliseconds(160),
                 },
             ],
         };
         _floatingInspectorScrim.PointerPressed += (_, _) => _vm.CloseInspector();
 
-        _floatingInspectorTranslate = new TranslateTransform(380, 0)
+        _floatingInspectorTranslate = new TranslateTransform(760, 0)
         {
             Transitions =
             [
@@ -263,6 +290,24 @@ public sealed partial class MainWindow : Window
         };
 
         RebuildAllSections();
+    }
+
+    private TaskListTier ResolveInitialTaskListTier(bool isCourseSubView)
+    {
+        double paneW = _centerBodyContainer.Bounds.Width;
+        if (paneW <= 0)
+        {
+            double winW = Bounds.Width > 0 ? Bounds.Width : Width;
+            double sideW = IsSidebarCurrentlyCompact ? 54 : 225;
+            var (dock, _, dockedW, _) = ComputeInspectorLayout(winW);
+            paneW = Math.Max(320, winW - sideW - (dock ? dockedW : 0));
+        }
+
+        // CourseWorkspaceViewBuilder applies Thickness(24, 16, 24, 12) around its body
+        if (isCourseSubView)
+            paneW = Math.Max(300, paneW - 48);
+
+        return ClassifyTaskListTier(paneW);
     }
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
@@ -310,16 +355,59 @@ public sealed partial class MainWindow : Window
         }
         _vm.ToggleSidebar();
     }
-    private bool ShouldDockInspectorInline =>
-        _vm.IsInspectorOpen
-        && _vm.ActiveMode
+
+    private bool ShouldDockInspectorInline => ComputeInspectorLayout(Bounds.Width).Dock;
+
+    private const double MinCenterPaneWidth = 480;
+    private const double NormalInspectorWidth = 360;
+
+    /// <summary>
+    /// Single source of truth for Inspector responsive layout across Compact (&lt;860), Medium, and Wide windows.
+    /// Docks only when the center pane keeps at least <see cref="MinCenterPaneWidth"/>; otherwise floats as an overlay drawer.
+    /// </summary>
+    private (
+        bool Dock,
+        bool Float,
+        double DockedWidth,
+        double FloatingWidth
+    ) ComputeInspectorLayout(double width)
+    {
+        bool allowedInMode =
+            _vm.ActiveMode
             is not (
                 WorkspaceTabMode.PdfReader
                 or WorkspaceTabMode.SourceViewer
                 or WorkspaceTabMode.QuizStudio
                 or WorkspaceTabMode.KnowledgeSearch
-            )
-        && (Bounds.Width <= 0 || Bounds.Width >= 1060);
+            );
+        if (!_vm.IsInspectorOpen || !allowedInMode)
+            return (false, false, 0, NormalInspectorWidth);
+
+        double effW = width > 0 ? width : 1440;
+        double sideW = (_vm.IsSidebarCollapsed || (width is > 0 and < 860)) ? 54 : 225;
+        double availableForInspector = effW - sideW - MinCenterPaneWidth;
+
+        double dockedWidth;
+        bool dock;
+        if (_vm.IsInspectorExpanded)
+        {
+            double desired = Math.Clamp(effW * 0.46, 520, 720);
+            dockedWidth = Math.Min(desired, availableForInspector);
+            dock = dockedWidth >= 460;
+        }
+        else
+        {
+            dockedWidth = NormalInspectorWidth;
+            dock = availableForInspector >= NormalInspectorWidth;
+        }
+
+        double maxFloatingW = Math.Max(280, effW - 56);
+        double floatingWidth = _vm.IsInspectorExpanded
+            ? Math.Min(720, maxFloatingW)
+            : Math.Min(NormalInspectorWidth, maxFloatingW);
+
+        return (dock, !dock, dock ? dockedWidth : 0, floatingWidth);
+    }
 
     private void UpdateResponsiveShellColumns(double width)
     {
@@ -331,25 +419,27 @@ public sealed partial class MainWindow : Window
     private void SyncInspectorVisualState(double? explicitWidth = null)
     {
         double width = explicitWidth ?? Bounds.Width;
-        bool allowedInMode =
-            _vm.ActiveMode
-            is not (
-                WorkspaceTabMode.PdfReader
-                or WorkspaceTabMode.SourceViewer
-                or WorkspaceTabMode.QuizStudio
-                or WorkspaceTabMode.KnowledgeSearch
-            );
-        bool shouldDock = _vm.IsInspectorOpen && allowedInMode && (width <= 0 || width >= 1060);
-        bool shouldFloat = _vm.IsInspectorOpen && allowedInMode && width is > 0 and < 1060;
+        var (shouldDock, shouldFloat, dockedWidth, floatingWidth) = ComputeInspectorLayout(width);
 
-        _inspectorContainer.Width = shouldDock ? 360 : 0;
+        if (shouldDock && _inspectorContainer.Child is null)
+            _inspectorContainer.Child = InspectorPaneBuilder.Build(_vm);
+
+        _inspectorContainer.Width = dockedWidth;
         _inspectorContainer.Opacity = shouldDock ? 1.0 : 0.0;
         _inspectorContainer.IsHitTestVisible = shouldDock;
 
         if (shouldFloat)
         {
-            double drawerW = Math.Min(360, Math.Max(280, width - 56));
-            _floatingInspectorDrawer.Width = drawerW;
+            _floatingInspectorDrawer.Transitions ??=
+            [
+                new DoubleTransition
+                {
+                    Property = WidthProperty,
+                    Duration = TimeSpan.FromMilliseconds(185),
+                    Easing = new CubicEaseOut(),
+                },
+            ];
+            _floatingInspectorDrawer.Width = floatingWidth;
             _floatingInspectorDrawer.Child = InspectorPaneBuilder.Build(_vm);
         }
 
@@ -357,7 +447,7 @@ public sealed partial class MainWindow : Window
         _floatingInspectorScrim.IsHitTestVisible = shouldFloat;
         _floatingInspectorScrim.Opacity = shouldFloat ? 1.0 : 0.0;
         _floatingInspectorDrawer.IsHitTestVisible = shouldFloat;
-        _floatingInspectorTranslate.X = shouldFloat ? 0 : 380;
+        _floatingInspectorTranslate.X = shouldFloat ? 0 : 760;
     }
 
     private void OnVmUiChanged(object? sender, UiChangeKind kind)
