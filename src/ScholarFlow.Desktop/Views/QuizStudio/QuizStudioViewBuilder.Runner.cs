@@ -17,6 +17,9 @@ namespace ScholarFlow.Desktop.Views;
 
 public static partial class QuizStudioViewBuilder
 {
+    private static string? _lastAnimatedRunnerQuestionKey;
+    private static string? _lastAnimatedRunnerFeedbackKey;
+
     private static void AttachSmoothEntrance(
         Control target,
         double slideY = 8,
@@ -114,12 +117,30 @@ public static partial class QuizStudioViewBuilder
         };
 
         var quickEditBtn = UiBuilder.GhostButton(
-            "Quick Edit",
+            "Edit",
             MaterialIconKind.PencilOutline,
             studio.OpenRunnerQuickEdit
         );
-        ToolTip.SetTip(quickEditBtn, "Quickly edit prompt, answer, options, or explanation (E)");
+        ToolTip.SetTip(quickEditBtn, "Quick edit this question (E)");
         topRightActions.Children.Add(quickEditBtn);
+
+        var aiFixBtn = UiBuilder.IconButton(
+            MaterialIconKind.AutoFix,
+            studio.OpenRunnerSingleQuestionAiFix,
+            15.5,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(aiFixBtn, "Fix this question with AI");
+        topRightActions.Children.Add(aiFixBtn);
+
+        var openInDeckBtn = UiBuilder.IconButton(
+            MaterialIconKind.TuneVariant,
+            studio.OpenCurrentQuestionInDeckOrganizer,
+            15.5,
+            ThemeService.Brush(ThemeService.TextSecondary)
+        );
+        ToolTip.SetTip(openInDeckBtn, "Open this question in Deck Organizer");
+        topRightActions.Children.Add(openInDeckBtn);
 
         var flagAiBtn = UiBuilder.IconButton(
             isFlaggedForAi ? MaterialIconKind.Flag : MaterialIconKind.FlagOutline,
@@ -704,7 +725,15 @@ public static partial class QuizStudioViewBuilder
         }
 
         var qCard = UiBuilder.Card(qCardStack, padding: new Thickness(18, 16));
-        AttachSmoothEntrance(qCard, slideY: 6, durationMs: 155);
+        var qAnimKey = $"{session.Id}:{q.Id}";
+        if (!string.Equals(_lastAnimatedRunnerQuestionKey, qAnimKey, StringComparison.Ordinal))
+        {
+            _lastAnimatedRunnerQuestionKey = qAnimKey;
+            _lastAnimatedRunnerFeedbackKey = null;
+            AttachSmoothEntrance(qCard, slideY: 6, durationMs: 155);
+        }
+        if (!studio.IsAnswerRevealed)
+            _lastAnimatedRunnerFeedbackKey = null;
         stack.Children.Add(qCard);
 
         if (!studio.IsAnswerRevealed)
@@ -992,7 +1021,12 @@ public static partial class QuizStudioViewBuilder
 
             feedbackStack.Children.Add(srsRow);
             var feedbackCard = UiBuilder.Card(feedbackStack, padding: new Thickness(16, 14));
-            AttachSmoothEntrance(feedbackCard, slideY: 10, durationMs: 180);
+            var fbAnimKey = $"{session.Id}:{q.Id}:revealed";
+            if (!string.Equals(_lastAnimatedRunnerFeedbackKey, fbAnimKey, StringComparison.Ordinal))
+            {
+                _lastAnimatedRunnerFeedbackKey = fbAnimKey;
+                AttachSmoothEntrance(feedbackCard, slideY: 10, durationMs: 180);
+            }
             stack.Children.Add(feedbackCard);
         }
 
@@ -1004,300 +1038,17 @@ public static partial class QuizStudioViewBuilder
         bool hasImageLightbox =
             !string.IsNullOrWhiteSpace(studio.ZoomedImagePath)
             && File.Exists(studio.ZoomedImagePath);
-        if (hasImageLightbox || studio.IsRunnerQuickEditOpen)
+        if (hasImageLightbox)
         {
             var host = new Grid();
             host.Children.Add(scroll);
-            if (studio.IsRunnerQuickEditOpen)
-                host.Children.Add(BuildRunnerQuickEditOverlay(studio, q));
-            if (hasImageLightbox)
-                host.Children.Add(
-                    BuildImageZoomLightbox(studio.ZoomedImagePath!, studio.CloseImageZoom)
-                );
+            host.Children.Add(
+                BuildImageZoomLightbox(studio.ZoomedImagePath!, studio.CloseImageZoom)
+            );
             return host;
         }
 
         return scroll;
-    }
-
-    private static Grid BuildRunnerQuickEditOverlay(
-        QuizStudioViewModel studio,
-        QuizQuestionRecord q
-    )
-    {
-        var overlay = new Grid();
-
-        var scrim = new Border
-        {
-            Background = new SolidColorBrush(Color.Parse("#7A000000")),
-            Cursor = new Cursor(StandardCursorType.Hand),
-        };
-        scrim.PointerPressed += (_, _) => studio.CloseRunnerQuickEdit();
-        overlay.Children.Add(scrim);
-
-        static StackPanel FieldGroup(string label, Control input) =>
-            new()
-            {
-                Spacing = 4,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = label,
-                        FontSize = 11,
-                        FontWeight = FontWeight.Medium,
-                        Foreground = ThemeService.Brush(ThemeService.TextSecondary),
-                    },
-                    input,
-                },
-            };
-
-        var headerGrid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto"),
-            ColumnSpacing = 8,
-            Margin = new Thickness(0, 0, 0, 10),
-        };
-        headerGrid.Children.Add(
-            UiBuilder.Icon(
-                MaterialIconKind.PencilOutline,
-                17,
-                ThemeService.Brush(ThemeService.TextPrimary)
-            )
-        );
-        headerGrid.Children.Add(
-            new TextBlock
-            {
-                Text = $"Quick Edit Question ({q.Kind})",
-                FontSize = 14.5,
-                FontWeight = FontWeight.Bold,
-                Foreground = ThemeService.Brush(ThemeService.TextPrimary),
-                VerticalAlignment = VerticalAlignment.Center,
-                [Grid.ColumnProperty] = 1,
-            }
-        );
-        var closeBtn = UiBuilder.IconButton(
-            MaterialIconKind.Close,
-            studio.CloseRunnerQuickEdit,
-            16,
-            ThemeService.Brush(ThemeService.TextSecondary)
-        );
-        ToolTip.SetTip(closeBtn, "Close (Esc)");
-        Grid.SetColumn(closeBtn, 2);
-        headerGrid.Children.Add(closeBtn);
-
-        var bodyStack = new StackPanel { Spacing = 10 };
-
-        var promptBox = new TextBox
-        {
-            Text = q.Prompt,
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 64,
-            MaxHeight = 140,
-            FontSize = 12.5,
-        };
-        bodyStack.Children.Add(FieldGroup("Prompt", promptBox));
-
-        var correctBox = new TextBox
-        {
-            Text = q.CorrectAnswer,
-            Watermark = "Correct answer...",
-            FontSize = 12.5,
-        };
-
-        List<TextBox>? optionBoxes = null;
-        bool hasEditableOptions =
-            q.Kind
-                is QuizQuestionKind.MultipleChoice
-                    or QuizQuestionKind.Situational
-                    or QuizQuestionKind.TrueFalse
-                    or QuizQuestionKind.Ordering
-            && q.Options.Count > 0;
-
-        if (hasEditableOptions)
-        {
-            optionBoxes = [];
-            var optsList = new StackPanel { Spacing = 6 };
-            bool isChoiceKind = q.Kind != QuizQuestionKind.Ordering;
-
-            for (int i = 0; i < q.Options.Count; i++)
-            {
-                var optVal = q.Options[i];
-                var optBox = new TextBox
-                {
-                    Text = optVal,
-                    FontSize = 12,
-                    Watermark = isChoiceKind ? $"Option {(char)('A' + i)}" : $"Step {i + 1}",
-                };
-                optionBoxes.Add(optBox);
-
-                var row = new Grid
-                {
-                    ColumnDefinitions = isChoiceKind
-                        ? ColumnDefinitions.Parse("24,*,Auto")
-                        : ColumnDefinitions.Parse("44,*"),
-                    ColumnSpacing = 6,
-                };
-                row.Children.Add(
-                    new TextBlock
-                    {
-                        Text = isChoiceKind ? $"{(char)('A' + i)}." : $"#{i + 1}",
-                        FontSize = 11.5,
-                        FontWeight = FontWeight.SemiBold,
-                        Foreground = ThemeService.Brush(ThemeService.TextMuted),
-                        VerticalAlignment = VerticalAlignment.Center,
-                        HorizontalAlignment = HorizontalAlignment.Center,
-                    }
-                );
-                Grid.SetColumn(optBox, 1);
-                row.Children.Add(optBox);
-
-                if (isChoiceKind)
-                {
-                    var capturedBox = optBox;
-                    var setCorrectBtn = UiBuilder.IconButton(
-                        MaterialIconKind.CheckCircleOutline,
-                        () =>
-                        {
-                            if (!string.IsNullOrWhiteSpace(capturedBox.Text))
-                                correctBox.Text = capturedBox.Text.Trim();
-                        },
-                        15,
-                        ThemeService.Brush(ThemeService.TextSecondary)
-                    );
-                    ToolTip.SetTip(setCorrectBtn, "Set this option as the Correct Answer");
-                    Grid.SetColumn(setCorrectBtn, 2);
-                    row.Children.Add(setCorrectBtn);
-                }
-
-                optsList.Children.Add(row);
-            }
-
-            bodyStack.Children.Add(
-                FieldGroup(
-                    q.Kind == QuizQuestionKind.Ordering ? "Correct Sequence Steps" : "Options",
-                    optsList
-                )
-            );
-        }
-
-        bodyStack.Children.Add(FieldGroup("Correct Answer", correctBox));
-
-        var explanationBox = new TextBox
-        {
-            Text = q.Explanation,
-            AcceptsReturn = true,
-            TextWrapping = TextWrapping.Wrap,
-            MinHeight = 56,
-            MaxHeight = 130,
-            FontSize = 12,
-            Watermark = "Explanation / rationale...",
-        };
-        bodyStack.Children.Add(FieldGroup("Explanation", explanationBox));
-
-        var metaRow = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,*"),
-            ColumnSpacing = 10,
-        };
-        var hintBox = new TextBox
-        {
-            Text = q.Hint ?? string.Empty,
-            Watermark = "Optional hint...",
-            FontSize = 12,
-        };
-        var tagBox = new TextBox
-        {
-            Text = q.TopicTag,
-            Watermark = "Topic tag (e.g. networking)",
-            FontSize = 12,
-        };
-        metaRow.Children.Add(FieldGroup("Hint (Optional)", hintBox));
-        var tagField = FieldGroup("Topic Tag", tagBox);
-        Grid.SetColumn(tagField, 1);
-        metaRow.Children.Add(tagField);
-        bodyStack.Children.Add(metaRow);
-
-        var scrollBody = new ScrollViewer
-        {
-            Content = bodyStack,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Padding = new Thickness(0, 0, 4, 0),
-        };
-
-        bool flagged = studio.DeckAiFixSelectedIds.Contains(q.Id);
-        var footerGrid = new Grid
-        {
-            ColumnDefinitions = ColumnDefinitions.Parse("Auto,*,Auto,Auto"),
-            ColumnSpacing = 6,
-            Margin = new Thickness(0, 12, 0, 0),
-        };
-        var flagBtn = UiBuilder.GhostButton(
-            flagged ? "Flagged for AI" : "Flag for AI Fix",
-            flagged ? MaterialIconKind.Flag : MaterialIconKind.FlagOutline,
-            () => studio.ToggleRunnerQuestionFlagForAi(q.Id),
-            isActive: flagged
-        );
-        footerGrid.Children.Add(flagBtn);
-
-        var cancelBtn = UiBuilder.GhostButton("Cancel", null, studio.CloseRunnerQuickEdit);
-        Grid.SetColumn(cancelBtn, 2);
-        footerGrid.Children.Add(cancelBtn);
-
-        var saveBtn = UiBuilder.PrimaryButton(
-            "Save Changes",
-            MaterialIconKind.Check,
-            async () =>
-            {
-                var updatedOpts = optionBoxes
-                    ?.Select(b => b.Text?.Trim() ?? string.Empty)
-                    .Where(s => !string.IsNullOrWhiteSpace(s))
-                    .ToList();
-                string finalAns = correctBox.Text ?? string.Empty;
-                if (q.Kind == QuizQuestionKind.Ordering && updatedOpts is { Count: > 0 })
-                    finalAns = string.Join(" -> ", updatedOpts);
-
-                await studio.SaveRunnerQuickEditAsync(
-                    promptBox.Text ?? string.Empty,
-                    finalAns,
-                    updatedOpts,
-                    explanationBox.Text ?? string.Empty,
-                    hintBox.Text,
-                    tagBox.Text ?? string.Empty
-                );
-            }
-        );
-        Grid.SetColumn(saveBtn, 3);
-        footerGrid.Children.Add(saveBtn);
-
-        var modalGrid = new Grid { RowDefinitions = RowDefinitions.Parse("Auto,*,Auto") };
-        modalGrid.Children.Add(headerGrid);
-        Grid.SetRow(scrollBody, 1);
-        modalGrid.Children.Add(scrollBody);
-        Grid.SetRow(footerGrid, 2);
-        modalGrid.Children.Add(footerGrid);
-
-        var modalCard = new Border
-        {
-            Background = ThemeService.Brush(ThemeService.BgSurface),
-            BorderBrush = ThemeService.Brush(ThemeService.BorderStrong),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(10),
-            Padding = new Thickness(18, 16),
-            MaxWidth = 560,
-            MaxHeight = 600,
-            Margin = new Thickness(20),
-            HorizontalAlignment = HorizontalAlignment.Center,
-            VerticalAlignment = VerticalAlignment.Center,
-            BoxShadow = BoxShadows.Parse("0 12 36 0 #70000000"),
-            Child = modalGrid,
-        };
-        AttachSmoothEntrance(modalCard, slideY: 10, durationMs: 150);
-        overlay.Children.Add(modalCard);
-
-        return overlay;
     }
 
     private static Border BuildImageZoomLightbox(string fullImagePath, Action onClose)

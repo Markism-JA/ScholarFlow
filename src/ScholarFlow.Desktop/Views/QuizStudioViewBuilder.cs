@@ -20,11 +20,32 @@ public static partial class QuizStudioViewBuilder
     {
         var studio = vm.QuizStudio;
 
+        if (studio.IsDedicatedSnipperOpen && studio.EditingQuestionDraft is not null)
+        {
+            return BuildDedicatedPdfSnipperView(vm, studio);
+        }
+
         if (studio.ActiveSession is not null)
         {
-            return studio.IsShowingResultsSummary
+            var runnerView = studio.IsShowingResultsSummary
                 ? BuildSessionSummaryView(vm, studio)
                 : BuildActiveQuestionRunnerView(vm, studio);
+
+            if (
+                studio.EditingQuestionDraft is not null
+                || !string.IsNullOrWhiteSpace(studio.FlaggingQuestionId)
+            )
+            {
+                var host = new Grid();
+                host.Children.Add(runnerView);
+                if (studio.EditingQuestionDraft is not null)
+                    host.Children.Add(BuildFloatingQuestionEditorOverlay(vm, studio));
+                else if (!string.IsNullOrWhiteSpace(studio.FlaggingQuestionId))
+                    host.Children.Add(BuildSingleQuestionAiFixOverlay(vm, studio));
+                return host;
+            }
+
+            return runnerView;
         }
 
         if (
@@ -34,15 +55,6 @@ public static partial class QuizStudioViewBuilder
         )
         {
             return BuildDedicatedPageStudioView(vm, studio);
-        }
-
-        if (
-            studio.ActiveSubTab == QuizStudioSubTab.Organizer
-            && studio.IsDedicatedSnipperOpen
-            && studio.EditingQuestionDraft is not null
-        )
-        {
-            return BuildDedicatedPdfSnipperView(vm, studio);
         }
 
         return BuildStudioWorkspaceView(vm, studio);

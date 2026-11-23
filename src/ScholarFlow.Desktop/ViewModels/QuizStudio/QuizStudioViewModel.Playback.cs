@@ -155,6 +155,10 @@ public sealed partial class QuizStudioViewModel
         }
 
         IsShowingResultsSummary = false;
+        EditingQuestionId = null;
+        EditingQuestionDraft = null;
+        FlaggingQuestionId = null;
+        IsDedicatedSnipperOpen = false;
         ResetPerQuestionSuperEngineState();
         _mainVm.RequestUiRefresh();
     }
@@ -239,21 +243,134 @@ public sealed partial class QuizStudioViewModel
         StartQuizSession(deckSession);
     }
 
-    public bool IsRunnerQuickEditOpen { get; private set; }
+    private QuizSessionRecord? EnsureOrganizerQuizLoadedForActiveSession(QuizQuestionRecord currentQ)
+    {
+        if (ActiveSession is null)
+            return null;
+
+        var backingQuiz =
+            SavedQuizzes.FirstOrDefault(s =>
+                string.Equals(s.Id, ActiveSession.Id, StringComparison.OrdinalIgnoreCase)
+            )
+            ?? SavedQuizzes.FirstOrDefault(s =>
+                s.Questions.Any(q =>
+                    string.Equals(q.Id, currentQ.Id, StringComparison.OrdinalIgnoreCase)
+                )
+            )
+            ?? ActiveSession;
+
+        // Prepare OrganizerQuiz quietly without switching ActiveSubTab so Quiz Play stays mounted underneath
+        OrganizerQuiz = new QuizSessionRecord
+        {
+            Id = backingQuiz.Id,
+            CourseFolder = backingQuiz.CourseFolder,
+            CourseTitle = backingQuiz.CourseTitle,
+            Term = backingQuiz.Term,
+            Title = backingQuiz.Title,
+            SourcePdfPath = backingQuiz.SourcePdfPath,
+            SourcePdfMtimeTicks = backingQuiz.SourcePdfMtimeTicks,
+            ModelUsed = backingQuiz.ModelUsed,
+            CreatedAtUtc = backingQuiz.CreatedAtUtc,
+            AttemptCount = backingQuiz.AttemptCount,
+            LastScorePercent = backingQuiz.LastScorePercent,
+            Questions = [.. backingQuiz.Questions.Select(CloneQuestionForEdit)],
+        };
+        IsOrganizerDirty = false;
+        return backingQuiz;
+    }
 
     public void OpenRunnerQuickEdit()
     {
         if (ActiveSession is null || CurrentQuestion is null)
             return;
-        IsRunnerQuickEditOpen = true;
-        _mainVm.RequestUiRefresh();
+
+        var currentQ = CurrentQuestion;
+        EnsureOrganizerQuizLoadedForActiveSession(currentQ);
+        FlaggingQuestionId = null;
+        IsDeckAiFixModalOpen = false;
+        EditingQuestionId = null;
+        EditingQuestionDraft = null;
+        ToggleEditQuestion(currentQ.Id);
     }
 
-    public void CloseRunnerQuickEdit()
+    public void OpenRunnerSingleQuestionAiFix()
     {
-        if (!IsRunnerQuickEditOpen)
+        if (ActiveSession is null || CurrentQuestion is null)
             return;
-        IsRunnerQuickEditOpen = false;
+
+        var currentQ = CurrentQuestion;
+        EnsureOrganizerQuizLoadedForActiveSession(currentQ);
+        EditingQuestionId = null;
+        EditingQuestionDraft = null;
+        IsDeckAiFixModalOpen = false;
+        ToggleFlagQuestionForAiFix(currentQ.Id);
+    }
+
+    public void OpenCurrentQuestionInDeckOrganizer()
+    {
+        if (ActiveSession is null || CurrentQuestion is null)
+            return;
+
+        var currentQ = CurrentQuestion;
+        var backingQuiz =
+            SavedQuizzes.FirstOrDefault(s =>
+                string.Equals(s.Id, ActiveSession.Id, StringComparison.OrdinalIgnoreCase)
+            )
+            ?? SavedQuizzes.FirstOrDefault(s =>
+                s.Questions.Any(q =>
+                    string.Equals(q.Id, currentQ.Id, StringComparison.OrdinalIgnoreCase)
+                )
+            )
+            ?? ActiveSession;
+
+        ActiveSession = null;
+        IsShowingResultsSummary = false;
+        EditingQuestionId = null;
+        EditingQuestionDraft = null;
+        FlaggingQuestionId = null;
+        IsDedicatedSnipperOpen = false;
+        ResetPerQuestionSuperEngineState();
+
+        OpenQuizInOrganizer(
+            backingQuiz,
+            focusQuestionId: currentQ.Id,
+            openEditorImmediately: false,
+            preserveAiFixFlags: true
+        );
+    }
+
+    internal async Task SyncEditedQuestionToActiveSessionAsync(QuizQuestionRecord edited)
+    {
+        if (IsOrganizerDirty && OrganizerQuiz is not null)
+            await SaveOrganizerDeckAsync();
+
+        if (ActiveSession is null)
+            return;
+
+        for (int i = 0; i < ActiveSession.Questions.Count; i++)
+        {
+            if (
+                string.Equals(
+                    ActiveSession.Questions[i].Id,
+                    edited.Id,
+                    StringComparison.OrdinalIgnoreCase
+                )
+            )
+            {
+                ActiveSession.Questions[i] = CloneQuestionForEdit(edited);
+                break;
+            }
+        }
+
+        // Re-evaluate current question if it was already revealed before editing
+        var q = CurrentQuestion;
+        if (q is not null && IsAnswerRevealed && SessionResults.TryGetValue(q.Id, out var prev))
+        {
+            bool nowCorrect = q.EvaluateAnswer(prev.Answer);
+            IsCurrentAnswerCorrect = nowCorrect;
+            SessionResults[q.Id] = (prev.Answer, nowCorrect);
+        }
+
         _mainVm.RequestUiRefresh();
     }
 
@@ -263,79 +380,6 @@ public sealed partial class QuizStudioViewModel
             return;
         if (!DeckAiFixSelectedIds.Remove(questionId))
             DeckAiFixSelectedIds.Add(questionId);
-        _mainVm.RequestUiRefresh();
-    }
-
-    public async Task SaveRunnerQuickEditAsync(
-        string prompt,
-        string correctAnswer,
-        List<string>? options,
-        string explanation,
-        string? hint,
-        string topicTag
-    )
-    {
-        var q = CurrentQuestion;
-        if (ActiveSession is null || q is null)
-            return;
-
-        static void ApplyEdits(
-            QuizQuestionRecord target,
-            string p,
-            string ans,
-            List<string>? opts,
-            string exp,
-            string? h,
-            string tag
-        )
-        {
-            if (!string.IsNullOrWhiteSpace(p))
-                target.Prompt = p.Trim();
-            if (!string.IsNullOrWhiteSpace(ans))
-                target.CorrectAnswer = ans.Trim();
-            if (opts is not null && opts.Count > 0)
-                target.Options = [.. opts];
-            target.Explanation = exp.Trim();
-            target.Hint = string.IsNullOrWhiteSpace(h) ? null : h.Trim();
-            target.TopicTag = string.IsNullOrWhiteSpace(tag) ? "general" : tag.Trim().TrimStart('@');
-        }
-
-        ApplyEdits(q, prompt, correctAnswer, options, explanation, hint, topicTag);
-
-        // If already answered in this session, re-evaluate against the updated answer key
-        if (IsAnswerRevealed && SessionResults.TryGetValue(q.Id, out var prev))
-        {
-            bool nowCorrect = q.EvaluateAnswer(prev.Answer);
-            IsCurrentAnswerCorrect = nowCorrect;
-            SessionResults[q.Id] = (prev.Answer, nowCorrect);
-        }
-
-        // Persist to backing saved quiz(zes) and organizer deck if loaded
-        if (OrganizerQuiz is not null)
-        {
-            var orgMatch = OrganizerQuiz.Questions.FirstOrDefault(x =>
-                string.Equals(x.Id, q.Id, StringComparison.OrdinalIgnoreCase)
-            );
-            if (orgMatch is not null && !ReferenceEquals(orgMatch, q))
-                ApplyEdits(orgMatch, prompt, correctAnswer, options, explanation, hint, topicTag);
-        }
-
-        if (!string.IsNullOrWhiteSpace(_mainVm.BasinRoot))
-        {
-            foreach (var savedQuiz in SavedQuizzes)
-            {
-                var savedMatch = savedQuiz.Questions.FirstOrDefault(x =>
-                    string.Equals(x.Id, q.Id, StringComparison.OrdinalIgnoreCase)
-                );
-                if (savedMatch is null)
-                    continue;
-                if (!ReferenceEquals(savedMatch, q))
-                    ApplyEdits(savedMatch, prompt, correctAnswer, options, explanation, hint, topicTag);
-                await ScholarFlowDatabase.SaveQuizSessionAsync(_mainVm.BasinRoot, savedQuiz);
-            }
-        }
-
-        IsRunnerQuickEditOpen = false;
         _mainVm.RequestUiRefresh();
     }
 
@@ -370,7 +414,10 @@ public sealed partial class QuizStudioViewModel
     {
         ActiveSession = null;
         IsShowingResultsSummary = false;
-        IsRunnerQuickEditOpen = false;
+        EditingQuestionId = null;
+        EditingQuestionDraft = null;
+        FlaggingQuestionId = null;
+        IsDedicatedSnipperOpen = false;
         ResetPerQuestionSuperEngineState();
         _mainVm.RequestUiRefresh();
     }

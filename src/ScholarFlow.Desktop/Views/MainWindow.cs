@@ -320,16 +320,6 @@ public sealed partial class MainWindow : Window
                 or WorkspaceTabMode.KnowledgeSearch
             )
         && (Bounds.Width <= 0 || Bounds.Width >= 1060);
-    private bool ShouldFloatInspectorOverlay =>
-        _vm.IsInspectorOpen
-        && _vm.ActiveMode
-            is not (
-                WorkspaceTabMode.PdfReader
-                or WorkspaceTabMode.SourceViewer
-                or WorkspaceTabMode.QuizStudio
-                or WorkspaceTabMode.KnowledgeSearch
-            )
-        && Bounds.Width is > 0 and < 1060;
 
     private void UpdateResponsiveShellColumns(double width)
     {
@@ -585,7 +575,6 @@ public sealed partial class MainWindow : Window
             : _vm.IsSearchModalOpen ? "Search"
             : _vm.IsNotificationDrawerOpen ? "Notifications"
             : _vm.IsShortcutsModalOpen ? "Shortcuts"
-            : ShouldFloatInspectorOverlay ? "FloatingInspector"
             : string.Empty;
 
         if (string.IsNullOrEmpty(targetKind))

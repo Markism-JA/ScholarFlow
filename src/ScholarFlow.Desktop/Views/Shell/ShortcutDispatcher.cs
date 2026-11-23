@@ -54,10 +54,19 @@ public static class ShortcutDispatcher
                     vm.QuizStudio.CloseImageZoom();
                     return;
                 }
-                if (vm.QuizStudio.IsRunnerQuickEditOpen)
+                if (
+                    vm.QuizStudio.EditingQuestionDraft is not null
+                    && !vm.QuizStudio.IsDedicatedSnipperOpen
+                )
                 {
                     e.Handled = true;
-                    vm.QuizStudio.CloseRunnerQuickEdit();
+                    vm.QuizStudio.CancelEditingQuestionDraft();
+                    return;
+                }
+                if (!string.IsNullOrWhiteSpace(vm.QuizStudio.FlaggingQuestionId))
+                {
+                    e.Handled = true;
+                    vm.QuizStudio.CloseQuestionAiFixModal();
                     return;
                 }
                 if (vm.QuizStudio.IsAiSettingsOpen)
@@ -269,7 +278,8 @@ public static class ShortcutDispatcher
             vm.ActiveMode == WorkspaceTabMode.QuizStudio
             && vm.QuizStudio.ActiveSession is not null
             && !vm.QuizStudio.IsShowingResultsSummary
-            && !vm.QuizStudio.IsRunnerQuickEditOpen
+            && vm.QuizStudio.EditingQuestionDraft is null
+            && string.IsNullOrWhiteSpace(vm.QuizStudio.FlaggingQuestionId)
             && !vm.IsSearchModalOpen
         )
         {

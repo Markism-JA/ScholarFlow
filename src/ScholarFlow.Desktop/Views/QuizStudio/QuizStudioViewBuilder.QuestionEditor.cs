@@ -38,8 +38,8 @@ public static partial class QuizStudioViewBuilder
         // Sticky Modal Header (stays pinned above the scrollable body)
         var headerGrid = new Grid
         {
-            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto,Auto,Auto,Auto"),
-            ColumnSpacing = 6,
+            ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+            ColumnSpacing = 8,
             Margin = new Thickness(0, 0, 0, 8),
         };
         var titleStack = new StackPanel
@@ -72,31 +72,57 @@ public static partial class QuizStudioViewBuilder
         );
         headerGrid.Children.Add(titleStack);
 
-        var prevBtn = UiBuilder.IconButton(
-            MaterialIconKind.ChevronLeft,
-            () => studio.CommitEditingQuestionDraft(-1),
-            16
-        );
-        prevBtn.IsEnabled = deckIdx > 0;
-        Grid.SetColumn(prevBtn, 1);
-        headerGrid.Children.Add(prevBtn);
+        var headerActions = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 6,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
 
-        var nextBtn = UiBuilder.IconButton(
-            MaterialIconKind.ChevronRight,
-            () => studio.CommitEditingQuestionDraft(+1),
-            16
+        var aiFixHeaderBtn = UiBuilder.GhostButton(
+            "Fix with AI",
+            MaterialIconKind.AutoFix,
+            () => studio.ToggleFlagQuestionForAiFix(draft.Id)
         );
-        nextBtn.IsEnabled = deckIdx >= 0 && deckIdx < deck.Questions.Count - 1;
-        Grid.SetColumn(nextBtn, 2);
-        headerGrid.Children.Add(nextBtn);
+        ToolTip.SetTip(aiFixHeaderBtn, "Repair or refine this question with AI");
+        headerActions.Children.Add(aiFixHeaderBtn);
+
+        if (studio.ActiveSession is not null)
+        {
+            var openDeckBtn = UiBuilder.GhostButton(
+                "Open in Deck",
+                MaterialIconKind.TuneVariant,
+                studio.OpenCurrentQuestionInDeckOrganizer
+            );
+            ToolTip.SetTip(openDeckBtn, "Open this question in the full Deck Organizer");
+            headerActions.Children.Add(openDeckBtn);
+        }
+
+        if (studio.ActiveSession is null)
+        {
+            var prevBtn = UiBuilder.IconButton(
+                MaterialIconKind.ChevronLeft,
+                () => studio.CommitEditingQuestionDraft(-1),
+                16
+            );
+            prevBtn.IsEnabled = deckIdx > 0;
+            headerActions.Children.Add(prevBtn);
+
+            var nextBtn = UiBuilder.IconButton(
+                MaterialIconKind.ChevronRight,
+                () => studio.CommitEditingQuestionDraft(+1),
+                16
+            );
+            nextBtn.IsEnabled = deckIdx >= 0 && deckIdx < deck.Questions.Count - 1;
+            headerActions.Children.Add(nextBtn);
+        }
 
         var cancelBtn = UiBuilder.GhostButton(
             "Cancel",
             MaterialIconKind.Close,
             studio.CancelEditingQuestionDraft
         );
-        Grid.SetColumn(cancelBtn, 3);
-        headerGrid.Children.Add(cancelBtn);
+        headerActions.Children.Add(cancelBtn);
 
         var doneBtn = UiBuilder.PrimaryButton(
             "Save",
@@ -104,8 +130,10 @@ public static partial class QuizStudioViewBuilder
             () => studio.CommitEditingQuestionDraft(0)
         );
         doneBtn.IsEnabled = !string.IsNullOrWhiteSpace(draft.Prompt);
-        Grid.SetColumn(doneBtn, 4);
-        headerGrid.Children.Add(doneBtn);
+        headerActions.Children.Add(doneBtn);
+
+        Grid.SetColumn(headerActions, 1);
+        headerGrid.Children.Add(headerActions);
 
         // Live Validation / Critic Banner
         Control validationBanner;
@@ -636,29 +664,126 @@ public static partial class QuizStudioViewBuilder
             };
             answerStack.Children.Add(correctBox);
 
-            answerStack.Children.Add(
-                EditorFieldLabel("Accepted Aliases / Synonyms (comma-separated)")
-            );
-            var aliasBox = new TextBox
+            var aliasListPanel = new StackPanel { Spacing = 6 };
+            var workingAliases = new List<string>(draft.AcceptedAliases);
+
+            void SyncAliasesToDraft()
             {
-                Text = string.Join(", ", draft.AcceptedAliases),
-                Watermark = "e.g. FIFO, First-In First-Out...",
-                FontSize = 12,
-            };
-            aliasBox.PropertyChanged += (_, e) =>
+                draft.AcceptedAliases =
+                [
+                    .. workingAliases
+                        .Select(a => a.Trim())
+                        .Where(a => !string.IsNullOrWhiteSpace(a))
+                        .Distinct(StringComparer.OrdinalIgnoreCase),
+                ];
+            }
+
+            void RebuildAliasRows(bool focusLast = false)
             {
-                if (e.Property == TextBox.TextProperty)
+                aliasListPanel.Children.Clear();
+                if (workingAliases.Count == 0)
                 {
-                    draft.AcceptedAliases =
-                    [
-                        .. (aliasBox.Text ?? string.Empty).Split(
-                            ',',
-                            StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
-                        ),
-                    ];
+                    aliasListPanel.Children.Add(
+                        new TextBlock
+                        {
+                            Text =
+                                "No alternate answers yet. Click '+ Add Alias' to accept synonyms, abbreviations, or alternate phrasings.",
+                            FontSize = 11.5,
+                            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                            TextWrapping = TextWrapping.Wrap,
+                        }
+                    );
+                    return;
                 }
+
+                TextBox? lastBox = null;
+                for (int i = 0; i < workingAliases.Count; i++)
+                {
+                    int idx = i;
+                    var row = new Grid
+                    {
+                        ColumnDefinitions = ColumnDefinitions.Parse("26,*,Auto"),
+                        ColumnSpacing = 6,
+                    };
+                    row.Children.Add(
+                        new TextBlock
+                        {
+                            Text = $"#{idx + 1}",
+                            FontSize = 11.5,
+                            FontWeight = FontWeight.SemiBold,
+                            Foreground = ThemeService.Brush(ThemeService.TextMuted),
+                            VerticalAlignment = VerticalAlignment.Center,
+                            HorizontalAlignment = HorizontalAlignment.Center,
+                        }
+                    );
+
+                    var itemBox = new TextBox
+                    {
+                        Text = workingAliases[idx],
+                        Watermark = "Alternate accepted answer (e.g. FIFO, First-In First-Out)...",
+                        FontSize = 12,
+                    };
+                    itemBox.PropertyChanged += (_, e) =>
+                    {
+                        if (e.Property == TextBox.TextProperty && idx < workingAliases.Count)
+                        {
+                            workingAliases[idx] = itemBox.Text ?? string.Empty;
+                            SyncAliasesToDraft();
+                        }
+                    };
+                    Grid.SetColumn(itemBox, 1);
+                    row.Children.Add(itemBox);
+                    lastBox = itemBox;
+
+                    var removeBtn = UiBuilder.IconButton(
+                        MaterialIconKind.Close,
+                        () =>
+                        {
+                            if (idx < workingAliases.Count)
+                            {
+                                workingAliases.RemoveAt(idx);
+                                SyncAliasesToDraft();
+                                RebuildAliasRows();
+                            }
+                        },
+                        14,
+                        ThemeService.Brush(ThemeService.TextSecondary)
+                    );
+                    ToolTip.SetTip(removeBtn, "Remove alternate answer");
+                    Grid.SetColumn(removeBtn, 2);
+                    row.Children.Add(removeBtn);
+
+                    aliasListPanel.Children.Add(row);
+                }
+
+                if (focusLast && lastBox is not null)
+                {
+                    var targetFocus = lastBox;
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() => targetFocus.Focus());
+                }
+            }
+
+            var aliasHeader = new Grid
+            {
+                ColumnDefinitions = ColumnDefinitions.Parse("*,Auto"),
+                ColumnSpacing = 8,
             };
-            answerStack.Children.Add(aliasBox);
+            aliasHeader.Children.Add(EditorFieldLabel("Accepted Aliases / Alternate Answers"));
+            var addAliasBtn = UiBuilder.GhostButton(
+                "Add Alias",
+                MaterialIconKind.Plus,
+                () =>
+                {
+                    workingAliases.Add(string.Empty);
+                    RebuildAliasRows(focusLast: true);
+                }
+            );
+            Grid.SetColumn(addAliasBtn, 1);
+            aliasHeader.Children.Add(addAliasBtn);
+
+            RebuildAliasRows();
+            answerStack.Children.Add(aliasHeader);
+            answerStack.Children.Add(aliasListPanel);
         }
         bodyStack.Children.Add(EditorSectionCard(answerStack));
 

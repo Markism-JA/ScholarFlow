@@ -298,7 +298,12 @@ public sealed partial class QuizStudioViewModel
     // DECK ORGANIZER (SINGLE & MULTI-QUIZ QUESTION REORGANIZATION)
     // =========================================================================
 
-    public void OpenQuizInOrganizer(QuizSessionRecord quiz)
+    public void OpenQuizInOrganizer(
+        QuizSessionRecord quiz,
+        string? focusQuestionId = null,
+        bool openEditorImmediately = false,
+        bool preserveAiFixFlags = false
+    )
     {
         OrganizerQuiz = new QuizSessionRecord
         {
@@ -319,7 +324,13 @@ public sealed partial class QuizStudioViewModel
         OrganizerTopicFilter = null;
         OrganizerHealthFilter = OrganizerHealthFilter.All;
         OrganizerSearchQuery = string.Empty;
-        SelectedOrganizerQuestionId = OrganizerQuiz.Questions.FirstOrDefault()?.Id;
+        var targetQuestion = !string.IsNullOrWhiteSpace(focusQuestionId)
+            ? OrganizerQuiz.Questions.FirstOrDefault(q =>
+                string.Equals(q.Id, focusQuestionId, StringComparison.OrdinalIgnoreCase)
+            )
+            : null;
+        SelectedOrganizerQuestionId =
+            targetQuestion?.Id ?? OrganizerQuiz.Questions.FirstOrDefault()?.Id;
         IsOrganizerDirty = false;
         EditingQuestionId = null;
         EditingQuestionDraft = null;
@@ -327,11 +338,17 @@ public sealed partial class QuizStudioViewModel
         EditingGroundStatus = null;
         IsEditingAdvancedOpen = false;
         IsDeckAiFixModalOpen = false;
-        DeckAiFixSelectedIds.Clear();
+        if (!preserveAiFixFlags)
+            DeckAiFixSelectedIds.Clear();
         ActiveSubTab = QuizStudioSubTab.Organizer;
         StatusMessage =
             $"Organizing '{quiz.Title}' ({quiz.Questions.Count} items). Reorder, filter by kind, edit, or shuffle.";
         IsStatusError = false;
+        if (openEditorImmediately && targetQuestion is not null)
+        {
+            ToggleEditQuestion(targetQuestion.Id);
+            return;
+        }
         _mainVm.RequestUiRefresh();
     }
 
@@ -660,6 +677,8 @@ public sealed partial class QuizStudioViewModel
 
         EditingQuestionId = target.Id;
         SelectedOrganizerQuestionId = target.Id;
+        FlaggingQuestionId = null;
+        IsDeckAiFixModalOpen = false;
         EditingQuestionDraft = CloneQuestionForEdit(target);
         if (
             EditingQuestionDraft.EvidenceAnchors.Count == 0
@@ -825,12 +844,18 @@ public sealed partial class QuizStudioViewModel
             }
         }
 
+        var committedQuestion = idx >= 0 ? OrganizerQuiz.Questions[idx] : null;
         EditingQuestionId = null;
         EditingQuestionDraft = null;
         EditingPageTextPreview = null;
         EditingGroundStatus = null;
         EditingSnipPageBitmap = null;
         IsDedicatedSnipperOpen = false;
+        if (ActiveSession is not null && committedQuestion is not null)
+        {
+            _ = SyncEditedQuestionToActiveSessionAsync(committedQuestion);
+            return;
+        }
         _mainVm.RequestUiRefresh();
     }
 
@@ -1532,6 +1557,8 @@ public sealed partial class QuizStudioViewModel
         {
             FlaggingQuestionId = questionId;
             EditingQuestionId = null;
+            EditingQuestionDraft = null;
+            IsDeckAiFixModalOpen = false;
             FlagProblemDescription = string.Empty;
             FlagFixPromptPreview = string.Empty;
             FlagFixJsonInput = string.Empty;
@@ -1583,6 +1610,8 @@ public sealed partial class QuizStudioViewModel
             FlagFixJsonInput = string.Empty;
             StatusMessage = "Applied AI repair to question and re-grounded PDF evidence.";
             IsStatusError = false;
+            if (ActiveSession is not null)
+                await SyncEditedQuestionToActiveSessionAsync(question);
         }
         catch (Exception ex)
         {
